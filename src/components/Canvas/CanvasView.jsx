@@ -1,0 +1,1608 @@
+import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react'
+import Konva from 'konva'
+import { getStroke } from 'perfect-freehand'
+import { getSvgPathFromStroke } from '../../math/svgPath.js'
+import { usePersistence } from './usePersistence.js'
+import { useHistory } from './useHistory.js'
+import { useGrid } from './useGrid.js'
+import { evaluateExpression } from '../../math/mathEval.js'
+import { deserializeLayer } from './konvaSerialize.js'
+import { liveSnapshotCache } from './usePersistence.js'
+import { getNote, updateNoteSettings } from '../../db/db.js'
+import './Canvas.css'
+
+const CanvasView = forwardRef(function CanvasView(
+  { note, activeTool, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected },
+  ref
+) {
+  // ─── DOM + Konva refs ───────────────────────────────────────────────────────
+  const wrapperRef = useRef(null)
+  const gridCanvasRef = useRef(null)
+  const konvaContainerRef = useRef(null)
+  const drawCanvasRef = useRef(null)   // raw canvas for in-progress freehand
+  const stageRef = useRef(null)
+  const mainLayerRef = useRef(null)
+  const drawingLayerRef = useRef(null)
+  const transformerRef = useRef(null)
+
+  // ─── Prop refs (always current inside effects/callbacks) ────────────────────
+  const penColorRef = useRef(penColor)
+  const penSizeRef = useRef(penSize)
+  const opacityRef = useRef(opacity)
+  const strokeStyleRef = useRef(strokeStyle)
+  const pressureSensitiveRef = useRef(pressureSensitive)
+  const activeToolRef = useRef(activeTool)
+  const onInputDetectedRef = useRef(onInputDetected)
+  penColorRef.current = penColor
+  penSizeRef.current = penSize
+  opacityRef.current = opacity
+  strokeStyleRef.current = strokeStyle
+  pressureSensitiveRef.current = pressureSensitive
+  activeToolRef.current = activeTool
+  onInputDetectedRef.current = onInputDetected
+
+  // ─── Floating toolbar state ─────────────────────────────────────────────────
+  const toolbarDivRef = useRef(null)
+  const toolbarTargetRef = useRef(null)
+  const [imageLocked, setImageLocked] = useState(false)
+  const [selectedType, setSelectedType] = useState(null)
+  const [deleteHolding, setDeleteHolding] = useState(false)
+  const deleteTimerRef = useRef(null)
+
+  const showGrid = note.settings?.background === 'grid'
+
+  // ─── History + persistence ──────────────────────────────────────────────────
+  const history = useHistory(mainLayerRef, transformerRef)
+  const historyPushRef = useRef(null)
+  historyPushRef.current = history.pushState
+  const persistenceScheduleRef = useRef(null)
+  usePersistence(mainLayerRef, note.id, persistenceScheduleRef)
+
+  function scheduleSnapshot() { persistenceScheduleRef.current?.() }
+
+  // ─── Toolbar positioning ────────────────────────────────────────────────────
+  const positionAndShowToolbar = useCallback((node) => {
+    const div   = toolbarDivRef.current
+    const stage = stageRef.current
+    const tr    = transformerRef.current
+    if (!div || !node || !stage) return
+    toolbarTargetRef.current = node
+    const isImage = !!node.attrs.isImage
+    setSelectedType(isImage ? 'image' : 'other')
+    setImageLocked(!!node.attrs.isLocked)
+    // Images get their own rotate buttons — hide the transformer rotation handle.
+    if (tr) tr.rotateEnabled(!isImage)
+    // getClientRect() is container-relative; position:fixed needs viewport coords.
+    const r   = node.getClientRect()
+    const box = stage.container().getBoundingClientRect()
+    div.style.left = `${box.left + r.x + r.width / 2}px`
+    div.style.top  = `${box.top + r.y - 48}px`
+    div.style.display = 'flex'
+  }, [])
+
+  const hideToolbar = useCallback(() => {
+    toolbarTargetRef.current = null
+    setSelectedType(null)
+    setImageLocked(false)
+    if (toolbarDivRef.current) toolbarDivRef.current.style.display = 'none'
+    // Restore rotation handle when deselecting.
+    const tr = transformerRef.current
+    if (tr) tr.rotateEnabled(true)
+  }, [])
+
+  // Toolbar boven de transformer bounding box voor multi-selectie.
+  const positionToolbarAtTransformer = useCallback(() => {
+    const div = toolbarDivRef.current
+    const stage = stageRef.current
+    const tr = transformerRef.current
+    if (!div || !stage || !tr || !tr.nodes().length) return
+    toolbarTargetRef.current = null
+    setSelectedType('multi')
+    setImageLocked(false)
+    tr.rotateEnabled(true) // multi-selection keeps the rotation handle
+    const r = tr.getClientRect()
+    const box = stage.container().getBoundingClientRect()
+    div.style.left = `${box.left + r.x + r.width / 2}px`
+    div.style.top  = `${box.top + r.y - 48}px`
+    div.style.display = 'flex'
+  }, [])
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // EFFECT 1 — Konva Stage initialisation (runs once per note)
+  // ───────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    const container = konvaContainerRef.current
+    if (!wrapper || !container) return
+
+    const stage = new Konva.Stage({ container, width: wrapper.clientWidth, height: wrapper.clientHeight })
+    const mainLayer   = new Konva.Layer()
+    const drawingLayer = new Konva.Layer({ listening: false })
+    stage.add(mainLayer)
+    stage.add(drawingLayer)
+    stageRef.current = stage
+    mainLayerRef.current = mainLayer
+    drawingLayerRef.current = drawingLayer
+
+    const transformer = new Konva.Transformer({
+      rotateEnabled: true,
+      keepRatio: false,
+      borderStroke: '#1971c2',
+      borderStrokeWidth: 1,
+      anchorSize: 22,
+      anchorStroke: '#1971c2',
+      anchorFill: '#fff',
+      anchorCornerRadius: 11,   // fully circular
+    })
+    mainLayer.add(transformer)
+    transformerRef.current = transformer
+
+    function resizeDrawCanvas(dc, w, h) {
+      const dpr = window.devicePixelRatio || 1
+      dc.width  = w * dpr
+      dc.height = h * dpr
+      dc.style.width  = w + 'px'
+      dc.style.height = h + 'px'
+    }
+
+    const ro = new ResizeObserver(() => {
+      stage.width(wrapper.clientWidth)
+      stage.height(wrapper.clientHeight)
+      const dc = drawCanvasRef.current
+      if (dc) resizeDrawCanvas(dc, wrapper.clientWidth, wrapper.clientHeight)
+    })
+    ro.observe(wrapper)
+
+    // Herbereken canvas-afmetingen bij browser-zoom (devicePixelRatio verandert dan mee)
+    const onDprChange = () => {
+      const dc = drawCanvasRef.current
+      if (dc) resizeDrawCanvas(dc, wrapper.clientWidth, wrapper.clientHeight)
+    }
+    const dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+    dprQuery.addEventListener('change', onDprChange)
+    const dc = drawCanvasRef.current
+    if (dc) resizeDrawCanvas(dc, wrapper.clientWidth, wrapper.clientHeight)
+
+    // Load snapshot: in-memory cache first (always current within a session),
+    // then fall back to IndexedDB for first load or after page reload.
+    function afterLoad() {
+      setTimeout(() => { if (!cancelled) history.reset() }, 150)
+    }
+
+    let cancelled = false
+    const cached = liveSnapshotCache.get(note.id)
+    if (cached) {
+      deserializeLayer(cached, mainLayer)
+      afterLoad()
+    } else {
+      getNote(note.id).then(fresh => {
+        if (cancelled) return
+        if (fresh?.snapshot) {
+          deserializeLayer(fresh.snapshot, mainLayer)
+          afterLoad()
+        } else {
+          history.reset()
+        }
+      })
+    }
+    if (note.settings?.zoom) stage.scale({ x: note.settings.zoom, y: note.settings.zoom })
+    if (note.settings?.pan)  stage.position(note.settings.pan)
+
+    return () => {
+      cancelled = true
+      ro.disconnect()
+      dprQuery.removeEventListener('change', onDprChange)
+      stage.destroy()
+      stageRef.current = null
+      mainLayerRef.current = null
+      drawingLayerRef.current = null
+      transformerRef.current = null
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note.id])
+
+  // Shared eraser logic used by Effect 2 (pen eraser button) and Effect 3.
+  // Uses Konva's hit canvas (getIntersection) for pixel-accurate shape testing
+  // instead of bounding-box overlap, so e.g. the empty corner of an L-shape is
+  // not treated as ink. Freehand Path nodes get a tight bbox fallback because
+  // a filled polygon's hit canvas area matches its visual area closely.
+  function eraseAtContainerPos(containerPos, mainLayer, transformer) {
+    const R = 8  // eraser radius in container/screen pixels
+    // Sample centre + 8 compass+diagonal points around the eraser circle.
+    const offsets = [
+      { x: 0, y: 0 },
+      { x: -R, y: 0 }, { x: R, y: 0 }, { x: 0, y: -R }, { x: 0, y: R },
+      { x: -R * 0.7, y: -R * 0.7 }, { x: R * 0.7, y: -R * 0.7 },
+      { x: -R * 0.7, y: R * 0.7  }, { x: R * 0.7, y: R * 0.7  },
+    ]
+    const toDestroy = new Set()
+    for (const { x, y } of offsets) {
+      const hit = mainLayer.getIntersection({ x: containerPos.x + x, y: containerPos.y + y })
+      if (hit && hit.getClassName() !== 'Transformer' && !hit.attrs.isImage) {
+        toDestroy.add(hit)
+      }
+    }
+    // Fallback for filled Path nodes (freehand): bounding box is tight enough.
+    const eraserBox = { x: containerPos.x - R, y: containerPos.y - R, width: R * 2, height: R * 2 }
+    for (const node of mainLayer.getChildren()) {
+      if (toDestroy.has(node) || node.getClassName() !== 'Path' || node.attrs.isImage) continue
+      if (Konva.Util.haveIntersection(eraserBox, node.getClientRect())) toDestroy.add(node)
+    }
+    let erased = false
+    for (const node of toDestroy) {
+      if (node.getLayer()) { node.destroy(); erased = true }
+    }
+    if (erased) {
+      transformer?.nodes([])
+      mainLayer.batchDraw()
+    }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // EFFECT 2 — Raw pointer events
+  //
+  // Responsibility: pen-eraser detection, input-type notification, touch
+  // pan/zoom, mouse alt-drag pan. Everything else is left to Konva (Effect 3).
+  //
+  // Touch is ALWAYS intercepted here so Konva never sees touch events.
+  // Selection via touch is handled manually in onPointerUp (tap detection).
+  // ───────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const container = konvaContainerRef.current
+    if (!container) return
+
+    const touchPointers = new Map()
+    let lastPinchDist = null
+    let lastPinchMid = null
+    let lastInputType = null
+    let mousePanning = false
+    let lastMousePos = { x: 0, y: 0 }
+    let wheelRestoreTimer = null
+    let navActive = false        // true while any navigation gesture is in progress
+    let savedSelection = []     // transformer nodes saved at nav start, restored at nav end
+
+    // 1-finger touch image drag state
+    let touchDragNode = null      // selected image being dragged with 1 finger
+    let touchDragStageStart = null
+    let touchDragNodeOrigin = null
+    let touchDragMoved = false
+    let twoFingerActive = false   // true once 2 fingers were active; blocks leftover-finger pan
+
+    // Transformer handle touch resize state.
+    // When a touch lands near a handle we let the event pass through to Konva
+    // (no stopImmediatePropagation) so its built-in resize/rotate logic fires.
+    let touchResizePointerId = null
+
+    function notifyInputType(type) {
+      if (type !== lastInputType) {
+        lastInputType = type
+        onInputDetectedRef.current?.(type)
+      }
+    }
+
+    function getContainerPos(clientX, clientY) {
+      const box = container.getBoundingClientRect()
+      return { x: clientX - box.left, y: clientY - box.top }
+    }
+
+    function clientToStageCoord(clientX, clientY) {
+      const stage = stageRef.current
+      if (!stage) return { x: 0, y: 0 }
+      const box = container.getBoundingClientRect()
+      return {
+        x: (clientX - box.left - stage.x()) / stage.scaleX(),
+        y: (clientY - box.top  - stage.y()) / stage.scaleY(),
+      }
+    }
+
+    // Returns the transformer anchor under containerPos, or null.
+    // Uses a rectangular test that matches Konva's actual anchor rect so the two
+    // hit systems stay in sync: our function detects the anchor AND Konva's canvas
+    // hit-detection also finds it, which is required for resize to start.
+    // A small PADDING handles sub-pixel rounding between the two systems.
+    function findTouchedAnchor(containerPos) {
+      const tr = transformerRef.current
+      if (!tr || !tr.nodes().length) return null
+      const PADDING = 6  // px buffer around the visual anchor rect
+      for (const anchor of tr.getChildren()) {
+        const r = anchor.getClientRect()
+        if (
+          containerPos.x >= r.x - PADDING && containerPos.x <= r.x + r.width  + PADDING &&
+          containerPos.y >= r.y - PADDING && containerPos.y <= r.y + r.height + PADDING
+        ) {
+          return anchor
+        }
+      }
+      return null
+    }
+
+    function doErase(clientX, clientY) {
+      const stage = stageRef.current
+      const mainLayer = mainLayerRef.current
+      const transformer = transformerRef.current
+      if (!stage || !mainLayer) return
+      const pos = getContainerPos(clientX, clientY)
+      eraseAtContainerPos(pos, mainLayer, transformer)
+    }
+
+    function savePanZoom() {
+      const stage = stageRef.current
+      if (!stage) return
+      updateNoteSettings(note.id, {
+        ...note.settings,
+        zoom: stage.scaleX(),
+        pan: { x: stage.x(), y: stage.y() },
+      })
+    }
+
+    // Deselect everything at navigation start so Konva never calls getClientRect()
+    // on selected nodes during batchDraw() while panning/zooming.
+    // Also disable draggable on all nodes: Konva's internal drag system registers
+    // pointermove listeners on the window (outside our capture interceptor's reach)
+    // which can move draggable nodes during pinch even though we stop the events at
+    // the container level. Setting draggable(false) prevents this completely.
+    // Selection + toolbar are fully restored when navigation ends.
+    function startNav() {
+      if (navActive) return
+      navActive = true
+      const tr = transformerRef.current
+      if (tr) {
+        savedSelection = tr.nodes().slice()
+        tr.nodes([])
+      }
+      const layer = mainLayerRef.current
+      if (layer) {
+        layer.getChildren().forEach(n => {
+          if (n.getClassName() !== 'Transformer') n.draggable(false)
+        })
+      }
+      if (toolbarDivRef.current) toolbarDivRef.current.style.display = 'none'
+    }
+
+    function endNav() {
+      if (!navActive) return
+      navActive = false
+      const tr = transformerRef.current
+      const layer = mainLayerRef.current
+      if (tr && savedSelection.length) {
+        // Filter out nodes that were destroyed while navigating.
+        const stillAlive = savedSelection.filter(n => n.getStage() !== null)
+        tr.nodes(stillAlive)
+        savedSelection = []
+      }
+      // Restore correct draggable state based on current tool.
+      if (layer) {
+        const canDrag = activeToolRef.current === 'select'
+        layer.getChildren().forEach(n => {
+          if (n.getClassName() === 'Transformer') return
+          if (n.attrs.isImage) n.draggable(!n.attrs.isLocked && canDrag)
+          else n.draggable(canDrag)
+        })
+      }
+      layer?.batchDraw()
+      // Reposition toolbar: single-node target takes precedence, otherwise
+      // reposition for multi-selection if transformer still has nodes.
+      if (toolbarTargetRef.current?.getStage()) {
+        positionAndShowToolbar(toolbarTargetRef.current)
+      } else if ((transformerRef.current?.nodes().length ?? 0) > 1) {
+        positionToolbarAtTransformer()
+      }
+    }
+
+    function getTwoFingerInfo() {
+      const pts = Array.from(touchPointers.values())
+      const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y)
+      const mid  = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }
+      return { dist, mid }
+    }
+
+    function onPointerDown(e) {
+      // ── Pen eraser button ──────────────────────────────────────────────
+      if (e.pointerType === 'pen' && (e.button === 5 || (e.buttons & 32))) {
+        notifyInputType('pen-eraser')
+        e.stopImmediatePropagation()
+        doErase(e.clientX, e.clientY)
+        return
+      }
+
+      // ── Pen tip ────────────────────────────────────────────────────────
+      if (e.pointerType === 'pen') {
+        notifyInputType('pen')
+        return // Let Konva handle pen-tip events (Effect 3)
+      }
+
+      // ── Touch ──────────────────────────────────────────────────────────
+      if (e.pointerType === 'touch') {
+        notifyInputType('touch')
+        e.preventDefault() // always prevent browser scroll/zoom
+
+        // Register the pointer first so touchPointers.size reflects the new total.
+        touchPointers.set(e.pointerId, {
+          x: e.clientX, y: e.clientY,
+          startX: e.clientX, startY: e.clientY,
+        })
+
+        if (touchPointers.size === 1) {
+          // First finger: check if it lands on a transformer anchor.
+          // The pointer stays in touchPointers so that a second finger can
+          // switch to pinch instead of being blocked by touchResizePointerId.
+          const anchorHitPos = getContainerPos(e.clientX, e.clientY)
+          const anchor = findTouchedAnchor(anchorHitPos)
+          if (anchor) {
+            touchResizePointerId = e.pointerId
+            // Do NOT stopImmediatePropagation — Konva must see this event.
+            return
+          }
+
+          e.stopImmediatePropagation()
+          // Reset gesture state for a fresh 1-finger interaction.
+          twoFingerActive = false
+          touchDragNode = null
+          touchDragMoved = false
+          // If in select mode, check whether the finger lands on a currently-selected,
+          // non-locked image. If so, dragging moves the image instead of panning.
+          if (activeToolRef.current === 'select') {
+            const tr = transformerRef.current
+            const selected = tr?.nodes() ?? []
+            if (selected.length > 0) {
+              const pos = getContainerPos(e.clientX, e.clientY)
+              for (const node of selected) {
+                if (!node.attrs.isImage || node.attrs.isLocked) continue
+                const r = node.getClientRect()
+                if (pos.x >= r.x && pos.x <= r.x + r.width &&
+                    pos.y >= r.y && pos.y <= r.y + r.height) {
+                  touchDragNode = node
+                  touchDragStageStart = clientToStageCoord(e.clientX, e.clientY)
+                  touchDragNodeOrigin = { x: node.x(), y: node.y() }
+                  break
+                }
+              }
+            }
+          }
+        } else if (touchPointers.size === 2) {
+          // Second finger joins: always switch to pan/pinch, even when the first
+          // finger is mid-resize on an anchor (cancel the resize).
+          e.stopImmediatePropagation()
+          touchResizePointerId = null // cancel any ongoing single-finger resize
+          twoFingerActive = true
+          if (touchDragNode && touchDragMoved) {
+            positionAndShowToolbar(touchDragNode)
+            historyPushRef.current?.()
+            persistenceScheduleRef.current?.()
+          }
+          touchDragNode = null
+          touchDragMoved = false
+          startNav()
+          const info = getTwoFingerInfo()
+          lastPinchDist = info.dist
+          lastPinchMid  = { ...info.mid }
+        } else {
+          // 3+ fingers: just block.
+          e.stopImmediatePropagation()
+        }
+        return
+      }
+
+      // ── Mouse alt-drag / middle-button pan ─────────────────────────────
+      if (e.pointerType === 'mouse' && (e.altKey || e.button === 1)) {
+        mousePanning = true
+        lastMousePos = { x: e.clientX, y: e.clientY }
+        startNav()
+        e.stopImmediatePropagation()
+        return
+      }
+    }
+
+    function onPointerMove(e) {
+      // ── Pen eraser held ────────────────────────────────────────────────
+      if (e.pointerType === 'pen' && (e.buttons & 32)) {
+        e.stopImmediatePropagation()
+        const events = e.getCoalescedEvents?.() ?? [e]
+        for (const ce of events) doErase(ce.clientX, ce.clientY)
+        return
+      }
+
+      // ── Touch drag / pinch ─────────────────────────────────────────────
+      if (e.pointerType === 'touch') {
+        // Single-finger resize: let the anchor pointer through to Konva.
+        if (e.pointerId === touchResizePointerId && touchPointers.size === 1) { e.preventDefault(); return }
+        if (!touchPointers.has(e.pointerId)) return
+        e.stopImmediatePropagation()
+        e.preventDefault()
+        const prev = touchPointers.get(e.pointerId)
+        touchPointers.set(e.pointerId, { ...prev, x: e.clientX, y: e.clientY })
+
+        const stage = stageRef.current
+        if (!stage) return
+
+        if (touchPointers.size === 1 && !twoFingerActive) {
+          if (touchDragNode) {
+            // Move the selected image with 1 finger — no pan.
+            const sc = clientToStageCoord(e.clientX, e.clientY)
+            touchDragNode.position({
+              x: touchDragNodeOrigin.x + sc.x - touchDragStageStart.x,
+              y: touchDragNodeOrigin.y + sc.y - touchDragStageStart.y,
+            })
+            touchDragMoved = true
+            if (toolbarDivRef.current) toolbarDivRef.current.style.display = 'none'
+            mainLayerRef.current?.batchDraw()
+          } else {
+            // Normal 1-finger pan.
+            const moved = Math.hypot(e.clientX - prev.startX, e.clientY - prev.startY)
+            if (moved >= 12) {
+              startNav()
+              stage.position({
+                x: stage.x() + e.clientX - prev.x,
+                y: stage.y() + e.clientY - prev.y,
+              })
+              stage.batchDraw()
+            }
+          }
+        } else if (touchPointers.size === 2) {
+          // 2-finger pan + pinch — startNav already called in onPointerDown.
+          const info = getTwoFingerInfo()
+          if (lastPinchDist !== null) {
+            const scaleFactor = info.dist / lastPinchDist
+            const newZoom = Math.min(Math.max(stage.scaleX() * scaleFactor, 0.1), 10)
+            const box = container.getBoundingClientRect()
+            const midOnStage = {
+              x: (info.mid.x - box.left - stage.x()) / stage.scaleX(),
+              y: (info.mid.y - box.top  - stage.y()) / stage.scaleY(),
+            }
+            stage.scale({ x: newZoom, y: newZoom })
+            stage.position({
+              x: info.mid.x - box.left - midOnStage.x * newZoom + (lastPinchMid ? info.mid.x - lastPinchMid.x : 0),
+              y: info.mid.y - box.top  - midOnStage.y * newZoom + (lastPinchMid ? info.mid.y - lastPinchMid.y : 0),
+            })
+            stage.batchDraw()
+          }
+          lastPinchDist = info.dist
+          lastPinchMid  = { ...info.mid }
+        }
+        return
+      }
+
+      // ── Mouse pan ──────────────────────────────────────────────────────
+      if (mousePanning) {
+        const stage = stageRef.current
+        if (stage) {
+          stage.position({
+            x: stage.x() + e.clientX - lastMousePos.x,
+            y: stage.y() + e.clientY - lastMousePos.y,
+          })
+          stage.batchDraw()
+        }
+        lastMousePos = { x: e.clientX, y: e.clientY }
+      }
+    }
+
+    function onPointerUp(e) {
+      // ── Touch tap / pan end ────────────────────────────────────────────
+      if (e.pointerType === 'touch') {
+        // Single-finger resize end: let Konva handle, then clear resize state.
+        if (e.pointerId === touchResizePointerId && touchPointers.size === 1) {
+          touchResizePointerId = null
+          touchPointers.delete(e.pointerId)
+          e.preventDefault()
+          // transformend in Effect 3 pushes history and repositions the toolbar.
+          return
+        }
+        e.stopImmediatePropagation()
+        e.preventDefault()
+        const ptr = touchPointers.get(e.pointerId)
+        touchPointers.delete(e.pointerId)
+        lastPinchDist = null
+        lastPinchMid  = null
+
+        if (ptr && touchPointers.size === 0) {
+          // Commit image drag if the image actually moved.
+          if (touchDragNode && touchDragMoved) {
+            const tr = transformerRef.current
+            tr?.nodes([touchDragNode])
+            mainLayerRef.current?.batchDraw()
+            positionAndShowToolbar(touchDragNode)
+            historyPushRef.current?.()
+            persistenceScheduleRef.current?.()
+            touchDragNode = null
+            touchDragMoved = false
+            twoFingerActive = false
+            savePanZoom()
+            return
+          }
+          touchDragNode = null
+          touchDragMoved = false
+          twoFingerActive = false
+
+          endNav() // restore selection + toolbar
+          const moved = Math.hypot(e.clientX - ptr.startX, e.clientY - ptr.startY)
+          // Skip tap detection after a multi-finger gesture (twoFingerActive was just cleared
+          // but we detect the gesture via navActive having been true during the gesture).
+          // Use the moved threshold: multi-finger gestures always move > 12 px total.
+          if (moved < 12) {
+            // Tap: manual hit-test and selection.
+            // Locked images have listening:false so getIntersection skips them;
+            // we check them manually via bounding-box after the normal hit test.
+            const pos = getContainerPos(e.clientX, e.clientY)
+            const mainLayer  = mainLayerRef.current
+            const transformer = transformerRef.current
+            let hit = mainLayer?.getIntersection(pos)
+
+            if (!hit || hit.getClassName() === 'Transformer') {
+              // Fall back to manual bounding-box check for locked images.
+              const children = mainLayer?.getChildren() ?? []
+              for (let i = children.length - 1; i >= 0; i--) {
+                const n = children[i]
+                if (!n.attrs.isLocked) continue
+                const r = n.getClientRect()
+                if (pos.x >= r.x && pos.x <= r.x + r.width &&
+                    pos.y >= r.y && pos.y <= r.y + r.height) {
+                  hit = n
+                  break
+                }
+              }
+            }
+
+            if (hit && hit.getClassName() !== 'Transformer') {
+              if (hit.attrs.isLocked) {
+                positionAndShowToolbar(hit)
+              } else {
+                transformer?.nodes([hit])
+                mainLayer.batchDraw()
+                positionAndShowToolbar(hit)
+              }
+            } else {
+              transformer?.nodes([])
+              mainLayer?.batchDraw()
+              hideToolbar()
+            }
+          }
+          savePanZoom()
+        }
+        return
+      }
+
+      // ── Mouse pan end ──────────────────────────────────────────────────
+      if (mousePanning) {
+        mousePanning = false
+        endNav()
+        savePanZoom()
+      }
+    }
+
+    function onWheel(e) {
+      e.preventDefault()
+      const stage = stageRef.current
+      if (!stage) return
+      startNav()
+      clearTimeout(wheelRestoreTimer)
+      wheelRestoreTimer = setTimeout(() => {
+        endNav()
+        savePanZoom()
+      }, 150)
+      const scaleBy  = 1.05
+      const oldScale = stage.scaleX()
+      const box = container.getBoundingClientRect()
+      const ptr = { x: e.clientX - box.left, y: e.clientY - box.top }
+      const newScale = e.deltaY < 0
+        ? Math.min(oldScale * scaleBy, 10)
+        : Math.max(oldScale / scaleBy, 0.1)
+      stage.scale({ x: newScale, y: newScale })
+      stage.position({
+        x: ptr.x - (ptr.x - stage.x()) * (newScale / oldScale),
+        y: ptr.y - (ptr.y - stage.y()) * (newScale / oldScale),
+      })
+      stage.batchDraw()
+    }
+
+    container.addEventListener('pointerdown',  onPointerDown, { capture: true })
+    container.addEventListener('pointermove',  onPointerMove, { capture: true })
+    container.addEventListener('pointerup',    onPointerUp,   { capture: true })
+    container.addEventListener('pointercancel',onPointerUp,   { capture: true })
+    container.addEventListener('wheel',        onWheel,       { passive: false })
+
+    return () => {
+      container.removeEventListener('pointerdown',  onPointerDown, { capture: true })
+      container.removeEventListener('pointermove',  onPointerMove, { capture: true })
+      container.removeEventListener('pointerup',    onPointerUp,   { capture: true })
+      container.removeEventListener('pointercancel',onPointerUp,   { capture: true })
+      container.removeEventListener('wheel',        onWheel,       { passive: false })
+      clearTimeout(wheelRestoreTimer)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note.id, positionAndShowToolbar, hideToolbar, positionToolbarAtTransformer])
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // EFFECT 3 — Konva drawing / selection events
+  //
+  // Pen tip and mouse events reach Konva because Effect 2 does NOT intercept
+  // them. Touch events are always intercepted in Effect 2, so we check
+  // e.evt.pointerType === 'touch' at the top of every handler and bail early.
+  // ───────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const stage        = stageRef.current
+    const mainLayer    = mainLayerRef.current
+    const drawingLayer = drawingLayerRef.current
+    const transformer  = transformerRef.current
+    if (!stage || !mainLayer || !drawingLayer || !transformer) return
+
+    // Convert stage.getPointerPosition() (container-relative) to stage-space coords.
+    function stagePos() {
+      const p = stage.getPointerPosition()
+      if (!p) return { x: 0, y: 0 }
+      return {
+        x: (p.x - stage.x()) / stage.scaleX(),
+        y: (p.y - stage.y()) / stage.scaleY(),
+      }
+    }
+
+    // Convert raw client coordinates to stage-space coords.
+    // Used for coalesced/predicted events which don't go through Konva's pointer tracking.
+    function clientToStage(clientX, clientY) {
+      const box = stage.container().getBoundingClientRect()
+      return {
+        x: (clientX - box.left - stage.x()) / stage.scaleX(),
+        y: (clientY - box.top  - stage.y()) / stage.scaleY(),
+      }
+    }
+
+    // ── Freehand / shape / selection state (local to this effect) ──────────
+    let freehandPoints      = []    // accumulated [x, y, pressure] points
+    let shapePreview        = null  // temporary shape on drawingLayer
+    let shapeStart          = { x: 0, y: 0 }
+    let selecting           = false
+    let selStart            = { x: 0, y: 0 }
+    let erasing             = false
+    let rafId               = null  // pending requestAnimationFrame for live stroke
+    let lastRawEvent        = null  // most recent pointerrawupdate event (for getPredictedEvents)
+    let rawUpdateActive     = false // true once pointerrawupdate fires → skip pointermove collection
+    let draggingNodes       = false // manual drag of selected nodes via bounding-box click
+    let dragOriginPos       = { x: 0, y: 0 }
+    let dragNodeOrigins     = []    // [{ node, x, y }] snapshot at drag start
+    let dragSavedNodes      = []    // full transformer selection, restored after drag
+    let justRubberBanded    = false // prevents onClick from clearing a fresh rubber-band selection
+
+    function scheduleRenderLiveStroke() {
+      if (rafId !== null) return
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        // Aantal voorspelde punten: 0 = geen vooruitlopen (stabiel), hoger = responsiever maar kans op uitschieten.
+        // Typisch bruikbaar bereik: 1–3. Aanpassen als tekenen spastisch aanvoelt.
+        const PREDICTED_POINTS = 1
+        const predicted = []
+        if (lastRawEvent?.getPredictedEvents) {
+          for (const ce of lastRawEvent.getPredictedEvents().slice(0, PREDICTED_POINTS)) {
+            const p = clientToStage(ce.clientX, ce.clientY)
+            const raw = pressureSensitiveRef.current ? (ce.pressure ?? 0.5) : 0.5
+            predicted.push([p.x, p.y, Math.pow(raw, 1.5)])
+          }
+        }
+        renderLiveStroke(predicted)
+      })
+    }
+
+    // Rubber-band selection rectangle
+    const selRect = new Konva.Rect({
+      fill: 'rgba(0,120,215,0.12)', stroke: '#0078d4', strokeWidth: 1,
+      visible: false, listening: false,
+    })
+    drawingLayer.add(selRect)
+
+    // ── Live freehand rendering (raw Canvas 2D — no Konva overhead) ────────
+    // desynchronized:true lets the GPU composite the canvas without waiting for
+    // the next CPU frame, shaving up to one full frame of display latency.
+    function getCtx() {
+      const canvas = drawCanvasRef.current
+      return canvas ? canvas.getContext('2d', { desynchronized: true }) : null
+    }
+
+    function renderLiveStroke(predictedPts = []) {
+      const canvas = drawCanvasRef.current
+      const ctx = getCtx()
+      if (!canvas || !ctx) return
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      const allPts = predictedPts.length ? [...freehandPoints, ...predictedPts] : freehandPoints
+      if (allPts.length < 2) return
+
+      const strokePoints = getStroke(allPts, {
+        size: penSizeRef.current * 2,
+        thinning: pressureSensitiveRef.current ? 0.75 : 0,
+        smoothing: 0.5,
+        streamline: 0.5,
+        simulatePressure: false,
+      })
+      if (!strokePoints.length) return
+
+      const scale = stage.scaleX()
+      const dpr   = window.devicePixelRatio || 1
+      ctx.save()
+      ctx.setTransform(scale * dpr, 0, 0, scale * dpr, stage.x() * dpr, stage.y() * dpr)
+      ctx.fillStyle = penColorRef.current
+      ctx.globalAlpha = opacityRef.current / 100
+
+      ctx.beginPath()
+      const [x0, y0] = strokePoints[0]
+      ctx.moveTo(x0, y0)
+      for (let i = 1; i < strokePoints.length - 1; i++) {
+        const [ax, ay] = strokePoints[i]
+        const [bx, by] = strokePoints[i + 1]
+        ctx.quadraticCurveTo(ax, ay, (ax + bx) / 2, (ay + by) / 2)
+      }
+      const [lx, ly] = strokePoints[strokePoints.length - 1]
+      ctx.lineTo(lx, ly)
+      ctx.closePath()
+      ctx.fill()
+      ctx.restore()
+    }
+
+    function clearLiveCanvas() {
+      const canvas = drawCanvasRef.current
+      const ctx = getCtx()
+      if (!canvas || !ctx) return
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+    }
+
+    // ── Text helpers ────────────────────────────────────────────────────────
+    function startTextEdit(textNode) {
+      textNode.hide()
+      mainLayer.batchDraw()
+      const scale    = stage.scaleX()
+      const r        = textNode.getClientRect()
+      const fontSize = textNode.fontSize() * scale
+
+      const ta = document.createElement('textarea')
+      ta.value = textNode.text()
+      Object.assign(ta.style, {
+        position:   'fixed',
+        left:       `${r.x}px`,
+        top:        `${r.y}px`,
+        minWidth:   '120px',
+        minHeight:  `${fontSize + 8}px`,
+        fontSize:   `${fontSize}px`,
+        fontFamily: textNode.fontFamily() || 'sans-serif',
+        color:      textNode.fill(),
+        opacity:    textNode.opacity(),
+        background: 'rgba(255,255,255,0.92)',
+        border:     '1.5px solid #1971c2',
+        borderRadius: '3px',
+        padding:    '2px 4px',
+        outline:    'none',
+        resize:     'both',
+        zIndex:     '200',
+        lineHeight: '1.3',
+      })
+      document.body.appendChild(ta)
+      ta.focus()
+      ta.select()
+
+      ta.addEventListener('input', () => {
+        const evaluated = evaluateExpression(ta.value)
+        if (evaluated !== ta.value) ta.value = evaluated
+        textNode.text(ta.value)
+        mainLayer.batchDraw()
+      })
+      ta.addEventListener('blur', () => {
+        if (ta.value.trim() === '') {
+          textNode.destroy()
+        } else {
+          textNode.text(ta.value)
+          textNode.show()
+        }
+        ta.remove()
+        mainLayer.batchDraw()
+        history.pushState()
+        scheduleSnapshot()
+      })
+      ta.addEventListener('keydown', ev => {
+        if (ev.key === 'Escape') ta.blur()
+        ev.stopPropagation() // prevent Delete from triggering canvas delete
+      })
+    }
+
+    function createText(pos) {
+      const textNode = new Konva.Text({
+        x: pos.x, y: pos.y,
+        text: '',
+        fontSize: 18,
+        fill: penColorRef.current,
+        opacity: opacityRef.current / 100,
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        draggable: false,
+      })
+      mainLayer.add(textNode)
+      mainLayer.batchDraw()
+      startTextEdit(textNode)
+    }
+
+    // ── Erase at container-relative position ────────────────────────────────
+    function doEraseAtContainerPos(pos) {
+      eraseAtContainerPos(pos, mainLayer, transformer)
+    }
+
+    // ── Commit helpers ──────────────────────────────────────────────────────
+    function commitFreehand() {
+      clearLiveCanvas()
+      if (freehandPoints.length < 2) { freehandPoints = []; return }
+
+      const style = strokeStyleRef.current
+      let node
+      if (style === 'dashed' || style === 'dotted') {
+        const sw = penSizeRef.current
+        node = new Konva.Line({
+          points: freehandPoints.flatMap(([x, y]) => [x, y]),
+          stroke: penColorRef.current,
+          strokeWidth: sw,
+          hitStrokeWidth: Math.max(sw * 2, 12),
+          opacity: opacityRef.current / 100,
+          dash: style === 'dashed' ? [sw * 3, sw * 2] : [1, sw * 3],
+          lineCap: 'round',
+          lineJoin: 'round',
+          draggable: false,
+        })
+      } else {
+        const pathData = getSvgPathFromStroke(getStroke(freehandPoints, {
+          size: penSizeRef.current * 2,
+          thinning: pressureSensitiveRef.current ? 0.75 : 0,
+          smoothing: 0.5,
+          streamline: 0.5,
+          simulatePressure: false,
+        }))
+        if (pathData) {
+          node = new Konva.Path({
+            data: pathData,
+            fill: penColorRef.current,
+            opacity: opacityRef.current / 100,
+            draggable: false,
+          })
+        }
+      }
+      if (node) { mainLayer.add(node) }
+      freehandPoints = []
+      mainLayer.batchDraw()
+      history.pushState()
+      scheduleSnapshot()
+    }
+
+    function commitShape() {
+      if (!shapePreview) return
+      const clone = shapePreview.clone({ listening: true, draggable: false })
+      shapePreview.destroy()
+      shapePreview = null
+      drawingLayer.batchDraw()
+      mainLayer.add(clone)
+      mainLayer.batchDraw()
+      history.pushState()
+      scheduleSnapshot()
+    }
+
+    // ── Konva stage event handlers ──────────────────────────────────────────
+    function onPointerDown(e) {
+      if (e.evt.pointerType === 'touch') return // handled in Effect 2
+      const tool = activeToolRef.current
+      const pos  = stagePos() // stage-space coords (corrects for pan/zoom)
+
+      // If the pen lands on a transformer anchor, let the transformer handle
+      // the resize/rotate — do not start drawing.
+      if (e.target !== stage && e.target.getParent?.() === transformer) return
+
+      if (tool === 'eraser') {
+        erasing = true
+        doEraseAtContainerPos(stage.getPointerPosition())
+        return
+      }
+
+      if (tool === 'pen') {
+        const raw = pressureSensitiveRef.current ? (e.evt.pressure ?? 0.5) : 0.5
+        freehandPoints = [[pos.x, pos.y, Math.pow(raw, 2.5)]]
+        rawUpdateActive = false // reset so pointerrawupdate can re-engage this stroke
+        return
+      }
+
+      if (['rect', 'circle', 'line', 'arrow', 'lshape'].includes(tool)) {
+        shapeStart = pos
+        const color = penColorRef.current
+        const sw    = penSizeRef.current
+        const op    = opacityRef.current / 100
+        const style = strokeStyleRef.current
+        const dash  = style === 'dashed' ? [sw * 3, sw * 2] : style === 'dotted' ? [1, sw * 3] : undefined
+        const hsw   = Math.max(sw * 2, 12)  // min 12 stage-px hit area so thin strokes are erasable
+        const base  = { stroke: color, strokeWidth: sw, opacity: op, listening: false, hitStrokeWidth: hsw, ...(dash ? { dash } : {}) }
+        if (tool === 'rect') {
+          shapePreview = new Konva.Rect({ x: pos.x, y: pos.y, width: 0, height: 0, fill: 'transparent', ...base })
+        } else if (tool === 'circle') {
+          shapePreview = new Konva.Ellipse({ x: pos.x, y: pos.y, radiusX: 0, radiusY: 0, fill: 'transparent', ...base })
+        } else if (tool === 'line') {
+          shapePreview = new Konva.Line({ points: [pos.x, pos.y, pos.x, pos.y], ...base })
+        } else if (tool === 'arrow') {
+          shapePreview = new Konva.Arrow({ points: [pos.x, pos.y, pos.x, pos.y], fill: color, pointerLength: sw * 4, pointerWidth: sw * 4, ...base })
+        } else if (tool === 'lshape') {
+          shapePreview = new Konva.Line({ points: [pos.x, pos.y, pos.x, pos.y, pos.x, pos.y], lineCap: 'round', lineJoin: 'round', ...base })
+        }
+        if (shapePreview) drawingLayer.add(shapePreview)
+        return
+      }
+
+      if (tool === 'select') {
+        const trNodes = transformer.nodes()
+
+        // Click inside the transformer bounding box (but not on a node) → drag all selected nodes.
+        // This lets the user grab the selection anywhere in the box, not just on the stroke pixels.
+        if (trNodes.length > 0 && e.target === stage) {
+          const cp  = stage.getPointerPosition() // container-relative, matches getClientRect()
+          const box = transformer.getClientRect()
+          if (cp && cp.x >= box.x && cp.x <= box.x + box.width &&
+                    cp.y >= box.y && cp.y <= box.y + box.height) {
+            dragSavedNodes  = [...trNodes]
+            draggingNodes   = true
+            dragOriginPos   = pos // stage-space
+            dragNodeOrigins = trNodes
+              .filter(n => !n.attrs.isLocked)
+              .map(n => ({ node: n, x: n.x(), y: n.y() }))
+            // Hide the Transformer during drag — avoids per-frame getClientRect()
+            // calls on all selected nodes (expensive for complex paths).
+            transformer.nodes([])
+            return
+          }
+        }
+
+        // Click on empty stage area outside transformer box → start rubber-band
+        if (e.target === stage) {
+          selecting = true
+          selStart = pos
+          transformer.nodes([])
+          hideToolbar()
+          selRect.setAttrs({ x: pos.x, y: pos.y, width: 0, height: 0, visible: true })
+          mainLayer.batchDraw()
+        }
+      }
+    }
+
+    function onPointerMove(e) {
+      if (e.evt.pointerType === 'touch') return
+      const tool = activeToolRef.current
+      const pos  = stagePos() // stage-space coords (corrects for pan/zoom)
+
+      if (draggingNodes) {
+        const dx = pos.x - dragOriginPos.x
+        const dy = pos.y - dragOriginPos.y
+        dragNodeOrigins.forEach(({ node, x, y }) => node.position({ x: x + dx, y: y + dy }))
+        mainLayer.batchDraw()
+        // Toolbar repositioning is deferred to pointerup — calling it here
+        // would trigger getClientRect() on every move event.
+        return
+      }
+
+      if (tool === 'eraser' && erasing) {
+        // Use coalesced events so fast strokes don't skip over thin nodes.
+        const box = stage.container().getBoundingClientRect()
+        const events = e.evt.getCoalescedEvents?.() ?? [e.evt]
+        for (const ce of events) {
+          doEraseAtContainerPos({ x: ce.clientX - box.left, y: ce.clientY - box.top })
+        }
+        return
+      }
+
+      if (tool === 'pen' && freehandPoints.length) {
+        // On Chromium (Surface/Windows), pointerrawupdate already collected these
+        // points at native rate. Skip here to avoid duplicates.
+        if (!rawUpdateActive) {
+          const nativeEvents = e.evt.getCoalescedEvents?.() ?? [e.evt]
+          for (const ce of nativeEvents) {
+            const p = clientToStage(ce.clientX, ce.clientY)
+            const raw = pressureSensitiveRef.current ? (ce.pressure ?? 0.5) : 0.5
+            freehandPoints.push([p.x, p.y, Math.pow(raw, 2.5)])
+          }
+          lastRawEvent = e.evt
+          scheduleRenderLiveStroke()
+        }
+        return
+      }
+
+      if (shapePreview) {
+        const dx = pos.x - shapeStart.x
+        const dy = pos.y - shapeStart.y
+        if (tool === 'rect') {
+          shapePreview.setAttrs({
+            x: dx < 0 ? pos.x : shapeStart.x,
+            y: dy < 0 ? pos.y : shapeStart.y,
+            width: Math.abs(dx), height: Math.abs(dy),
+          })
+        } else if (tool === 'circle') {
+          shapePreview.setAttrs({
+            x: shapeStart.x + dx / 2,
+            y: shapeStart.y + dy / 2,
+            radiusX: Math.abs(dx) / 2,
+            radiusY: Math.abs(dy) / 2,
+          })
+        } else if (tool === 'line' || tool === 'arrow') {
+          shapePreview.points([shapeStart.x, shapeStart.y, pos.x, pos.y])
+        } else if (tool === 'lshape') {
+          const dx = Math.abs(pos.x - shapeStart.x)
+          const dy = Math.abs(pos.y - shapeStart.y)
+          const mid = dx >= dy
+            ? [pos.x, shapeStart.y]   // horizontal first, then vertical to cursor
+            : [shapeStart.x, pos.y]   // vertical first, then horizontal to cursor
+          shapePreview.points([shapeStart.x, shapeStart.y, ...mid, pos.x, pos.y])
+        }
+        drawingLayer.batchDraw()
+        return
+      }
+
+      if (selecting) {
+        selRect.setAttrs({
+          x: Math.min(selStart.x, pos.x),
+          y: Math.min(selStart.y, pos.y),
+          width:  Math.abs(pos.x - selStart.x),
+          height: Math.abs(pos.y - selStart.y),
+        })
+        drawingLayer.batchDraw()
+      }
+    }
+
+    function onPointerUp(e) {
+      if (e.evt.pointerType === 'touch') return
+      const tool = activeToolRef.current
+
+      if (draggingNodes) {
+        draggingNodes = false
+        transformer.nodes(dragSavedNodes)
+        mainLayer.batchDraw()
+        const target = toolbarTargetRef.current
+        if (target) positionAndShowToolbar(target)
+        history.pushState()
+        scheduleSnapshot()
+        return
+      }
+
+      if (tool === 'eraser' && erasing) {
+        erasing = false
+        history.pushState()
+        scheduleSnapshot()
+        return
+      }
+      if (tool === 'pen' && freehandPoints.length)    { commitFreehand(); return }
+      if (['rect','circle','line','arrow','lshape'].includes(tool)) { commitShape(); return }
+
+      if (selecting) {
+        selecting = false
+        selRect.visible(false)
+        drawingLayer.batchDraw()
+        if (selRect.width() > 5 && selRect.height() > 5) {
+          const selBox  = selRect.getClientRect()
+          const selected = mainLayer.getChildren().filter(n => {
+            if (n.getClassName() === 'Transformer') return false
+            if (n.attrs.isLocked) return false
+            return Konva.Util.haveIntersection(selBox, n.getClientRect())
+          })
+          transformer.nodes(selected)
+          mainLayer.batchDraw()
+          if (selected.length === 1) positionAndShowToolbar(selected[0])
+          else if (selected.length > 1) positionToolbarAtTransformer()
+          if (selected.length > 0) justRubberBanded = true
+        }
+      }
+    }
+
+    function onClick(e) {
+      if (e.evt.pointerType === 'touch') return
+      const tool = activeToolRef.current
+      const hit  = e.target
+
+      if (tool === 'text') {
+        if (hit === stage) {
+          createText(stagePos())
+        } else if (hit.getClassName() === 'Text') {
+          startTextEdit(hit)
+        }
+        return
+      }
+
+      if (tool === 'select') {
+        if (hit === stage) {
+          // onClick fires after onPointerUp — skip deselect if we just applied rubber-band.
+          if (justRubberBanded) { justRubberBanded = false; return }
+          transformer.nodes([])
+          mainLayer.batchDraw()
+          hideToolbar()
+          return
+        }
+        if (hit.getClassName() === 'Transformer') return
+        if (hit.attrs.isLocked) { positionAndShowToolbar(hit); return }
+        transformer.nodes([hit])
+        mainLayer.batchDraw()
+        positionAndShowToolbar(hit)
+      }
+    }
+
+    function onDblClick(e) {
+      if (e.evt.pointerType === 'touch') return
+      const hit = e.target
+      if (hit.getClassName() === 'Text') startTextEdit(hit)
+    }
+
+    // Lock aspect ratio when any image is in the selection; free for other shapes.
+    transformer.on('transformstart', () => {
+      const hasImage = transformer.nodes().some(n => n.getClassName() === 'Image')
+      transformer.keepRatio(hasImage)
+    })
+
+    // Reposition toolbar after transform / drag
+    transformer.on('transformend', () => {
+      history.pushState()
+      scheduleSnapshot()
+      const target = toolbarTargetRef.current
+      if (target) positionAndShowToolbar(target)
+    })
+    mainLayer.on('dragend', ev => {
+      history.pushState()
+      scheduleSnapshot()
+      if (toolbarTargetRef.current === ev.target) positionAndShowToolbar(ev.target)
+    })
+
+    // pointerrawupdate fires at native device rate (~240 Hz on Surface Pen),
+    // before the browser coalesces events into pointermove. Chromium-only.
+    // Collecting points here and skipping pointermove gives maximum input fidelity.
+    function onPointerRawUpdate(e) {
+      if (e.pointerType !== 'pen') return
+      if (activeToolRef.current !== 'pen') return
+      if (!freehandPoints.length) return // only during an active stroke
+      rawUpdateActive = true
+      const p = clientToStage(e.clientX, e.clientY)
+      const raw = pressureSensitiveRef.current ? (e.pressure ?? 0.5) : 0.5
+      freehandPoints.push([p.x, p.y, Math.pow(raw, 2.5)])
+      lastRawEvent = e
+      scheduleRenderLiveStroke()
+    }
+
+    const container = stage.container()
+    container.addEventListener('pointerrawupdate', onPointerRawUpdate, { capture: true, passive: true })
+
+    stage.on('pointerdown', onPointerDown)
+    stage.on('pointermove', onPointerMove)
+    stage.on('pointerup',   onPointerUp)
+    stage.on('click',       onClick)
+    stage.on('dblclick',    onDblClick)
+
+    return () => {
+      container.removeEventListener('pointerrawupdate', onPointerRawUpdate, { capture: true })
+      stage.off('pointerdown', onPointerDown)
+      stage.off('pointermove', onPointerMove)
+      stage.off('pointerup',   onPointerUp)
+      stage.off('click',       onClick)
+      stage.off('dblclick',    onDblClick)
+      transformer.off('transformend')
+      mainLayer.off('dragend')
+      if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null }
+      selRect.destroy()
+      clearLiveCanvas()
+      shapePreview?.destroy()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note.id, positionAndShowToolbar, hideToolbar, positionToolbarAtTransformer, history])
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // EFFECT 4 — Cursor and draggable state
+  // ───────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const stage     = stageRef.current
+    const mainLayer = mainLayerRef.current
+    if (!stage || !mainLayer) return
+
+    const dotCursor = "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12'><circle cx='6' cy='6' r='3.5' fill='black' stroke='white' stroke-width='1.5'/></svg>\") 6 6, crosshair"
+    const cursors = { select: 'default', pen: dotCursor, eraser: 'cell', text: 'text', rect: 'crosshair', circle: 'crosshair', line: 'crosshair', arrow: 'crosshair', lshape: 'crosshair' }
+    stage.container().style.cursor = cursors[activeTool] ?? 'default'
+
+    const canDrag = activeTool === 'select'
+    mainLayer.getChildren().forEach(node => {
+      if (node.getClassName() === 'Transformer') return
+      if (node.attrs.isImage) {
+        node.draggable(!node.attrs.isLocked && canDrag)
+      } else {
+        node.draggable(canDrag)
+      }
+    })
+  }, [activeTool])
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // EFFECT 5 — Keyboard shortcuts
+  // ───────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    function onKeyDown(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) history.redo()
+        else history.undo()
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); history.redo() }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (document.activeElement?.tagName === 'TEXTAREA') return
+        const mainLayer  = mainLayerRef.current
+        const transformer = transformerRef.current
+        if (!mainLayer || !transformer) return
+        e.preventDefault()
+        const nodes = transformer.nodes()
+        transformer.nodes([])
+        nodes.forEach(n => n.destroy())
+        mainLayer.batchDraw()
+        hideToolbar()
+        history.pushState()
+        scheduleSnapshot()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [history, hideToolbar])
+
+  // ─── Toolbar action handlers ────────────────────────────────────────────────
+  function handleLockToggle() {
+    const node      = toolbarTargetRef.current
+    const mainLayer = mainLayerRef.current
+    const transformer = transformerRef.current
+    if (!node || !mainLayer) return
+    if (node.attrs.isLocked) {
+      // Unlock: restore listening so Konva can select/drag it again.
+      node.setAttrs({ isLocked: false, draggable: activeToolRef.current === 'select', listening: true })
+      transformer?.nodes([node])
+    } else {
+      // Lock: disable listening so the image is fully transparent to pointer events.
+      // Tap detection for locked images is handled manually in Effect 2.
+      node.setAttrs({ isLocked: true, draggable: false, listening: false })
+      transformer?.nodes([])
+    }
+    mainLayer.batchDraw()
+    positionAndShowToolbar(node)
+    history.pushState()
+    scheduleSnapshot()
+  }
+
+  // Returns true when the image's local X-axis is screen-vertical (90° or 270°).
+  // In that orientation the user's visual "horizontal" maps to the node's Y-axis,
+  // so flip H and flip V buttons must swap their underlying operations.
+  function isOrthoRotated(node) {
+    const rot = ((node.rotation() % 360) + 360) % 360
+    return (rot > 45 && rot < 135) || (rot > 225 && rot < 315)
+  }
+
+  // Apply horizontal flip in the node's LOCAL space (negates scaleX).
+  function applyFlipX(node) {
+    const oldSx = node.scaleX()
+    const θ = node.rotation() * Math.PI / 180
+    node.scaleX(-oldSx)
+    node.x(node.x() + node.width() * oldSx * Math.cos(θ))
+    node.y(node.y() + node.width() * oldSx * Math.sin(θ))
+  }
+
+  // Apply vertical flip in the node's LOCAL space (negates scaleY).
+  function applyFlipY(node) {
+    const oldSy = node.scaleY()
+    const θ = node.rotation() * Math.PI / 180
+    node.scaleY(-oldSy)
+    node.x(node.x() - node.height() * oldSy * Math.sin(θ))
+    node.y(node.y() + node.height() * oldSy * Math.cos(θ))
+  }
+
+  // Rotate image 90° clockwise around its visual center.
+  function handleRotate() {
+    const node = toolbarTargetRef.current
+    const mainLayer = mainLayerRef.current
+    if (!node || !mainLayer) return
+    const sx = node.scaleX(), sy = node.scaleY()
+    const w  = node.width() * sx, h = node.height() * sy
+    const θ  = node.rotation() * Math.PI / 180
+    const cx = node.x() + (w * Math.cos(θ) - h * Math.sin(θ)) / 2
+    const cy = node.y() + (w * Math.sin(θ) + h * Math.cos(θ)) / 2
+    const newθ = θ + Math.PI / 2
+    node.rotation(node.rotation() + 90)
+    node.x(cx - (w * Math.cos(newθ) - h * Math.sin(newθ)) / 2)
+    node.y(cy - (w * Math.sin(newθ) + h * Math.cos(newθ)) / 2)
+    mainLayer.batchDraw()
+    positionAndShowToolbar(node)
+    history.pushState()
+    scheduleSnapshot()
+  }
+
+  // Flip visually horizontal (mirror about vertical screen axis).
+  // When rotated 90°/270° the local X-axis is screen-vertical, so we flip Y instead.
+  function handleFlipH() {
+    const node = toolbarTargetRef.current
+    const mainLayer = mainLayerRef.current
+    if (!node || !mainLayer) return
+    if (isOrthoRotated(node)) applyFlipY(node)
+    else                       applyFlipX(node)
+    mainLayer.batchDraw()
+    positionAndShowToolbar(node)
+    history.pushState()
+    scheduleSnapshot()
+  }
+
+  // Flip visually vertical (mirror about horizontal screen axis).
+  // When rotated 90°/270° the local Y-axis is screen-horizontal, so we flip X instead.
+  function handleFlipV() {
+    const node = toolbarTargetRef.current
+    const mainLayer = mainLayerRef.current
+    if (!node || !mainLayer) return
+    if (isOrthoRotated(node)) applyFlipX(node)
+    else                       applyFlipY(node)
+    mainLayer.batchDraw()
+    positionAndShowToolbar(node)
+    history.pushState()
+    scheduleSnapshot()
+  }
+
+  function handleDeletePointerDown(e) {
+    e.preventDefault()
+    setDeleteHolding(true)
+    deleteTimerRef.current = setTimeout(() => {
+      setDeleteHolding(false)
+      const node      = toolbarTargetRef.current
+      const mainLayer = mainLayerRef.current
+      const transformer = transformerRef.current
+      if (!node || !mainLayer) return
+      transformer?.nodes([])
+      node.destroy()
+      mainLayer.batchDraw()
+      hideToolbar()
+      history.pushState()
+      scheduleSnapshot()
+    }, 700)
+  }
+
+  function handleDeletePointerUp() {
+    setDeleteHolding(false)
+    if (deleteTimerRef.current) { clearTimeout(deleteTimerRef.current); deleteTimerRef.current = null }
+  }
+
+  function handleDeleteClick() {
+    const mainLayer  = mainLayerRef.current
+    const transformer = transformerRef.current
+    if (!mainLayer) return
+    const nodes = [...(transformer?.nodes() ?? [])]
+    if (toolbarTargetRef.current && !nodes.includes(toolbarTargetRef.current)) nodes.push(toolbarTargetRef.current)
+    transformer?.nodes([])
+    nodes.forEach(n => n.destroy())
+    mainLayer.batchDraw()
+    hideToolbar()
+    history.pushState()
+    scheduleSnapshot()
+  }
+
+  // ─── Expose API via ref ─────────────────────────────────────────────────────
+  useImperativeHandle(ref, () => ({
+    getStage: () => stageRef.current,
+    getMainLayer: () => mainLayerRef.current,
+    undo: history.undo,
+    redo: history.redo,
+    addImage: (konvaImageNode) => {
+      const mainLayer  = mainLayerRef.current
+      const transformer = transformerRef.current
+      if (!mainLayer) return
+      mainLayer.add(konvaImageNode)
+      konvaImageNode.moveToBottom()
+      transformer?.moveToTop()
+      mainLayer.batchDraw()
+      transformer?.nodes([konvaImageNode])
+      positionAndShowToolbar(konvaImageNode)
+      scheduleSnapshot()
+    },
+    centerToContent: () => {
+      const stage     = stageRef.current
+      const mainLayer = mainLayerRef.current
+      if (!stage || !mainLayer) return
+      const nodes = mainLayer.getChildren().filter(n => n.getClassName() !== 'Transformer')
+      if (!nodes.length) return
+
+      // Bounding box of all content in stage-space coordinates.
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      nodes.forEach(n => {
+        const r = n.getClientRect({ relativeTo: stage })
+        minX = Math.min(minX, r.x)
+        minY = Math.min(minY, r.y)
+        maxX = Math.max(maxX, r.x + r.width)
+        maxY = Math.max(maxY, r.y + r.height)
+      })
+
+      const pad    = 60
+      const viewW  = stage.width()
+      const viewH  = stage.height()
+      const scale  = Math.min(
+        (viewW - pad * 2) / (maxX - minX),
+        (viewH - pad * 2) / (maxY - minY),
+        3,
+      )
+      const cx = (minX + maxX) / 2
+      const cy = (minY + maxY) / 2
+      const newX = viewW / 2 - cx * scale
+      const newY = viewH / 2 - cy * scale
+      stage.scale({ x: scale, y: scale })
+      stage.position({ x: newX, y: newY })
+      stage.batchDraw()
+      updateNoteSettings(note.id, { ...note.settings, zoom: scale, pan: { x: newX, y: newY } })
+    },
+  }))
+
+  useGrid(wrapperRef, gridCanvasRef, stageRef, showGrid)
+
+  // ─── JSX ───────────────────────────────────────────────────────────────────
+  return (
+    <div ref={wrapperRef} className="canvas-wrapper">
+      <canvas ref={gridCanvasRef} className="canvas-grid-layer" />
+      <div ref={konvaContainerRef} className="canvas-konva-layer" />
+      <canvas ref={drawCanvasRef} className="canvas-draw-layer" />
+
+      <div ref={toolbarDivRef} className="object-toolbar">
+        {selectedType === 'image' && (
+          <button
+            className={`object-toolbar-btn${imageLocked ? ' locked' : ''}`}
+            title={imageLocked ? 'Ontgrendelen' : 'Vergrendelen'}
+            onClick={handleLockToggle}
+          >
+            {imageLocked ? (
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="4" y="9" width="12" height="9" rx="1.5" />
+                <path d="M7 9V6.5a3 3 0 0 1 6 0V9" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="4" y="9" width="12" height="9" rx="1.5" />
+                <path d="M7 9V6.5a3 3 0 0 1 6 0" />
+              </svg>
+            )}
+          </button>
+        )}
+
+        {selectedType === 'image' && !imageLocked && (
+          <>
+            <button className="object-toolbar-btn" title="90° met de klok mee draaien" onClick={handleRotate}>
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                {/* 270° CW arc: top → right → bottom → left, leaving 90° gap at top-left */}
+                <path d="M 10 4 A 6 6 0 1 1 4 10" />
+                {/* Arrowhead at (4,10) pointing upward (CW tangent direction at left) */}
+                <polyline points="1 13 4 10 7 13" />
+              </svg>
+            </button>
+            <button className="object-toolbar-btn" title="Horizontaal spiegelen" onClick={handleFlipH}>
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="10" y1="3" x2="10" y2="17" strokeDasharray="2 2.5" />
+                <polyline points="7 7 3 10 7 13" />
+                <polyline points="13 7 17 10 13 13" />
+              </svg>
+            </button>
+            <button className="object-toolbar-btn" title="Verticaal spiegelen" onClick={handleFlipV}>
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="10" x2="17" y2="10" strokeDasharray="2 2.5" />
+                <polyline points="7 7 10 3 13 7" />
+                <polyline points="7 13 10 17 13 13" />
+              </svg>
+            </button>
+          </>
+        )}
+
+        {selectedType === 'image' ? (
+          <button
+            className={`object-toolbar-btn delete-btn${deleteHolding ? ' holding' : ''}`}
+            title="Ingedrukt houden om te verwijderen"
+            onPointerDown={handleDeletePointerDown}
+            onPointerUp={handleDeletePointerUp}
+            onPointerLeave={handleDeletePointerUp}
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10M8 9.5v4M12 9.5v4" />
+            </svg>
+          </button>
+        ) : (
+          <button
+            className="object-toolbar-btn delete-btn"
+            title="Verwijderen"
+            onClick={handleDeleteClick}
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10M8 9.5v4M12 9.5v4" />
+            </svg>
+          </button>
+        )}
+      </div>
+    </div>
+  )
+})
+
+export default CanvasView

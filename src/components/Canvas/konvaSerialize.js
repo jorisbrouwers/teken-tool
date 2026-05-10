@@ -1,0 +1,51 @@
+import Konva from 'konva'
+
+// Serialize all user content (including images) — used for persistence.
+// Transformer is always excluded.
+export function serializeLayer(layer) {
+  return layer.getChildren()
+    .filter(n => n.getClassName() !== 'Transformer')
+    .map(node => {
+      const attrs = { ...node.attrs }
+      if (node.getClassName() === 'Image') delete attrs.image // not serializable
+      return { type: node.getClassName(), attrs }
+    })
+}
+
+// Restore a persistence snapshot into the layer.
+// Preserves the Transformer node (keeps it at the top).
+export function deserializeLayer(data, layer) {
+  const transformer = layer.getChildren().find(n => n.getClassName() === 'Transformer')
+
+  // Destroy everything except the Transformer
+  layer.getChildren().forEach(n => {
+    if (n.getClassName() !== 'Transformer') n.destroy()
+  })
+
+  if (!data?.length) { layer.batchDraw(); return }
+
+  data.forEach(({ type, attrs }) => {
+    if (type === 'Image') {
+      const img = new Image()
+      img.onload = () => {
+        // listening:false on locked images — they must be transparent to pointer events.
+        const node = new Konva.Image({ ...attrs, image: img, listening: !attrs.isLocked })
+        layer.add(node)
+        node.moveToBottom()
+        if (transformer) transformer.moveToTop()
+        layer.batchDraw()
+      }
+      img.onerror = () => layer.batchDraw()
+      img.src = attrs.src
+    } else {
+      const Cls = Konva[type]
+      if (Cls) {
+        const node = new Cls(attrs)
+        layer.add(node)
+      }
+    }
+  })
+
+  if (transformer) transformer.moveToTop()
+  layer.batchDraw()
+}

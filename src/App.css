@@ -1,0 +1,78 @@
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.main-area {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 16px;
+  text-align: center;
+}
+
+.projects-open-btn {
+  padding: 10px 24px;
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.projects-open-btn:hover {
+  opacity: 0.9;
+}
+
+.center-content-fab {
+  position: fixed;
+  top: calc(var(--toolbar-height) + 8px);
+  right: calc(12px + 148px + 8px); /* 148px = StylePanel width */
+  width: 44px;
+  height: 44px;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.07);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text);
+  z-index: 50;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.center-content-fab:hover {
+  background: var(--color-item-hover);
+}
+
+.center-content-fab svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+.app-loading {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 16px;
+}

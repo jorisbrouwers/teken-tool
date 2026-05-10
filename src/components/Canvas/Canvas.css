@@ -1,0 +1,94 @@
+.canvas-wrapper {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  background: #ffffff;
+  /* Verhinder standaard touch-gedrag zodat Fabric.js de pointer events kan afhandelen */
+  touch-action: none;
+}
+
+.canvas-wrapper canvas {
+  display: block;
+}
+
+.canvas-grid-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.canvas-konva-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.canvas-konva-layer canvas {
+  display: block;
+}
+
+/* Raw canvas for in-progress freehand strokes — bypasses Konva for maximum performance */
+.canvas-draw-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Zwevende toolbar boven geselecteerde afbeelding */
+.object-toolbar {
+  position: fixed;
+  z-index: 100;
+  display: none;
+  transform: translateX(-50%);
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08);
+  padding: 4px;
+  gap: 2px;
+  align-items: center;
+  user-select: none;
+  pointer-events: auto;
+}
+
+.object-toolbar-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--color-text);
+  transition: background 0.1s;
+}
+
+.object-toolbar-btn:hover {
+  background: var(--color-item-hover);
+}
+
+.object-toolbar-btn.locked {
+  color: var(--color-accent);
+  background: var(--color-item-active);
+}
+
+.object-toolbar-btn.delete-btn {
+  color: var(--color-text-muted);
+}
+
+.object-toolbar-btn.delete-btn.holding {
+  animation: delete-hold 0.7s linear forwards;
+}
+
+@keyframes delete-hold {
+  0%   { background: transparent; color: var(--color-text-muted); }
+  40%  { background: #fff0f0;     color: #e03131; }
+  100% { background: #e03131;     color: #ffffff; }
+}
+
+.object-toolbar-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}

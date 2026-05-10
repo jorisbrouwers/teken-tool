@@ -1,0 +1,165 @@
+import Dexie from 'dexie'
+
+function generateUUID() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  // Fallback voor niet-secure contexten (bijv. http:// op iOS)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16)
+  })
+}
+
+const db = new Dexie('teken-tool')
+
+db.version(1).stores({
+  notes: '&id, title, deleted_at, modified_at',
+})
+
+db.version(2).stores({
+  notes: '&id, title, deleted_at, modified_at, sort_order',
+}).upgrade(tx =>
+  tx.table('notes').toCollection().modify(note => {
+    note.sort_order = new Date(note.created_at).getTime()
+    note.is_template = false
+  })
+)
+
+// deleted_at: 0 = actief, Unix ms timestamp = zachte verwijdering
+// sort_order: lager getal = hoger in de lijst
+// is_template: true = template (niet zichtbaar in gewone notitieslijst)
+
+const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000
+
+function newNote(title = 'Naamloos') {
+  const now = new Date().toISOString()
+  return {
+    id: generateUUID(),
+    title,
+    created_at: now,
+    modified_at: now,
+    deleted_at: 0,
+    sort_order: 0,
+    is_template: false,
+    settings: { background: 'grid' },
+    snapshot: null,
+  }
+}
+
+export async function createNote(title = 'Naamloos', isTemplate = false) {
+  const all = await db.notes.where('deleted_at').equals(0).toArray()
+  const minOrder = all.reduce((m, n) => Math.min(m, n.sort_order ?? 0), 1)
+  const note = { ...newNote(title), sort_order: minOrder - 1, is_template: isTemplate }
+  await db.notes.add(note)
+  return note
+}
+
+export async function getActiveNotes() {
+  const notes = await db.notes.where('deleted_at').equals(0).toArray()
+  return notes.filter(n => !n.is_template).sort((a, b) => a.sort_order - b.sort_order)
+}
+
+export async function getTemplateNotes() {
+  const notes = await db.notes.where('deleted_at').equals(0).toArray()
+  return notes.filter(n => n.is_template).sort((a, b) => a.sort_order - b.sort_order)
+}
+
+export async function getNote(id) {
+  return db.notes.get(id)
+}
+
+export async function duplicateNote(id) {
+  const src = await db.notes.get(id)
+  const all = await db.notes.where('deleted_at').equals(0).toArray()
+  const minOrder = all.reduce((m, n) => Math.min(m, n.sort_order ?? 0), 1)
+  const note = {
+    ...src,
+    id: generateUUID(),
+    title: `Kopie van ${src.title}`,
+    created_at: new Date().toISOString(),
+    modified_at: new Date().toISOString(),
+    deleted_at: 0,
+    sort_order: minOrder - 1,
+  }
+  await db.notes.add(note)
+  return note
+}
+
+export async function moveNote(id, direction, isTemplate) {
+  const all = await db.notes.where('deleted_at').equals(0).toArray()
+  const filtered = all
+    .filter(n => !!n.is_template === !!isTemplate)
+    .sort((a, b) => a.sort_order - b.sort_order)
+  const idx = filtered.findIndex(n => n.id === id)
+  const targetIdx = direction === 'up' ? idx - 1 : idx + 1
+  if (targetIdx < 0 || targetIdx >= filtered.length) return
+  const tmp = filtered[idx].sort_order
+  await db.notes.update(filtered[idx].id, { sort_order: filtered[targetIdx].sort_order })
+  await db.notes.update(filtered[targetIdx].id, { sort_order: tmp })
+}
+
+export async function updateNoteSnapshot(id, snapshot) {
+  await db.notes.update(id, {
+    snapshot,
+    modified_at: new Date().toISOString(),
+  })
+}
+
+export async function updateNoteSettings(id, settings) {
+  await db.notes.update(id, {
+    settings,
+    modified_at: new Date().toISOString(),
+  })
+}
+
+export async function renameNote(id, title) {
+  await db.notes.update(id, {
+    title,
+    modified_at: new Date().toISOString(),
+  })
+}
+
+export async function softDeleteNote(id) {
+  await db.notes.update(id, { deleted_at: Date.now() })
+}
+
+export async function restoreNote(id) {
+  await db.notes.update(id, { deleted_at: 0 })
+}
+
+export async function permanentDeleteNote(id) {
+  await db.notes.delete(id)
+}
+
+export async function getTrashNotes() {
+  const all = await db.notes.where('deleted_at').above(0).toArray()
+  return all.sort((a, b) => b.deleted_at - a.deleted_at)
+}
+
+export async function sweepExpiredNotes() {
+  const cutoff = Date.now() - NINETY_DAYS_MS
+  await db.notes
+    .where('deleted_at')
+    .above(0)
+    .filter((n) => n.deleted_at < cutoff)
+    .delete()
+}
+
+export async function importNote(noteObj) {
+  const now = new Date().toISOString()
+  const all = await db.notes.where('deleted_at').equals(0).toArray()
+  const minOrder = all.reduce((m, n) => Math.min(m, n.sort_order ?? 0), 1)
+  const note = {
+    ...noteObj,
+    id: generateUUID(),
+    deleted_at: 0,
+    modified_at: now,
+    sort_order: minOrder - 1,
+    is_template: false,
+  }
+  await db.notes.add(note)
+  return note
+}
+
+export default db

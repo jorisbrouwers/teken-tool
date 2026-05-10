@@ -1,0 +1,134 @@
+.note-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.note-list-actions {
+  padding: 8px;
+  border-bottom: 1px solid var(--color-sidebar-border);
+}
+
+.note-list-new-btn {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--color-accent);
+  color: white;
+  font-weight: 500;
+  text-align: left;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.note-list-new-btn:hover {
+  background: var(--color-accent-hover);
+}
+
+.note-list-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.note-list-empty {
+  padding: 16px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.note-list-item {
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  border-radius: var(--radius);
+  min-height: 44px;
+  cursor: pointer;
+  position: relative;
+  gap: 4px;
+}
+
+.note-list-item:hover {
+  background: var(--color-item-hover);
+}
+
+.note-list-item.active {
+  background: var(--color-item-active);
+}
+
+.note-list-item-title {
+  flex: 1;
+  padding: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.note-list-item-rename {
+  flex: 1;
+  padding: 4px 8px;
+}
+
+.note-list-item-rename input {
+  width: 100%;
+  border: 1px solid var(--color-accent);
+  border-radius: 4px;
+  padding: 4px 6px;
+  outline: none;
+  font-size: 14px;
+}
+
+.note-list-item-btn {
+  padding: 6px;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  opacity: 0;
+  min-width: 32px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.note-list-item:hover .note-list-item-btn {
+  opacity: 1;
+}
+
+.note-list-item-btn:hover {
+  background: rgba(0,0,0,0.08);
+  color: var(--color-text);
+}
+
+.note-list-item-btn.danger:hover {
+  background: #fee2e2;
+  color: var(--color-danger);
+}
+
+.sidebar-footer {
+  padding: 8px;
+  border-top: 1px solid var(--color-sidebar-border);
+}
+
+.sidebar-footer-btn {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  text-align: left;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.sidebar-footer-btn:hover {
+  background: var(--color-item-hover);
+  color: var(--color-text);
+}

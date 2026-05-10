@@ -1,0 +1,144 @@
+.style-panel {
+  position: fixed;
+  top: calc(var(--toolbar-height) + 8px);
+  right: 12px;
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.07);
+  padding: 8px;
+  width: 148px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  user-select: none;
+}
+
+/* Kleuren */
+.style-panel-colors {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.color-swatch {
+  aspect-ratio: 1;
+  border-radius: 5px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.1s, border-color 0.1s;
+  outline: none;
+  position: relative;
+}
+
+.color-swatch:hover {
+  transform: scale(1.12);
+}
+
+.color-swatch.active::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 7px;
+  border: 2px solid var(--color-accent);
+}
+
+/* Wit heeft altijd een rand zodat hij zichtbaar is */
+.color-swatch.light {
+  border-color: #d0d0d0;
+}
+
+/* Separator */
+.style-panel-sep {
+  height: 1px;
+  background: #e8e8e8;
+  margin: 0 -2px;
+}
+
+/* Opacity */
+.style-panel-opacity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.style-panel-slider {
+  flex: 1;
+  min-width: 0;
+  height: 4px;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.style-panel-value {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  min-width: 28px;
+  text-align: right;
+}
+
+/* Grootte */
+.style-panel-sizes {
+  display: flex;
+  gap: 2px;
+}
+
+.size-btn {
+  flex: 1;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s;
+  color: var(--color-text);
+}
+
+.size-btn:hover {
+  background: var(--color-item-hover);
+}
+
+.size-btn.active {
+  background: var(--color-item-active);
+}
+
+.size-dot {
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* Lijnstijl */
+.style-panel-strokes {
+  display: flex;
+  gap: 2px;
+}
+
+.stroke-btn {
+  flex: 1;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s;
+  color: var(--color-text);
+}
+
+.stroke-btn:hover {
+  background: var(--color-item-hover);
+}
+
+.stroke-btn.active {
+  background: var(--color-item-active);
+  color: var(--color-accent);
+}
+
+.stroke-btn svg {
+  width: 24px;
+  height: 16px;
+  display: block;
+}
