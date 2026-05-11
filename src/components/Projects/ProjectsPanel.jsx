@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import ConfirmDialog from '../common/ConfirmDialog.jsx'
 import TrashItem from '../Trash/TrashItem.jsx'
 import './ProjectsPanel.css'
@@ -67,25 +67,48 @@ export default function ProjectsPanel({
   onClose,
 }) {
   const [tab, setTab] = useState('Notities')
-  const [showTemplateChooser, setShowTemplateChooser] = useState(false)
+  const [renamingNoteId, setRenamingNoteId] = useState(null)
+  const [selectedTemplateId, setSelectedTemplateId] = useState(
+    () => localStorage.getItem('jnote-new-note-template') || null
+  )
+  const [showTemplateDropdown, setShowTemplateDropdown] = useState(false)
   const importRef = useRef(null)
+  const templateDropdownRef = useRef(null)
 
-  function handleNewNote() {
-    if (templateNotes.length > 0) {
-      setShowTemplateChooser(s => !s)
+  // Validate stored template — fall back to blank if it no longer exists
+  const validTemplateId = templateNotes.find(t => t.id === selectedTemplateId)?.id ?? null
+
+  useEffect(() => {
+    if (!showTemplateDropdown) return
+    function onClickOutside(e) {
+      if (templateDropdownRef.current && !templateDropdownRef.current.contains(e.target)) {
+        setShowTemplateDropdown(false)
+      }
+    }
+    document.addEventListener('pointerdown', onClickOutside)
+    return () => document.removeEventListener('pointerdown', onClickOutside)
+  }, [showTemplateDropdown])
+
+  function selectTemplate(id) {
+    setSelectedTemplateId(id)
+    if (id) localStorage.setItem('jnote-new-note-template', id)
+    else localStorage.removeItem('jnote-new-note-template')
+    setShowTemplateDropdown(false)
+  }
+
+  async function handleNewNote() {
+    if (validTemplateId) {
+      const note = await onCreateFromTemplate(validTemplateId)
+      setRenamingNoteId(note?.id ?? null)
     } else {
-      onCreate()
+      const note = await onCreate()
+      setRenamingNoteId(note?.id ?? null)
     }
   }
 
-  function handleCreateBlank() {
-    onCreate()
-    setShowTemplateChooser(false)
-  }
-
-  function handleCreateFromTemplate(templateId) {
-    onCreateFromTemplate(templateId)
-    setShowTemplateChooser(false)
+  async function handleCreateFromTemplate(templateId) {
+    const note = await onCreateFromTemplate(templateId)
+    setRenamingNoteId(note?.id ?? null)
   }
 
   return (
@@ -101,30 +124,100 @@ export default function ProjectsPanel({
             <button
               key={t}
               className={`projects-tab${tab === t ? ' active' : ''}`}
-              onClick={() => { setTab(t); setShowTemplateChooser(false) }}
+              onClick={() => { setTab(t); setShowTemplateDropdown(false) }}
             >
               {t}
             </button>
           ))}
         </div>
 
+        {tab === 'Notities' && (
+          <div className="projects-actions">
+            <div className="projects-actions-row">
+              <div className="new-note-split">
+                <button
+                  className={`projects-new-btn${templateNotes.length > 0 ? ' split' : ''}`}
+                  onClick={handleNewNote}
+                >
+                  <span className="new-note-btn-action">+ Nieuwe notitie</span>
+                  {templateNotes.length > 0 && (
+                    <span className="new-note-btn-template">
+                      {validTemplateId
+                        ? templateNotes.find(t => t.id === validTemplateId)?.title
+                        : 'Leeg'}
+                    </span>
+                  )}
+                </button>
+                {templateNotes.length > 0 && (
+                  <div className="new-note-dropdown-wrapper" ref={templateDropdownRef}>
+                    <button
+                      className={`new-note-chevron-btn${showTemplateDropdown ? ' open' : ''}`}
+                      onClick={() => setShowTemplateDropdown(v => !v)}
+                      title="Template kiezen"
+                    >
+                      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="5 8 10 13 15 8" />
+                      </svg>
+                    </button>
+                    {showTemplateDropdown && (
+                      <div className="new-note-dropdown">
+                        <div
+                          className={`new-note-dropdown-item${!validTemplateId ? ' active' : ''}`}
+                          onPointerDown={() => selectTemplate(null)}
+                        >
+                          <span>Leeg</span>
+                          {!validTemplateId && <span className="new-note-dropdown-check">✓</span>}
+                        </div>
+                        {templateNotes.map(t => (
+                          <div
+                            key={t.id}
+                            className={`new-note-dropdown-item${validTemplateId === t.id ? ' active' : ''}`}
+                            onPointerDown={() => selectTemplate(t.id)}
+                          >
+                            <span>{t.title}</span>
+                            {validTemplateId === t.id && <span className="new-note-dropdown-check">✓</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <button
+                className="projects-import-btn"
+                title="Importeer .jnote bestand"
+                onClick={() => importRef.current?.click()}
+              >
+                {Icons.import}
+                <span>Importeren</span>
+              </button>
+              <input
+                ref={importRef}
+                type="file"
+                accept=".zip,.jnote,application/zip,application/json"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  if (e.target.files[0]) {
+                    onImportJnote(e.target.files[0])
+                    e.target.value = ''
+                  }
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {tab === 'Templates' && (
+          <div className="projects-actions">
+            <button className="projects-new-btn" onClick={() => onCreateTemplate()}>
+              + Nieuwe template
+            </button>
+          </div>
+        )}
+
         <div className="projects-body">
           {tab === 'Notities' && (
             <>
-              {showTemplateChooser && (
-                <div className="template-chooser">
-                  <button className="template-choice" onClick={handleCreateBlank}>Leeg</button>
-                  {templateNotes.map(t => (
-                    <button
-                      key={t.id}
-                      className="template-choice"
-                      onClick={() => handleCreateFromTemplate(t.id)}
-                    >
-                      {t.title}
-                    </button>
-                  ))}
-                </div>
-              )}
               {notes.length === 0 ? (
                 <div className="projects-empty">Geen notities. Maak er een aan.</div>
               ) : (
@@ -141,6 +234,8 @@ export default function ProjectsPanel({
                     onDelete={onDelete}
                     onDuplicate={onDuplicate}
                     onMove={onMove}
+                    autoRename={note.id === renamingNoteId}
+                    onAutoRenameDone={() => setRenamingNoteId(null)}
                   />
                 ))
               )}
@@ -188,50 +283,13 @@ export default function ProjectsPanel({
             </>
           )}
         </div>
-
-        {tab !== 'Prullenbak' && (
-          <div className="projects-footer">
-            {tab === 'Notities' && (
-              <div className="projects-footer-row">
-                <button className="projects-new-btn" onClick={handleNewNote}>
-                  + Nieuwe notitie
-                </button>
-                <button
-                  className="projects-import-btn"
-                  title="Importeer .jnote bestand"
-                  onClick={() => importRef.current?.click()}
-                >
-                  {Icons.import}
-                  <span>Importeren</span>
-                </button>
-                <input
-                  ref={importRef}
-                  type="file"
-                  accept=".jnote,application/json"
-                  style={{ display: 'none' }}
-                  onChange={(e) => {
-                    if (e.target.files[0]) {
-                      onImportJnote(e.target.files[0])
-                      e.target.value = ''
-                    }
-                  }}
-                />
-              </div>
-            )}
-            {tab === 'Templates' && (
-              <button className="projects-new-btn" onClick={() => onCreateTemplate()}>
-                + Nieuwe template
-              </button>
-            )}
-          </div>
-        )}
       </div>
     </div>
   )
 }
 
-function ProjectItem({ note, isActive, isFirst, isLast, isTemplate, onSelect, onRename, onDelete, onDuplicate, onMove }) {
-  const [renaming, setRenaming] = useState(false)
+function ProjectItem({ note, isActive, isFirst, isLast, isTemplate, onSelect, onRename, onDelete, onDuplicate, onMove, autoRename, onAutoRenameDone }) {
+  const [renaming, setRenaming] = useState(!!autoRename)
   const [renameValue, setRenameValue] = useState(note.title)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -244,11 +302,12 @@ function ProjectItem({ note, isActive, isFirst, isLast, isTemplate, onSelect, on
     const trimmed = renameValue.trim()
     if (trimmed && trimmed !== note.title) onRename(note.id, trimmed)
     setRenaming(false)
+    onAutoRenameDone?.()
   }
 
   function handleKeyDown(e) {
     if (e.key === 'Enter') commitRename()
-    if (e.key === 'Escape') setRenaming(false)
+    if (e.key === 'Escape') { setRenaming(false); onAutoRenameDone?.() }
   }
 
   return (
@@ -261,6 +320,7 @@ function ProjectItem({ note, isActive, isFirst, isLast, isTemplate, onSelect, on
             onChange={(e) => setRenameValue(e.target.value)}
             onBlur={commitRename}
             onKeyDown={handleKeyDown}
+            onFocus={(e) => e.target.select()}
             autoFocus
             onClick={(e) => e.stopPropagation()}
           />

@@ -1,0 +1,62 @@
+.crop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  cursor: default;
+}
+
+.crop-mask {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.crop-border {
+  position: fixed;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+.crop-handle {
+  position: fixed;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border: 2px solid rgba(0, 0, 0, 0.25);
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  touch-action: none;
+}
+
+.crop-actions {
+  position: fixed;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+}
+
+.crop-btn-cancel,
+.crop-btn-confirm {
+  padding: 8px 18px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+}
+
+.crop-btn-cancel {
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+}
+
+.crop-btn-cancel:hover { background: rgba(0, 0, 0, 0.75); }
+
+.crop-btn-confirm {
+  background: #2563eb;
+  color: #fff;
+}
+
+.crop-btn-confirm:hover { background: #1d4ed8; }

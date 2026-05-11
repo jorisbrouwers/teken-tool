@@ -1,3 +1,4 @@
+import { strToU8, zipSync } from 'fflate'
 import { serializeLayer } from '../components/Canvas/konvaSerialize.js'
 
 export function exportJnote(note, mainLayer) {
@@ -12,12 +13,13 @@ export function exportJnote(note, mainLayer) {
     },
   }
 
-  const json = JSON.stringify(data, null, 2)
-  const blob = new Blob([json], { type: 'application/json' })
+  const jsonBytes = strToU8(JSON.stringify(data, null, 2))
+  const zipped = zipSync({ 'note.json': jsonBytes })
+  const blob = new Blob([zipped], { type: 'application/zip' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `${note.title.replace(/[^a-z0-9_\-. ]/gi, '_')}.jnote`
+  a.download = `${note.title.replace(/[^a-z0-9_\-. ]/gi, '_')}.zip`
   a.click()
   URL.revokeObjectURL(url)
 }

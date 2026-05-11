@@ -96,9 +96,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--color-sidebar-border);
-  background: var(--color-item-active);
+  padding: 8px 0 0;
+  background: transparent;
 }
 
 .template-choice {
@@ -191,31 +190,124 @@
   color: #c92a2a;
 }
 
-/* Footer */
-.projects-footer {
-  border-top: 1px solid var(--color-sidebar-border);
+/* Actions bar (above list, below tabs) */
+.projects-actions {
+  border-bottom: 1px solid var(--color-sidebar-border);
   padding: 8px;
   flex-shrink: 0;
 }
 
-.projects-footer-row {
+.projects-actions-row {
   display: flex;
   gap: 8px;
 }
 
 .projects-new-btn {
   flex: 1;
-  padding: 9px 12px;
+  min-width: 0;
+  padding: 7px 12px;
   background: var(--color-accent);
   color: #fff;
   border-radius: var(--radius);
   font-size: 14px;
   font-weight: 500;
-  text-align: center;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.projects-new-btn.split {
+  border-radius: var(--radius) 0 0 var(--radius);
+  border-right: 1px solid rgba(255,255,255,0.3);
 }
 
 .projects-new-btn:hover {
   opacity: 0.9;
+}
+
+.new-note-btn-action {
+  white-space: nowrap;
+}
+
+.new-note-btn-template {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Split button — chevron knop naast "Nieuwe notitie" */
+.new-note-split {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.new-note-dropdown-wrapper {
+  position: relative;
+}
+
+.new-note-chevron-btn {
+  height: 100%;
+  padding: 0 10px;
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.new-note-chevron-btn:hover,
+.new-note-chevron-btn.open {
+  opacity: 0.85;
+}
+
+.new-note-chevron-btn svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.new-note-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: var(--color-toolbar);
+  border: 1px solid var(--color-toolbar-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+  min-width: 180px;
+  z-index: 100;
+  overflow: hidden;
+}
+
+.new-note-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.new-note-dropdown-item:hover {
+  background: var(--color-item-hover);
+}
+
+.new-note-dropdown-item.active {
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.new-note-dropdown-check {
+  flex-shrink: 0;
+  font-size: 13px;
 }
 
 .projects-import-btn {

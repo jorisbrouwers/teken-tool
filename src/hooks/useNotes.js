@@ -14,6 +14,8 @@ import {
   moveNote,
 } from '../db/db.js'
 
+const ACTIVE_KEY = 'jnote-active-note-id'
+
 export function useNotes() {
   const [notes, setNotes] = useState([])
   const [templateNotes, setTemplateNotes] = useState([])
@@ -30,12 +32,27 @@ export function useNotes() {
     setNotes(active)
     setTemplateNotes(templates)
     setTrashNotes(trash)
+    return { active, templates }
+  }, [])
+
+  // Setter that keeps localStorage in sync with state
+  const persistActiveNote = useCallback((id) => {
+    setActiveNoteId(id)
+    if (id) localStorage.setItem(ACTIVE_KEY, id)
+    else localStorage.removeItem(ACTIVE_KEY)
   }, [])
 
   useEffect(() => {
     async function init() {
       await sweepExpiredNotes()
-      await refreshNotes()
+      const { active, templates } = await refreshNotes()
+      // Restore the last active note if it still exists
+      const storedId = localStorage.getItem(ACTIVE_KEY)
+      if (storedId && [...active, ...templates].find(n => n.id === storedId)) {
+        setActiveNoteId(storedId)
+      } else {
+        localStorage.removeItem(ACTIVE_KEY)
+      }
       setLoading(false)
     }
     init()
@@ -54,9 +71,9 @@ export function useNotes() {
 
   const handleSoftDelete = useCallback(async (id) => {
     await softDeleteNote(id)
-    if (activeNoteId === id) setActiveNoteId(null)
+    if (activeNoteId === id) persistActiveNote(null)
     await refreshNotes()
-  }, [activeNoteId, refreshNotes])
+  }, [activeNoteId, refreshNotes, persistActiveNote])
 
   const handleRestore = useCallback(async (id) => {
     await restoreNote(id)
@@ -90,7 +107,7 @@ export function useNotes() {
     templateNotes,
     trashNotes,
     activeNoteId,
-    setActiveNoteId,
+    setActiveNoteId: persistActiveNote,
     loading,
     refreshNotes,
     createNote: handleCreate,

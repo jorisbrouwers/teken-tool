@@ -1,8 +1,10 @@
 import { jsPDF } from 'jspdf'
 
-const MARGIN = 40
+const GRID_SIZE = 25   // must match useGrid.js
+const MARGIN    = 40   // whitespace around content, in stage-space units
+const MAX_LONG  = 4000 // max output pixels on the longest side
 
-export async function exportPdf(note, stage) {
+export async function exportPdf(note, stage, showGrid) {
   const mainLayer = stage.getLayers()[0]
   const nodes = mainLayer.getChildren().filter(n => n.getClassName() !== 'Transformer')
 
@@ -11,41 +13,80 @@ export async function exportPdf(note, stage) {
     return
   }
 
-  // Bounding box of all content in client coordinates
+  // Bounding box in stage-space (zoom-independent, same coord system as node positions)
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
   nodes.forEach(node => {
-    const r = node.getClientRect()
+    const r = node.getClientRect({ relativeTo: stage })
     minX = Math.min(minX, r.x)
     minY = Math.min(minY, r.y)
     maxX = Math.max(maxX, r.x + r.width)
     maxY = Math.max(maxY, r.y + r.height)
   })
 
-  const contentWidth = maxX - minX
-  const contentHeight = maxY - minY
+  // Crop region in stage-space, with margin
+  const cropSX = minX - MARGIN
+  const cropSY = minY - MARGIN
+  const cropSW = (maxX - minX) + MARGIN * 2
+  const cropSH = (maxY - minY) + MARGIN * 2
 
-  // Convert client rect to stage coordinates for the crop
-  const scale = stage.scaleX()
-  const box = stage.container().getBoundingClientRect()
-  const cropX = (minX - box.left - stage.x()) / scale
-  const cropY = (minY - box.top  - stage.y()) / scale
-  const cropW = contentWidth / scale
-  const cropH = contentHeight / scale
+  // Output pixel dimensions: target 2 output px per stage unit, capped at MAX_LONG
+  const targetScale = Math.min(2, MAX_LONG / Math.max(cropSW, cropSH))
+  const outputW = Math.round(cropSW * targetScale)
+  const outputH = Math.round(cropSH * targetScale)
 
-  const dataUrl = stage.toDataURL({
-    x: cropX,
-    y: cropY,
-    width: cropW,
-    height: cropH,
-    pixelRatio: 2,
-    mimeType: 'image/png',
+  // Convert crop to canvas-pixel space for stage.toCanvas()
+  // canvas_px = stage_coord * zoom + stage.position
+  const zoom = stage.scaleX()
+  const canvasCropX = cropSX * zoom + stage.x()
+  const canvasCropY = cropSY * zoom + stage.y()
+  const canvasCropW = cropSW * zoom
+  const canvasCropH = cropSH * zoom
+  const pixelRatio  = outputW / canvasCropW
+
+  // Capture Konva layers into an offscreen canvas
+  const konvaCanvas = stage.toCanvas({
+    x: canvasCropX,
+    y: canvasCropY,
+    width: canvasCropW,
+    height: canvasCropH,
+    pixelRatio,
   })
 
-  const pdfWidth = contentWidth + MARGIN * 2
-  const pdfHeight = contentHeight + MARGIN * 2
-  const orientation = pdfWidth >= pdfHeight ? 'landscape' : 'portrait'
+  // Composite: white background → grid (optional) → Konva content
+  const finalCanvas = document.createElement('canvas')
+  finalCanvas.width  = outputW
+  finalCanvas.height = outputH
+  const ctx = finalCanvas.getContext('2d')
 
-  const pdf = new jsPDF({ orientation, unit: 'px', format: [pdfWidth, pdfHeight] })
-  pdf.addImage(dataUrl, 'PNG', MARGIN, MARGIN, contentWidth, contentHeight)
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, outputW, outputH)
+
+  if (showGrid) {
+    ctx.beginPath()
+    ctx.strokeStyle = '#d0d0d0'
+    ctx.lineWidth = 1
+    const firstNX = Math.floor(cropSX / GRID_SIZE)
+    const firstNY = Math.floor(cropSY / GRID_SIZE)
+    for (let n = firstNX; n * GRID_SIZE < cropSX + cropSW; n++) {
+      const ex = (n * GRID_SIZE - cropSX) * targetScale
+      if (ex < 0 || ex > outputW) continue
+      ctx.moveTo(Math.round(ex) + 0.5, 0)
+      ctx.lineTo(Math.round(ex) + 0.5, outputH)
+    }
+    for (let n = firstNY; n * GRID_SIZE < cropSY + cropSH; n++) {
+      const ey = (n * GRID_SIZE - cropSY) * targetScale
+      if (ey < 0 || ey > outputH) continue
+      ctx.moveTo(0, Math.round(ey) + 0.5)
+      ctx.lineTo(outputW, Math.round(ey) + 0.5)
+    }
+    ctx.stroke()
+  }
+
+  ctx.drawImage(konvaCanvas, 0, 0, outputW, outputH)
+
+  const dataUrl = finalCanvas.toDataURL('image/png')
+  const orientation = outputW >= outputH ? 'landscape' : 'portrait'
+  const pdf = new jsPDF({ orientation, unit: 'px', format: [outputW, outputH] })
+  pdf.addImage(dataUrl, 'PNG', 0, 0, outputW, outputH)
   pdf.save(`${note.title.replace(/[^a-z0-9_\-. ]/gi, '_')}.pdf`)
 }

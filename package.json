@@ -4,12 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "dexie": "4.0.10",
+    "fflate": "^0.8.2",
     "jspdf": "2.5.2",
     "konva": "^9.3.22",
     "mathjs": "13.2.3",

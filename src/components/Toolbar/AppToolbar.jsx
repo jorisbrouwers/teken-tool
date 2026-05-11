@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import './Toolbar.css'
 
 const S = 'currentColor'
@@ -52,6 +52,11 @@ const Icons = {
       <polyline points="5 4 5 16 16 16" />
     </svg>
   ),
+  triangle: (
+    <svg {...ICON}>
+      <polygon points="10 3 17 17 3 17" />
+    </svg>
+  ),
   undo: (
     <svg {...ICON}>
       <path d="M4 9a6 6 0 1 1 1.5 4.5" />
@@ -80,10 +85,16 @@ const Icons = {
       <path d="M2 13.5l4-4 3 3 2.5-2.5 4.5 5" />
     </svg>
   ),
-  centerContent: (
+  camera: (
     <svg {...ICON}>
-      <rect x="3" y="3" width="14" height="14" rx="1.5" />
-      <rect x="7" y="7" width="6" height="6" rx="1" />
+      <rect x="2" y="6" width="16" height="11" rx="1.5" />
+      <circle cx="10" cy="11.5" r="3" />
+      <path d="M7 6l1.5-2h3L13 6" />
+    </svg>
+  ),
+  chevronDown: (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14, flexShrink: 0 }}>
+      <polyline points="5 8 10 13 15 8" />
     </svg>
   ),
 }
@@ -97,7 +108,8 @@ const TOOLS = [
   { id: 'circle', icon: Icons.circle, title: 'Cirkel' },
   { id: 'line',    icon: Icons.line,    title: 'Lijn' },
   { id: 'arrow',   icon: Icons.arrow,   title: 'Pijl' },
-  { id: 'lshape',  icon: Icons.lshape,  title: 'L-vorm' },
+  { id: 'lshape',    icon: Icons.lshape,    title: 'L-vorm' },
+  { id: 'triangle',  icon: Icons.triangle,  title: 'Driehoek' },
 ]
 
 export default function AppToolbar({
@@ -112,10 +124,87 @@ export default function AppToolbar({
   onRedo,
   onOpenProjects,
   menuSlot,
+  notes,
+  onSelectNote,
 }) {
   const [renamingTitle, setRenamingTitle] = useState(false)
   const [titleValue, setTitleValue] = useState(note?.title ?? '')
   const importImageRef = useRef(null)
+  const [showCamera, setShowCamera] = useState(false)
+  const [cameraError, setCameraError] = useState(null)
+  const videoRef = useRef(null)
+  const streamRef = useRef(null)
+
+  const [showNoteDropdown, setShowNoteDropdown] = useState(false)
+  const [noteDropdownPos, setNoteDropdownPos] = useState({ top: 0, left: 0 })
+  const noteTitleRef = useRef(null)
+  const noteDropdownRef = useRef(null)
+
+  useEffect(() => {
+    if (!showNoteDropdown) return
+    function onClickOutside(e) {
+      if (
+        noteDropdownRef.current && !noteDropdownRef.current.contains(e.target) &&
+        noteTitleRef.current && !noteTitleRef.current.contains(e.target)
+      ) {
+        setShowNoteDropdown(false)
+      }
+    }
+    document.addEventListener('pointerdown', onClickOutside)
+    return () => document.removeEventListener('pointerdown', onClickOutside)
+  }, [showNoteDropdown])
+
+  useEffect(() => {
+    if (!showCamera) return
+    let stream
+    async function startCamera() {
+      const initial = await navigator.mediaDevices.getUserMedia({ video: true })
+      initial.getTracks().forEach(t => t.stop())
+
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const cameras = devices.filter(d => d.kind === 'videoinput')
+
+      const rearKeywords = /rear|back|achter|environment|world/i
+      const rear = cameras.find(d => rearKeywords.test(d.label))
+      const constraints = rear
+        ? { video: { deviceId: { exact: rear.deviceId } } }
+        : { video: { facingMode: 'environment' } }
+
+      stream = await navigator.mediaDevices.getUserMedia(constraints)
+      streamRef.current = stream
+      if (videoRef.current) videoRef.current.srcObject = stream
+    }
+    startCamera().catch(() => setCameraError('Camera niet beschikbaar of geen toestemming gegeven.'))
+    return () => {
+      stream?.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
+  }, [showCamera])
+
+  function openCamera() {
+    setCameraError(null)
+    setShowCamera(true)
+  }
+
+  function closeCamera() {
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    streamRef.current = null
+    setShowCamera(false)
+  }
+
+  function capturePhoto() {
+    const video = videoRef.current
+    if (!video) return
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    canvas.getContext('2d').drawImage(video, 0, 0)
+    canvas.toBlob(blob => {
+      if (!blob) return
+      onImportImage(new File([blob], 'foto.jpg', { type: 'image/jpeg' }))
+      closeCamera()
+    }, 'image/jpeg', 0.92)
+  }
 
   function startRename() {
     setTitleValue(note.title)
@@ -133,9 +222,15 @@ export default function AppToolbar({
     if (e.key === 'Escape') setRenamingTitle(false)
   }
 
+  function openNoteDropdown() {
+    const r = noteTitleRef.current.getBoundingClientRect()
+    setNoteDropdownPos({ top: r.bottom + 4, left: r.left })
+    setShowNoteDropdown(true)
+  }
+
   return (
     <div className="app-toolbar">
-      {/* Hamburger menu (gerenderd door App.jsx) */}
+      {/* Hamburger menu */}
       {menuSlot}
 
       {/* Projecten-knop */}
@@ -151,7 +246,7 @@ export default function AppToolbar({
 
       <div className="toolbar-sep" />
 
-      {/* Notitietitel */}
+      {/* Notitietitel / dropdown */}
       {renamingTitle ? (
         <input
           className="toolbar-title-input"
@@ -159,11 +254,41 @@ export default function AppToolbar({
           onChange={(e) => setTitleValue(e.target.value)}
           onBlur={commitRename}
           onKeyDown={handleTitleKeyDown}
+          onFocus={(e) => e.target.select()}
           autoFocus
         />
       ) : (
-        <div className="toolbar-title" onClick={startRename} title="Klik om te hernoemen">
-          {note?.title}
+        <div
+          ref={noteTitleRef}
+          className={`toolbar-title toolbar-title--switchable${showNoteDropdown ? ' toolbar-title--open' : ''}`}
+          onClick={openNoteDropdown}
+          title="Klik om van notitie te wisselen"
+        >
+          <span className="toolbar-title-text">{note?.title}</span>
+          {Icons.chevronDown}
+        </div>
+      )}
+
+      {/* Notitie-switcher dropdown */}
+      {showNoteDropdown && (
+        <div
+          ref={noteDropdownRef}
+          className="note-switcher-dropdown"
+          style={{ top: noteDropdownPos.top, left: noteDropdownPos.left }}
+        >
+          {(notes ?? []).map(n => (
+            <div
+              key={n.id}
+              className={`note-switcher-item${n.id === note?.id ? ' note-switcher-item--active' : ''}`}
+              onPointerDown={(e) => {
+                e.preventDefault()
+                onSelectNote(n.id)
+                setShowNoteDropdown(false)
+              }}
+            >
+              <span className="note-switcher-item-title">{n.title}</span>
+            </div>
+          ))}
         </div>
       )}
 
@@ -208,9 +333,37 @@ export default function AppToolbar({
         ref={importImageRef}
         type="file"
         accept="image/jpeg,image/png,image/webp"
+        multiple
         style={{ display: 'none' }}
-        onChange={(e) => { if (e.target.files[0]) { onImportImage(e.target.files[0]); e.target.value = '' } }}
+        onChange={(e) => {
+          Array.from(e.target.files).forEach(f => onImportImage(f))
+          e.target.value = ''
+        }}
       />
+
+      {/* Camera */}
+      <button className="toolbar-btn" title="Camera" onClick={openCamera}>
+        {Icons.camera}
+      </button>
+
+      {/* Camera modal */}
+      {showCamera && (
+        <div className="camera-backdrop" onClick={closeCamera}>
+          <div className="camera-modal" onClick={e => e.stopPropagation()}>
+            {cameraError ? (
+              <p className="camera-error">{cameraError}</p>
+            ) : (
+              <video ref={videoRef} className="camera-video" autoPlay playsInline muted />
+            )}
+            <div className="camera-actions">
+              <button className="camera-btn camera-btn-secondary" onClick={closeCamera}>Annuleren</button>
+              {!cameraError && (
+                <button className="camera-btn camera-btn-primary" onClick={capturePhoto}>Foto nemen</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

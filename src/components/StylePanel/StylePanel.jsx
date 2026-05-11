@@ -15,7 +15,7 @@ export const COLORS = [
   { hex: '#e03131', light: false }, // Rood
 ]
 
-export const SIZE_MAP = { xs: 0.75, s: 0.9, m: 2, l: 4 }
+export const SIZE_MAP = { xs: 0.4, s: 0.6, m: 1, l: 4 }
 
 const SIZES = [
   { id: 'xs', dot: 2  },

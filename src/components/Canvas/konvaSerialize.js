@@ -17,8 +17,9 @@ export function serializeLayer(layer) {
 export function deserializeLayer(data, layer) {
   const transformer = layer.getChildren().find(n => n.getClassName() === 'Transformer')
 
-  // Destroy everything except the Transformer
-  layer.getChildren().forEach(n => {
+  // Destroy everything except the Transformer.
+  // Spread to a copy first: destroy() mutates the live children array.
+  ;[...layer.getChildren()].forEach(n => {
     if (n.getClassName() !== 'Transformer') n.destroy()
   })
 

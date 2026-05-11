@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import Konva from 'konva'
 import { useNotes } from './hooks/useNotes.js'
 import CanvasView from './components/Canvas/CanvasView.jsx'
@@ -32,7 +32,10 @@ export default function App() {
   } = useNotes()
 
   const [projectsOpen, setProjectsOpen] = useState(false)
+  const [centerOnSelect, setCenterOnSelect] = useState(false)
   const [activeTool, setActiveTool] = useState('pen')
+
+  useEffect(() => { setCenterOnSelect(false) }, [activeNoteId])
 
   const penToolRef = useRef('pen')
   const manualSelectRef = useRef(false)
@@ -43,6 +46,11 @@ export default function App() {
     if (tool !== 'select' && tool !== 'eraser') {
       penToolRef.current = tool
     }
+  }
+
+  function handleSelectNote(id) {
+    setCenterOnSelect(true)
+    setActiveNoteId(id)
   }
 
   const handleInputDetected = useCallback((type) => {
@@ -75,8 +83,8 @@ export default function App() {
   const handleExportPdf = useCallback(async () => {
     const stage = canvasViewRef.current?.getStage()
     if (!stage || !activeNote) return
-    await exportPdf(activeNote, stage)
-  }, [activeNote])
+    await exportPdf(activeNote, stage, showGrid)
+  }, [activeNote, showGrid])
 
   const handleExportJnote = useCallback(() => {
     const mainLayer = canvasViewRef.current?.getMainLayer()
@@ -113,8 +121,8 @@ export default function App() {
       title: dup.title.replace(/^Kopie van (?:Template: )?/, ''),
     })
     await refreshNotes()
-    setActiveNoteId(dup.id)
-  }, [duplicateNote, refreshNotes, setActiveNoteId])
+    return dup
+  }, [duplicateNote, refreshNotes])
 
   const handleImportImage = useCallback((file) => {
     const addImage = canvasViewRef.current?.addImage
@@ -180,6 +188,8 @@ export default function App() {
               onRedo={() => canvasViewRef.current?.redo()}
               onOpenProjects={() => setProjectsOpen(true)}
               menuSlot={hamburgerMenu}
+              notes={notes}
+              onSelectNote={handleSelectNote}
             />
             <CanvasView
               key={activeNote.id}
@@ -192,6 +202,7 @@ export default function App() {
               strokeStyle={strokeStyle}
               pressureSensitive={pressureSensitive}
               onInputDetected={handleInputDetected}
+              shouldCenter={centerOnSelect}
             />
             <StylePanel
               activeTool={activeTool}
@@ -243,8 +254,8 @@ export default function App() {
           templateNotes={templateNotes}
           trashNotes={trashNotes}
           activeNoteId={activeNoteId}
-          onSelect={setActiveNoteId}
-          onCreate={() => createNote()}
+          onSelect={handleSelectNote}
+          onCreate={createNote}
           onCreateFromTemplate={handleCreateFromTemplate}
           onCreateTemplate={() => createNote('Nieuwe template', true)}
           onRename={renameNote}

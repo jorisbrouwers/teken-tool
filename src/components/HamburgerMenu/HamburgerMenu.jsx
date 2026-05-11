@@ -49,7 +49,7 @@ export default function HamburgerMenu({
       {open && (
         <div className="hamburger-dropdown">
           {item('Exporteren als PDF', () => onExportPdf(), !activeNote)}
-          {item('Exporteren als .jnote', () => onExportJnote(), !activeNote)}
+          {item('Exporteren als .zip', () => onExportJnote(), !activeNote)}
           <div className="hamburger-sep" />
           {item('Opslaan als template', () => onSaveAsTemplate(activeNote), !activeNote)}
         </div>

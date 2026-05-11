@@ -1,5 +1,11 @@
 import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react'
 import Konva from 'konva'
+
+// Extra hit area (px) around strokes for tap-to-select and eraser detection.
+// Larger = easier to tap thin lines; smaller = more precise eraser.
+const HIT_MARGIN = 8
+
+
 import { getStroke } from 'perfect-freehand'
 import { getSvgPathFromStroke } from '../../math/svgPath.js'
 import { usePersistence } from './usePersistence.js'
@@ -9,10 +15,11 @@ import { evaluateExpression } from '../../math/mathEval.js'
 import { deserializeLayer } from './konvaSerialize.js'
 import { liveSnapshotCache } from './usePersistence.js'
 import { getNote, updateNoteSettings } from '../../db/db.js'
+import CropOverlay from './CropOverlay.jsx'
 import './Canvas.css'
 
 const CanvasView = forwardRef(function CanvasView(
-  { note, activeTool, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected },
+  { note, activeTool, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, shouldCenter },
   ref
 ) {
   // ─── DOM + Konva refs ───────────────────────────────────────────────────────
@@ -48,6 +55,10 @@ const CanvasView = forwardRef(function CanvasView(
   const [selectedType, setSelectedType] = useState(null)
   const [deleteHolding, setDeleteHolding] = useState(false)
   const deleteTimerRef = useRef(null)
+  const [cropMode, setCropMode] = useState(false)
+  const cropNodeRef = useRef(null)
+  const [cropImageRect, setCropImageRect] = useState({ x: 0, y: 0, w: 0, h: 0 })
+  const [cropRect, setCropRect] = useState({ left: 0, top: 0, right: 0, bottom: 0 })
 
   const showGrid = note.settings?.background === 'grid'
 
@@ -163,10 +174,52 @@ const CanvasView = forwardRef(function CanvasView(
     const dc = drawCanvasRef.current
     if (dc) resizeDrawCanvas(dc, wrapper.clientWidth, wrapper.clientHeight)
 
+    // Capture shouldCenter at effect-run time (not reactive — intentional).
+    const capturedShouldCenter = shouldCenter
+
     // Load snapshot: in-memory cache first (always current within a session),
     // then fall back to IndexedDB for first load or after page reload.
     function afterLoad() {
-      setTimeout(() => { if (!cancelled) history.reset() }, 150)
+      setTimeout(() => {
+        if (cancelled) return
+        // Old snapshots may have been saved with culled (visible:false) nodes — reset them all.
+        mainLayer.getChildren().forEach(n => {
+          if (n.getClassName() !== 'Transformer') n.visible(true)
+        })
+        history.reset()
+        if (capturedShouldCenter) {
+          // User explicitly opened this note — center on content.
+          const nodes = mainLayer.getChildren().filter(n => n.getClassName() !== 'Transformer')
+          if (!nodes.length) return
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+          nodes.forEach(n => {
+            const r = n.getClientRect({ relativeTo: stage })
+            minX = Math.min(minX, r.x)
+            minY = Math.min(minY, r.y)
+            maxX = Math.max(maxX, r.x + r.width)
+            maxY = Math.max(maxY, r.y + r.height)
+          })
+          const pad   = 60
+          const viewW = stage.width()
+          const viewH = stage.height()
+          const scale = Math.min((viewW - pad * 2) / (maxX - minX), (viewH - pad * 2) / (maxY - minY), 3)
+          const cx = (minX + maxX) / 2
+          const cy = (minY + maxY) / 2
+          const newX = viewW / 2 - cx * scale
+          const newY = viewH / 2 - cy * scale
+          stage.scale({ x: scale, y: scale })
+          stage.position({ x: newX, y: newY })
+          stage.batchDraw()
+          updateNoteSettings(note.id, { ...note.settings, zoom: scale, pan: { x: newX, y: newY } })
+        } else {
+          // Page restored (screen unlock / reload) — resume where user left off.
+          const zoom = note.settings?.zoom
+          const pan  = note.settings?.pan
+          if (zoom) stage.scale({ x: zoom, y: zoom })
+          if (pan)  stage.position(pan)
+          if (zoom || pan) stage.batchDraw()
+        }
+      }, 150)
     }
 
     let cancelled = false
@@ -185,8 +238,6 @@ const CanvasView = forwardRef(function CanvasView(
         }
       })
     }
-    if (note.settings?.zoom) stage.scale({ x: note.settings.zoom, y: note.settings.zoom })
-    if (note.settings?.pan)  stage.position(note.settings.pan)
 
     return () => {
       cancelled = true
@@ -202,31 +253,21 @@ const CanvasView = forwardRef(function CanvasView(
   }, [note.id])
 
   // Shared eraser logic used by Effect 2 (pen eraser button) and Effect 3.
-  // Uses Konva's hit canvas (getIntersection) for pixel-accurate shape testing
-  // instead of bounding-box overlap, so e.g. the empty corner of an L-shape is
-  // not treated as ink. Freehand Path nodes get a tight bbox fallback because
-  // a filled polygon's hit canvas area matches its visual area closely.
+  // Dense grid sampling with getIntersection gives pixel-accurate hit testing:
+  // freehand Path fills match the ink polygon exactly, stroked shapes only hit
+  // their border (no fill on committed shapes), so hollow interiors are ignored.
   function eraseAtContainerPos(containerPos, mainLayer, transformer) {
     const R = 8  // eraser radius in container/screen pixels
-    // Sample centre + 8 compass+diagonal points around the eraser circle.
-    const offsets = [
-      { x: 0, y: 0 },
-      { x: -R, y: 0 }, { x: R, y: 0 }, { x: 0, y: -R }, { x: 0, y: R },
-      { x: -R * 0.7, y: -R * 0.7 }, { x: R * 0.7, y: -R * 0.7 },
-      { x: -R * 0.7, y: R * 0.7  }, { x: R * 0.7, y: R * 0.7  },
-    ]
+    const STEP = 3
     const toDestroy = new Set()
-    for (const { x, y } of offsets) {
-      const hit = mainLayer.getIntersection({ x: containerPos.x + x, y: containerPos.y + y })
-      if (hit && hit.getClassName() !== 'Transformer' && !hit.attrs.isImage) {
-        toDestroy.add(hit)
+    for (let dy = -R; dy <= R; dy += STEP) {
+      for (let dx = -R; dx <= R; dx += STEP) {
+        if (dx * dx + dy * dy > R * R) continue
+        const hit = mainLayer.getIntersection({ x: containerPos.x + dx, y: containerPos.y + dy })
+        if (hit && hit.getClassName() !== 'Transformer' && !hit.attrs.isImage) {
+          toDestroy.add(hit)
+        }
       }
-    }
-    // Fallback for filled Path nodes (freehand): bounding box is tight enough.
-    const eraserBox = { x: containerPos.x - R, y: containerPos.y - R, width: R * 2, height: R * 2 }
-    for (const node of mainLayer.getChildren()) {
-      if (toDestroy.has(node) || node.getClassName() !== 'Path' || node.attrs.isImage) continue
-      if (Konva.Util.haveIntersection(eraserBox, node.getClientRect())) toDestroy.add(node)
     }
     let erased = false
     for (const node of toDestroy) {
@@ -260,6 +301,38 @@ const CanvasView = forwardRef(function CanvasView(
     let wheelRestoreTimer = null
     let navActive = false        // true while any navigation gesture is in progress
     let savedSelection = []     // transformer nodes saved at nav start, restored at nav end
+    let dragRaf       = null   // RAF token for image-drag redraws
+    let lastDrawPos   = null   // stage position at nav start (CSS transform baseline)
+    let lastDrawScale = null   // stage scale at nav start
+
+    // Frozen snapshot canvas: at startNav we GPU-blit the Konva canvas into this
+    // element and apply CSS transforms to it. The live Konva canvas is hidden below
+    // the overlay so it can redraw freely without causing double-shift artifacts.
+    const frozenCanvas = document.createElement('canvas')
+    frozenCanvas.style.cssText =
+      'position:absolute;top:0;left:0;pointer-events:none;display:none;transform-origin:0 0'
+    container.appendChild(frozenCanvas)
+
+    // CSS transform that maps the frozen nav-start bitmap to the current stage state.
+    // Called synchronously on every pointer/wheel event — no RAF lag.
+    function applyNavTransform() {
+      if (!lastDrawPos || !lastDrawScale) return
+      const stage = stageRef.current
+      if (!stage) return
+      const pos = stage.position(), scale = stage.scaleX()
+      const s  = scale / lastDrawScale
+      const tx = pos.x - lastDrawPos.x * s
+      const ty = pos.y - lastDrawPos.y * s
+      frozenCanvas.style.transform = `matrix(${s},0,0,${s},${tx},${ty})`
+    }
+
+    function scheduleImageDragDraw() {
+      if (dragRaf) return
+      dragRaf = requestAnimationFrame(() => {
+        dragRaf = null
+        mainLayerRef.current?.batchDraw()
+      })
+    }
 
     // 1-finger touch image drag state
     let touchDragNode = null      // selected image being dragged with 1 finger
@@ -345,16 +418,37 @@ const CanvasView = forwardRef(function CanvasView(
     function startNav() {
       if (navActive) return
       navActive = true
+      const stage = stageRef.current
       const tr = transformerRef.current
       if (tr) {
         savedSelection = tr.nodes().slice()
         tr.nodes([])
+      }
+      // Capture the stage state as the initial CSS-transform baseline.
+      // (Konva just drew at this position, so the baseline is correct.)
+      if (stage) {
+        lastDrawPos   = { ...stage.position() }
+        lastDrawScale = stage.scaleX()
       }
       const layer = mainLayerRef.current
       if (layer) {
         layer.getChildren().forEach(n => {
           if (n.getClassName() !== 'Transformer') n.draggable(false)
         })
+        // GPU-blit the current Konva canvas into the frozen snapshot overlay.
+        // drawImage() is a GPU copy and completes in microseconds regardless of
+        // how many strokes are rendered.
+        const src = layer.getCanvas()._canvas
+        frozenCanvas.width = src.width
+        frozenCanvas.height = src.height
+        frozenCanvas.style.width = src.style.width || src.width + 'px'
+        frozenCanvas.style.height = src.style.height || src.height + 'px'
+        frozenCanvas.getContext('2d').drawImage(src, 0, 0)
+        src.style.visibility = 'hidden'
+        frozenCanvas.style.display = ''
+        // Suppress Konva auto-redraws: the overlay hides the live canvas, so
+        // redraws waste CPU. Stage state is still updated for the grid RAF loop.
+        layer.batchDraw = () => {}
       }
       if (toolbarDivRef.current) toolbarDivRef.current.style.display = 'none'
     }
@@ -370,6 +464,8 @@ const CanvasView = forwardRef(function CanvasView(
         tr.nodes(stillAlive)
         savedSelection = []
       }
+      lastDrawPos   = null
+      lastDrawScale = null
       // Restore correct draggable state based on current tool.
       if (layer) {
         const canDrag = activeToolRef.current === 'select'
@@ -379,7 +475,13 @@ const CanvasView = forwardRef(function CanvasView(
           else n.draggable(canDrag)
         })
       }
-      layer?.batchDraw()
+      if (layer) {
+        delete layer.batchDraw          // restore Konva's normal batchDraw
+        layer.draw()                    // redraw at current stage state (synchronous)
+        layer.getCanvas()._canvas.style.visibility = ''  // restore live canvas
+        frozenCanvas.style.display = 'none'
+        frozenCanvas.style.transform  = ''
+      }
       // Reposition toolbar: single-node target takes precedence, otherwise
       // reposition for multi-selection if transformer still has nodes.
       if (toolbarTargetRef.current?.getStage()) {
@@ -525,7 +627,7 @@ const CanvasView = forwardRef(function CanvasView(
             })
             touchDragMoved = true
             if (toolbarDivRef.current) toolbarDivRef.current.style.display = 'none'
-            mainLayerRef.current?.batchDraw()
+            scheduleImageDragDraw()
           } else {
             // Normal 1-finger pan.
             const moved = Math.hypot(e.clientX - prev.startX, e.clientY - prev.startY)
@@ -535,8 +637,8 @@ const CanvasView = forwardRef(function CanvasView(
                 x: stage.x() + e.clientX - prev.x,
                 y: stage.y() + e.clientY - prev.y,
               })
-              stage.batchDraw()
-            }
+              applyNavTransform()
+                          }
           }
         } else if (touchPointers.size === 2) {
           // 2-finger pan + pinch — startNav already called in onPointerDown.
@@ -554,8 +656,8 @@ const CanvasView = forwardRef(function CanvasView(
               x: info.mid.x - box.left - midOnStage.x * newZoom + (lastPinchMid ? info.mid.x - lastPinchMid.x : 0),
               y: info.mid.y - box.top  - midOnStage.y * newZoom + (lastPinchMid ? info.mid.y - lastPinchMid.y : 0),
             })
-            stage.batchDraw()
-          }
+            applyNavTransform()
+                      }
           lastPinchDist = info.dist
           lastPinchMid  = { ...info.mid }
         }
@@ -570,8 +672,8 @@ const CanvasView = forwardRef(function CanvasView(
             x: stage.x() + e.clientX - lastMousePos.x,
             y: stage.y() + e.clientY - lastMousePos.y,
           })
-          stage.batchDraw()
-        }
+          applyNavTransform()
+                  }
         lastMousePos = { x: e.clientX, y: e.clientY }
       }
     }
@@ -679,7 +781,8 @@ const CanvasView = forwardRef(function CanvasView(
         endNav()
         savePanZoom()
       }, 150)
-      const scaleBy  = 1.05
+
+      const scaleBy  = 1.15
       const oldScale = stage.scaleX()
       const box = container.getBoundingClientRect()
       const ptr = { x: e.clientX - box.left, y: e.clientY - box.top }
@@ -691,7 +794,7 @@ const CanvasView = forwardRef(function CanvasView(
         x: ptr.x - (ptr.x - stage.x()) * (newScale / oldScale),
         y: ptr.y - (ptr.y - stage.y()) * (newScale / oldScale),
       })
-      stage.batchDraw()
+      applyNavTransform()
     }
 
     container.addEventListener('pointerdown',  onPointerDown, { capture: true })
@@ -707,6 +810,7 @@ const CanvasView = forwardRef(function CanvasView(
       container.removeEventListener('pointercancel',onPointerUp,   { capture: true })
       container.removeEventListener('wheel',        onWheel,       { passive: false })
       clearTimeout(wheelRestoreTimer)
+      if (container.contains(frozenCanvas)) container.removeChild(frozenCanvas)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note.id, positionAndShowToolbar, hideToolbar, positionToolbarAtTransformer])
@@ -931,13 +1035,15 @@ const CanvasView = forwardRef(function CanvasView(
         node = new Konva.Line({
           points: freehandPoints.flatMap(([x, y]) => [x, y]),
           stroke: penColorRef.current,
-          strokeWidth: sw,
-          hitStrokeWidth: Math.max(sw * 2, 12),
+          strokeWidth: sw * 2,
+          hitStrokeWidth: Math.max(sw * 4, HIT_MARGIN),
           opacity: opacityRef.current / 100,
           dash: style === 'dashed' ? [sw * 3, sw * 2] : [1, sw * 3],
           lineCap: 'round',
           lineJoin: 'round',
           draggable: false,
+          perfectDrawEnabled: false,
+          shadowForStrokeEnabled: false,
         })
       } else {
         const pathData = getSvgPathFromStroke(getStroke(freehandPoints, {
@@ -951,8 +1057,13 @@ const CanvasView = forwardRef(function CanvasView(
           node = new Konva.Path({
             data: pathData,
             fill: penColorRef.current,
+            stroke: penColorRef.current,
+            strokeWidth: penSizeRef.current * 0.5,
+            hitStrokeWidth: HIT_MARGIN,
             opacity: opacityRef.current / 100,
             draggable: false,
+            perfectDrawEnabled: false,
+            shadowForStrokeEnabled: false,
           })
         }
       }
@@ -965,7 +1076,11 @@ const CanvasView = forwardRef(function CanvasView(
 
     function commitShape() {
       if (!shapePreview) return
-      const clone = shapePreview.clone({ listening: true, draggable: false })
+      const cls = shapePreview.getClassName()
+      // Strip transparent fill so the hit canvas only covers the stroke border.
+      // Without this, getIntersection fires inside a hollow Rect/Ellipse.
+      const fillOverride = (cls === 'Rect' || cls === 'Ellipse' || (cls === 'Line' && shapePreview.closed())) ? { fill: null, fillEnabled: false } : {}
+      const clone = shapePreview.clone({ listening: true, draggable: false, ...fillOverride })
       shapePreview.destroy()
       shapePreview = null
       drawingLayer.batchDraw()
@@ -998,15 +1113,15 @@ const CanvasView = forwardRef(function CanvasView(
         return
       }
 
-      if (['rect', 'circle', 'line', 'arrow', 'lshape'].includes(tool)) {
+      if (['rect', 'circle', 'line', 'arrow', 'lshape', 'triangle'].includes(tool)) {
         shapeStart = pos
         const color = penColorRef.current
         const sw    = penSizeRef.current
         const op    = opacityRef.current / 100
         const style = strokeStyleRef.current
         const dash  = style === 'dashed' ? [sw * 3, sw * 2] : style === 'dotted' ? [1, sw * 3] : undefined
-        const hsw   = Math.max(sw * 2, 12)  // min 12 stage-px hit area so thin strokes are erasable
-        const base  = { stroke: color, strokeWidth: sw, opacity: op, listening: false, hitStrokeWidth: hsw, ...(dash ? { dash } : {}) }
+        const hsw   = Math.max(sw * 4, HIT_MARGIN)
+        const base  = { stroke: color, strokeWidth: sw * 2, opacity: op, listening: false, hitStrokeWidth: hsw, perfectDrawEnabled: false, shadowForStrokeEnabled: false, ...(dash ? { dash } : {}) }
         if (tool === 'rect') {
           shapePreview = new Konva.Rect({ x: pos.x, y: pos.y, width: 0, height: 0, fill: 'transparent', ...base })
         } else if (tool === 'circle') {
@@ -1017,6 +1132,8 @@ const CanvasView = forwardRef(function CanvasView(
           shapePreview = new Konva.Arrow({ points: [pos.x, pos.y, pos.x, pos.y], fill: color, pointerLength: sw * 4, pointerWidth: sw * 4, ...base })
         } else if (tool === 'lshape') {
           shapePreview = new Konva.Line({ points: [pos.x, pos.y, pos.x, pos.y, pos.x, pos.y], lineCap: 'round', lineJoin: 'round', ...base })
+        } else if (tool === 'triangle') {
+          shapePreview = new Konva.Line({ points: [pos.x, pos.y, pos.x, pos.y, pos.x, pos.y], closed: true, fill: 'transparent', lineJoin: 'round', ...base })
         }
         if (shapePreview) drawingLayer.add(shapePreview)
         return
@@ -1025,9 +1142,11 @@ const CanvasView = forwardRef(function CanvasView(
       if (tool === 'select') {
         const trNodes = transformer.nodes()
 
-        // Click inside the transformer bounding box (but not on a node) → drag all selected nodes.
-        // This lets the user grab the selection anywhere in the box, not just on the stroke pixels.
-        if (trNodes.length > 0 && e.target === stage) {
+        // Click inside the transformer bounding box → drag all selected nodes.
+        // Also triggers when clicking directly on a selected node in a multi-selection
+        // (otherwise Konva's built-in drag moves only that one node).
+        const targetInSelection = trNodes.length > 1 && trNodes.includes(e.target)
+        if (trNodes.length > 0 && (e.target === stage || targetInSelection)) {
           const cp  = stage.getPointerPosition() // container-relative, matches getClientRect()
           const box = transformer.getClientRect()
           if (cp && cp.x >= box.x && cp.x <= box.x + box.width &&
@@ -1038,6 +1157,8 @@ const CanvasView = forwardRef(function CanvasView(
             dragNodeOrigins = trNodes
               .filter(n => !n.attrs.isLocked)
               .map(n => ({ node: n, x: n.x(), y: n.y() }))
+            // Prevent Konva's built-in drag on the clicked node so it moves with the group.
+            if (targetInSelection) e.target.draggable(false)
             // Hide the Transformer during drag — avoids per-frame getClientRect()
             // calls on all selected nodes (expensive for complex paths).
             transformer.nodes([])
@@ -1045,14 +1166,14 @@ const CanvasView = forwardRef(function CanvasView(
           }
         }
 
-        // Click on empty stage area outside transformer box → start rubber-band
-        if (e.target === stage) {
+        // Start rubber-band on any empty-area click (or click on stroke with mouse).
+        // selRect stays hidden until the drag exceeds 3px so single-clicks still
+        // go through onClick for normal single-node selection.
+        if (!draggingNodes) {
           selecting = true
           selStart = pos
-          transformer.nodes([])
-          hideToolbar()
-          selRect.setAttrs({ x: pos.x, y: pos.y, width: 0, height: 0, visible: true })
-          mainLayer.batchDraw()
+          selRect.setAttrs({ x: pos.x, y: pos.y, width: 0, height: 0, visible: false })
+          drawingLayer.batchDraw()
         }
       }
     }
@@ -1123,17 +1244,30 @@ const CanvasView = forwardRef(function CanvasView(
             ? [pos.x, shapeStart.y]   // horizontal first, then vertical to cursor
             : [shapeStart.x, pos.y]   // vertical first, then horizontal to cursor
           shapePreview.points([shapeStart.x, shapeStart.y, ...mid, pos.x, pos.y])
+        } else if (tool === 'triangle') {
+          const left   = dx < 0 ? pos.x : shapeStart.x
+          const right  = dx < 0 ? shapeStart.x : pos.x
+          const top    = dy < 0 ? pos.y : shapeStart.y
+          const bottom = dy < 0 ? shapeStart.y : pos.y
+          shapePreview.points([(left + right) / 2, top, right, bottom, left, bottom])
         }
         drawingLayer.batchDraw()
         return
       }
 
       if (selecting) {
+        const sw = Math.abs(pos.x - selStart.x)
+        const sh = Math.abs(pos.y - selStart.y)
+        const nowVisible = sw > 3 || sh > 3
+        if (nowVisible && !selRect.visible()) {
+          transformer.nodes([])
+          hideToolbar()
+        }
         selRect.setAttrs({
           x: Math.min(selStart.x, pos.x),
           y: Math.min(selStart.y, pos.y),
-          width:  Math.abs(pos.x - selStart.x),
-          height: Math.abs(pos.y - selStart.y),
+          width: sw, height: sh,
+          visible: nowVisible,
         })
         drawingLayer.batchDraw()
       }
@@ -1146,6 +1280,12 @@ const CanvasView = forwardRef(function CanvasView(
       if (draggingNodes) {
         draggingNodes = false
         transformer.nodes(dragSavedNodes)
+        // Restore draggable — may have been disabled to block Konva's built-in drag.
+        const canDrag = activeToolRef.current === 'select'
+        dragSavedNodes.forEach(n => {
+          if (n.getClassName() === 'Transformer') return
+          n.draggable(n.attrs.isImage ? (!n.attrs.isLocked && canDrag) : canDrag)
+        })
         mainLayer.batchDraw()
         const target = toolbarTargetRef.current
         if (target) positionAndShowToolbar(target)
@@ -1161,14 +1301,22 @@ const CanvasView = forwardRef(function CanvasView(
         return
       }
       if (tool === 'pen' && freehandPoints.length)    { commitFreehand(); return }
-      if (['rect','circle','line','arrow','lshape'].includes(tool)) { commitShape(); return }
+      if (['rect','circle','line','arrow','lshape','triangle'].includes(tool)) { commitShape(); return }
 
       if (selecting) {
         selecting = false
         selRect.visible(false)
         drawingLayer.batchDraw()
-        if (selRect.width() > 5 && selRect.height() > 5) {
-          const selBox  = selRect.getClientRect()
+        const scale = stage.scaleX()
+        // Compute selBox in container-pixel space manually — selRect.getClientRect()
+        // can return wrong coords when the stage is panned or zoomed.
+        const selBox = {
+          x:      selRect.x() * scale + stage.x(),
+          y:      selRect.y() * scale + stage.y(),
+          width:  selRect.width()  * scale,
+          height: selRect.height() * scale,
+        }
+        if (selBox.width > 5 && selBox.height > 5) {
           const selected = mainLayer.getChildren().filter(n => {
             if (n.getClassName() === 'Transformer') return false
             if (n.attrs.isLocked) return false
@@ -1198,9 +1346,24 @@ const CanvasView = forwardRef(function CanvasView(
       }
 
       if (tool === 'select') {
+        // onClick fires after onPointerUp — skip if we just applied rubber-band selection.
+        if (justRubberBanded) { justRubberBanded = false; return }
         if (hit === stage) {
-          // onClick fires after onPointerUp — skip deselect if we just applied rubber-band.
-          if (justRubberBanded) { justRubberBanded = false; return }
+          // A locked image has listening:false so Konva reports stage as the hit target.
+          // Manually check if a locked image sits under the pointer before clearing.
+          const cp = stage.getPointerPosition()
+          if (cp) {
+            const children = mainLayer.getChildren()
+            for (let i = children.length - 1; i >= 0; i--) {
+              const n = children[i]
+              if (!n.attrs.isLocked) continue
+              const r = n.getClientRect()
+              if (cp.x >= r.x && cp.x <= r.x + r.width && cp.y >= r.y && cp.y <= r.y + r.height) {
+                positionAndShowToolbar(n)
+                return
+              }
+            }
+          }
           transformer.nodes([])
           mainLayer.batchDraw()
           hideToolbar()
@@ -1429,6 +1592,56 @@ const CanvasView = forwardRef(function CanvasView(
     scheduleSnapshot()
   }
 
+  function handleStartCrop() {
+    const node = toolbarTargetRef.current
+    const stage = stageRef.current
+    if (!node || !stage) return
+    const box  = stage.container().getBoundingClientRect()
+    const rect = node.getClientRect()
+    cropNodeRef.current = node
+    setCropImageRect({ x: box.left + rect.x, y: box.top + rect.y, w: rect.width, h: rect.height })
+    setCropRect({ left: 0, top: 0, right: rect.width, bottom: rect.height })
+    if (toolbarDivRef.current) toolbarDivRef.current.style.display = 'none'
+    setCropMode(true)
+  }
+
+  function applyCrop() {
+    const node  = cropNodeRef.current
+    const stage = stageRef.current
+    if (!node || !stage) return
+    const img      = node.attrs.image
+    const rect     = node.getClientRect()
+    const displayW = rect.width
+    const displayH = rect.height
+    const srcW     = node.cropWidth()  || img.naturalWidth
+    const srcH     = node.cropHeight() || img.naturalHeight
+    const offX     = node.cropX() || 0
+    const offY     = node.cropY() || 0
+    const ratioX   = srcW / displayW
+    const ratioY   = srcH / displayH
+    const { left, top, right, bottom } = cropRect
+    node.setAttrs({
+      cropX:      offX + left * ratioX,
+      cropY:      offY + top  * ratioY,
+      cropWidth:  (right - left)  * ratioX,
+      cropHeight: (bottom - top)  * ratioY,
+      width:      node.width()  * (right - left)  / displayW,
+      height:     node.height() * (bottom - top)  / displayH,
+      x:          node.x() + left / stage.scaleX(),
+      y:          node.y() + top  / stage.scaleY(),
+    })
+    mainLayerRef.current.batchDraw()
+    historyPushRef.current?.()
+    scheduleSnapshot()
+    setCropMode(false)
+    cropNodeRef.current = null
+  }
+
+  function cancelCrop() {
+    setCropMode(false)
+    cropNodeRef.current = null
+  }
+
   function handleDeletePointerDown(e) {
     e.preventDefault()
     setDeleteHolding(true)
@@ -1462,6 +1675,40 @@ const CanvasView = forwardRef(function CanvasView(
     nodes.forEach(n => n.destroy())
     mainLayer.batchDraw()
     hideToolbar()
+    history.pushState()
+    scheduleSnapshot()
+  }
+
+  function handleDuplicate() {
+    const mainLayer  = mainLayerRef.current
+    const transformer = transformerRef.current
+    if (!mainLayer) return
+
+    const nodes = [...(transformer?.nodes() ?? [])]
+    if (toolbarTargetRef.current && !nodes.includes(toolbarTargetRef.current)) nodes.push(toolbarTargetRef.current)
+    if (!nodes.length) return
+
+    const offset = 20
+    const newNodes = nodes.map(n => {
+      const clone = n.clone()
+      clone.x(n.x() + offset)
+      clone.y(n.y() + offset)
+      if (clone.attrs.isImage) {
+        clone.setAttrs({ isLocked: false, listening: true, draggable: true })
+        mainLayer.add(clone)
+        clone.moveToBottom()
+        transformer?.moveToTop()
+      } else {
+        clone.draggable(true)
+        mainLayer.add(clone)
+      }
+      return clone
+    })
+
+    transformer?.nodes(newNodes)
+    if (newNodes.length === 1) positionAndShowToolbar(newNodes[0])
+    else positionToolbarAtTransformer()
+    mainLayer.batchDraw()
     history.pushState()
     scheduleSnapshot()
   }
@@ -1529,6 +1776,16 @@ const CanvasView = forwardRef(function CanvasView(
       <div ref={konvaContainerRef} className="canvas-konva-layer" />
       <canvas ref={drawCanvasRef} className="canvas-draw-layer" />
 
+      {cropMode && (
+        <CropOverlay
+          imageRect={cropImageRect}
+          cropRect={cropRect}
+          onChange={setCropRect}
+          onConfirm={applyCrop}
+          onCancel={cancelCrop}
+        />
+      )}
+
       <div ref={toolbarDivRef} className="object-toolbar">
         {selectedType === 'image' && (
           <button
@@ -1574,8 +1831,21 @@ const CanvasView = forwardRef(function CanvasView(
                 <polyline points="7 13 10 17 13 13" />
               </svg>
             </button>
+            <button className="object-toolbar-btn" title="Bijsnijden" onClick={handleStartCrop}>
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 2v13h13" />
+                <path d="M15 18V5H2" />
+              </svg>
+            </button>
           </>
         )}
+
+        <button className="object-toolbar-btn" title="Dupliceren" onClick={handleDuplicate}>
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="7" y="7" width="9" height="9" rx="1.5" />
+            <path d="M4 13V4h9" />
+          </svg>
+        </button>
 
         {selectedType === 'image' ? (
           <button

@@ -11,9 +11,17 @@ export const liveSnapshotCache = new Map()
 // Called imperatively from CanvasView after any canvas mutation.
 export function usePersistence(mainLayerRef, noteId, scheduleRef) {
   const timerRef = useRef(null)
+  // Only flush on cleanup if the user actually made changes since mount.
+  // Without this guard, React Strict Mode's mount→cleanup→remount cycle fires
+  // flush() while the layer is still empty (async DB load not yet complete),
+  // overwriting both the cache and IndexedDB with an empty snapshot.
+  const dirtyRef = useRef(false)
 
   useEffect(() => {
+    dirtyRef.current = false
+
     function flush() {
+      if (!dirtyRef.current) return
       const layer = mainLayerRef.current
       if (!layer || !noteId) return
       const data = serializeLayer(layer)
@@ -24,6 +32,7 @@ export function usePersistence(mainLayerRef, noteId, scheduleRef) {
     scheduleRef.current = () => {
       const layer = mainLayerRef.current
       if (!layer || !noteId) return
+      dirtyRef.current = true
       // Serialize and cache immediately — this is the source of truth for the
       // current session. IndexedDB write is debounced behind it.
       const data = serializeLayer(layer)

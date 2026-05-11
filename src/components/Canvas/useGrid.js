@@ -61,8 +61,16 @@ export function useGrid(canvasWrapperRef, gridCanvasRef, stageRef, showGrid) {
     if (canvasWrapperRef.current) ro.observe(canvasWrapperRef.current)
     resize()
 
+    let prevScale = null, prevX = null, prevY = null, prevShow = null
     function tick() {
-      drawGrid()
+      const stage = stageRef.current
+      const s = stage?.scaleX() ?? 1
+      const x = stage?.x() ?? 0
+      const y = stage?.y() ?? 0
+      if (s !== prevScale || x !== prevX || y !== prevY || showGrid !== prevShow) {
+        prevScale = s; prevX = x; prevY = y; prevShow = showGrid
+        drawGrid()
+      }
       animFrameRef.current = requestAnimationFrame(tick)
     }
     animFrameRef.current = requestAnimationFrame(tick)

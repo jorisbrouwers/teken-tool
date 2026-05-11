@@ -15,8 +15,10 @@ function applySnapshot(snapshot, layer, transformer) {
   // Collect current images
   const images = layer.getChildren().filter(n => n.getClassName() === 'Image')
 
-  // Destroy all non-Transformer, non-Image nodes
-  layer.getChildren().forEach(n => {
+  // Destroy all non-Transformer, non-Image nodes.
+  // Spread to a copy first: destroy() mutates the live children array, causing
+  // forEach to skip every other node if iterated directly.
+  ;[...layer.getChildren()].forEach(n => {
     if (n.getClassName() !== 'Transformer' && n.getClassName() !== 'Image') n.destroy()
   })
 
