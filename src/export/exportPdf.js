@@ -1,8 +1,8 @@
 import { jsPDF } from 'jspdf'
 
-const GRID_SIZE = 25   // must match useGrid.js
-const MARGIN    = 40   // whitespace around content, in stage-space units
-const MAX_LONG  = 4000 // max output pixels on the longest side
+const GRID_SIZE  = 25     // must match useGrid.js
+const MARGIN     = 40     // whitespace around content, in stage-space units
+const MAX_LONG   = 8000   // max output pixels on the longest side
 
 export async function exportPdf(note, stage, showGrid) {
   const mainLayer = stage.getLayers()[0]
@@ -29,8 +29,8 @@ export async function exportPdf(note, stage, showGrid) {
   const cropSW = (maxX - minX) + MARGIN * 2
   const cropSH = (maxY - minY) + MARGIN * 2
 
-  // Output pixel dimensions: target 2 output px per stage unit, capped at MAX_LONG
-  const targetScale = Math.min(2, MAX_LONG / Math.max(cropSW, cropSH))
+  // Output pixel dimensions: target 3 output px per stage unit, capped at MAX_LONG
+  const targetScale = Math.min(3, MAX_LONG / Math.max(cropSW, cropSH))
   const outputW = Math.round(cropSW * targetScale)
   const outputH = Math.round(cropSH * targetScale)
 
@@ -52,7 +52,9 @@ export async function exportPdf(note, stage, showGrid) {
     pixelRatio,
   })
 
-  // Composite: white background → grid (optional) → Konva content
+  // Composite in correct layer order: white background → grid → Konva content.
+  // Grid is drawn before Konva so drawings appear on top of grid lines.
+  // White fill is required before JPEG encoding (JPEG has no alpha channel).
   const finalCanvas = document.createElement('canvas')
   finalCanvas.width  = outputW
   finalCanvas.height = outputH
@@ -64,7 +66,7 @@ export async function exportPdf(note, stage, showGrid) {
   if (showGrid) {
     ctx.beginPath()
     ctx.strokeStyle = '#d0d0d0'
-    ctx.lineWidth = 1
+    ctx.lineWidth = 2
     const firstNX = Math.floor(cropSX / GRID_SIZE)
     const firstNY = Math.floor(cropSY / GRID_SIZE)
     for (let n = firstNX; n * GRID_SIZE < cropSX + cropSW; n++) {
@@ -84,9 +86,9 @@ export async function exportPdf(note, stage, showGrid) {
 
   ctx.drawImage(konvaCanvas, 0, 0, outputW, outputH)
 
-  const dataUrl = finalCanvas.toDataURL('image/png')
+  const dataUrl = finalCanvas.toDataURL('image/jpeg', 0.85)
   const orientation = outputW >= outputH ? 'landscape' : 'portrait'
   const pdf = new jsPDF({ orientation, unit: 'px', format: [outputW, outputH] })
-  pdf.addImage(dataUrl, 'PNG', 0, 0, outputW, outputH)
-  pdf.save(`${note.title.replace(/[^a-z0-9_\-. ]/gi, '_')}.pdf`)
+  pdf.addImage(dataUrl, 'JPEG', 0, 0, outputW, outputH)
+  pdf.save(`schets_${note.title.replace(/[^a-z0-9_\-. ]/gi, '_')}.pdf`)
 }

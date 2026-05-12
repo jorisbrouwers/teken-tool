@@ -92,6 +92,14 @@ export default function App() {
     exportJnote(activeNote, mainLayer)
   }, [activeNote])
 
+  const handleExportAll = useCallback(async () => {
+    const stage = canvasViewRef.current?.getStage()
+    const mainLayer = canvasViewRef.current?.getMainLayer()
+    if (!stage || !mainLayer || !activeNote) return
+    await exportPdf(activeNote, stage, showGrid)
+    exportJnote(activeNote, mainLayer)
+  }, [activeNote, showGrid])
+
   const handleImportJnote = useCallback(async (file) => {
     try {
       const noteData = await parseJnote(file)
@@ -167,6 +175,7 @@ export default function App() {
       activeNote={activeNote}
       onExportPdf={handleExportPdf}
       onExportJnote={handleExportJnote}
+      onExportAll={handleExportAll}
       onSaveAsTemplate={handleSaveAsTemplate}
     />
   )

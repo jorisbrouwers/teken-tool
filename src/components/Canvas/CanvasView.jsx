@@ -75,6 +75,7 @@ const CanvasView = forwardRef(function CanvasView(
   // Survives Effect 3 re-runs (which reset local closure vars) so onClick doesn't
   // clear a selection that was just applied by a rubber-band drag.
   const justRubberBandedRef = useRef(false)
+  const justHandledTapRef   = useRef(false)
 
   // ─── Toolbar positioning ────────────────────────────────────────────────────
   const positionAndShowToolbar = useCallback((node) => {
@@ -869,6 +870,7 @@ const CanvasView = forwardRef(function CanvasView(
     let dragNodeOrigins     = []    // [{ node, x, y }] snapshot at drag start
     let dragSavedNodes      = []    // full transformer selection, restored after drag
     const justRubberBanded  = justRubberBandedRef // ref — survives Effect 3 re-runs
+    const justHandledTap    = justHandledTapRef
 
     function scheduleRenderLiveStroke() {
       if (rafId !== null) return
@@ -1143,6 +1145,13 @@ const CanvasView = forwardRef(function CanvasView(
       }
 
       if (tool === 'select') {
+        // If a locked image toolbar is showing, dismiss it immediately so the user
+        // can start rubber-band or click freely without a dedicated deselect step.
+        if (toolbarTargetRef.current?.attrs?.isLocked) {
+          hideToolbar()
+          toolbarTargetRef.current = null
+        }
+
         const trNodes = transformer.nodes()
 
         // Click inside the transformer bounding box → drag all selected nodes.
@@ -1350,6 +1359,52 @@ const CanvasView = forwardRef(function CanvasView(
           if (selected.length === 1) positionAndShowToolbar(selected[0])
           else if (selected.length > 1) positionToolbarAtTransformer()
           if (selected.length > 0) justRubberBanded.current = true
+        } else {
+          // Small movement = tap: handle selection/deselection directly.
+          // This covers pen/mouse jitter where Konva may not fire 'click'.
+          const cp = stage.getPointerPosition()
+          if (cp) {
+            let hit = mainLayer.getIntersection(cp)
+            // Locked images have listening:false — check them manually.
+            if (!hit || hit.getClassName() === 'Transformer') {
+              const children = mainLayer.getChildren()
+              for (let i = children.length - 1; i >= 0; i--) {
+                const n = children[i]
+                if (!n.attrs.isLocked) continue
+                const r = n.getClientRect()
+                if (cp.x >= r.x && cp.x <= r.x + r.width &&
+                    cp.y >= r.y && cp.y <= r.y + r.height) {
+                  hit = n; break
+                }
+              }
+            }
+            if (!hit || hit.getClassName() === 'Transformer') {
+              transformer.nodes([])
+              mainLayer.batchDraw()
+              hideToolbar()
+            } else if (hit.attrs.isLocked) {
+              transformer.nodes([])
+              mainLayer.batchDraw()
+              // Toggle: if this locked image was already showing its toolbar, deselect.
+              // This prevents a failed rubber-band attempt (< 5px) from re-showing the toolbar.
+              if (toolbarTargetRef.current === hit) {
+                hideToolbar()
+                toolbarTargetRef.current = null
+              } else {
+                positionAndShowToolbar(hit)
+              }
+            } else if (hit.attrs.isImage && transformer.nodes().includes(hit)) {
+              // Already-selected image: toggle off.
+              transformer.nodes([])
+              mainLayer.batchDraw()
+              hideToolbar()
+            } else {
+              transformer.nodes([hit])
+              mainLayer.batchDraw()
+              positionAndShowToolbar(hit)
+            }
+            justHandledTap.current = true
+          }
         }
       }
     }
@@ -1369,7 +1424,9 @@ const CanvasView = forwardRef(function CanvasView(
       }
 
       if (tool === 'select') {
-        // onClick fires after onPointerUp — skip if we just applied rubber-band selection.
+        // Skip if onPointerUp already handled this tap (pen jitter workaround).
+        if (justHandledTap.current) { justHandledTap.current = false; return }
+        // Skip if we just applied rubber-band selection.
         if (justRubberBanded.current) { justRubberBanded.current = false; return }
         if (hit === stage) {
           // A locked image has listening:false so Konva reports stage as the hit target.
@@ -1382,7 +1439,14 @@ const CanvasView = forwardRef(function CanvasView(
               if (!n.attrs.isLocked) continue
               const r = n.getClientRect()
               if (cp.x >= r.x && cp.x <= r.x + r.width && cp.y >= r.y && cp.y <= r.y + r.height) {
-                positionAndShowToolbar(n)
+                transformer.nodes([])
+                mainLayer.batchDraw()
+                if (toolbarTargetRef.current === n) {
+                  hideToolbar()
+                  toolbarTargetRef.current = null
+                } else {
+                  positionAndShowToolbar(n)
+                }
                 return
               }
             }
@@ -1393,7 +1457,24 @@ const CanvasView = forwardRef(function CanvasView(
           return
         }
         if (hit.getClassName() === 'Transformer') return
-        if (hit.attrs.isLocked) { positionAndShowToolbar(hit); return }
+        if (hit.attrs.isLocked) {
+          transformer.nodes([])
+          mainLayer.batchDraw()
+          if (toolbarTargetRef.current === hit) {
+            hideToolbar()
+            toolbarTargetRef.current = null
+          } else {
+            positionAndShowToolbar(hit)
+          }
+          return
+        }
+        if (hit.attrs.isImage && transformer.nodes().includes(hit)) {
+          // Toggle: click on already-selected image deselects it.
+          transformer.nodes([])
+          mainLayer.batchDraw()
+          hideToolbar()
+          return
+        }
         transformer.nodes([hit])
         mainLayer.batchDraw()
         positionAndShowToolbar(hit)

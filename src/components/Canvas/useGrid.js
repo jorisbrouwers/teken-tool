@@ -29,7 +29,7 @@ export function useGrid(canvasWrapperRef, gridCanvasRef, stageRef, showGrid) {
 
       // Line thickness scales with zoom so lines feel "real":
       // thin when zoomed out, thicker when zoomed in — same as OneNote.
-      const lineWidth = Math.max(0.4, Math.min(zoom * 0.6, 1.5))
+      const lineWidth = Math.max(0.2, Math.min(zoom * 0.4, 1.0))
 
       ctx.beginPath()
       ctx.strokeStyle = '#d0d0d0'
