@@ -173,7 +173,7 @@ export default function ProjectsPanel({
                       <div className="new-note-dropdown">
                         <div
                           className={`new-note-dropdown-item${!validTemplateId ? ' active' : ''}`}
-                          onPointerDown={() => selectTemplate(null)}
+                          onPointerDown={(e) => { e.preventDefault(); selectTemplate(null) }}
                         >
                           <span>Leeg</span>
                           {!validTemplateId && <span className="new-note-dropdown-check">✓</span>}
@@ -182,7 +182,7 @@ export default function ProjectsPanel({
                           <div
                             key={t.id}
                             className={`new-note-dropdown-item${validTemplateId === t.id ? ' active' : ''}`}
-                            onPointerDown={() => selectTemplate(t.id)}
+                            onPointerDown={(e) => { e.preventDefault(); selectTemplate(t.id) }}
                           >
                             <span>{t.title}</span>
                             {validTemplateId === t.id && <span className="new-note-dropdown-check">✓</span>}

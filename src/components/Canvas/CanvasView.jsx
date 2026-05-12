@@ -57,6 +57,7 @@ const CanvasView = forwardRef(function CanvasView(
   const deleteTimerRef = useRef(null)
   const [cropMode, setCropMode] = useState(false)
   const cropNodeRef = useRef(null)
+  const cropSavedRotationRef = useRef(0)
   const [cropImageRect, setCropImageRect] = useState({ x: 0, y: 0, w: 0, h: 0 })
   const [cropRect, setCropRect] = useState({ left: 0, top: 0, right: 0, bottom: 0 })
 
@@ -1061,8 +1062,6 @@ const CanvasView = forwardRef(function CanvasView(
           node = new Konva.Path({
             data: pathData,
             fill: penColorRef.current,
-            stroke: penColorRef.current,
-            strokeWidth: penSizeRef.current * 0.5,
             hitStrokeWidth: HIT_MARGIN,
             opacity: opacityRef.current / 100,
             draggable: false,
@@ -1502,7 +1501,8 @@ const CanvasView = forwardRef(function CanvasView(
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); history.redo() }
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (document.activeElement?.tagName === 'TEXTAREA') return
+        const tag = document.activeElement?.tagName
+        if (tag === 'TEXTAREA' || tag === 'INPUT') return
         const mainLayer  = mainLayerRef.current
         const transformer = transformerRef.current
         if (!mainLayer || !transformer) return
@@ -1620,9 +1620,25 @@ const CanvasView = forwardRef(function CanvasView(
     const node = toolbarTargetRef.current
     const stage = stageRef.current
     if (!node || !stage) return
+
+    // Temporarily reset rotation so the crop overlay and math are axis-aligned.
+    const savedRotation = node.rotation()
+    cropSavedRotationRef.current = savedRotation
+    if (savedRotation !== 0) {
+      const θ  = savedRotation * Math.PI / 180
+      const sx = node.scaleX(), sy = node.scaleY()
+      const w  = node.width() * sx, h = node.height() * sy
+      const cx = node.x() + (w * Math.cos(θ) - h * Math.sin(θ)) / 2
+      const cy = node.y() + (w * Math.sin(θ) + h * Math.cos(θ)) / 2
+      node.rotation(0)
+      node.x(cx - w / 2)
+      node.y(cy - h / 2)
+      mainLayerRef.current.batchDraw()
+    }
+
+    cropNodeRef.current = node
     const box  = stage.container().getBoundingClientRect()
     const rect = node.getClientRect()
-    cropNodeRef.current = node
     setCropImageRect({ x: box.left + rect.x, y: box.top + rect.y, w: rect.width, h: rect.height })
     setCropRect({ left: 0, top: 0, right: rect.width, bottom: rect.height })
     if (toolbarDivRef.current) toolbarDivRef.current.style.display = 'none'
@@ -1654,6 +1670,19 @@ const CanvasView = forwardRef(function CanvasView(
       x:          node.x() + left / stage.scaleX(),
       y:          node.y() + top  / stage.scaleY(),
     })
+    // Restore rotation that was reset in handleStartCrop.
+    const savedRotation = cropSavedRotationRef.current
+    if (savedRotation !== 0) {
+      const θ  = savedRotation * Math.PI / 180
+      const sx = node.scaleX(), sy = node.scaleY()
+      const w  = node.width() * sx, h = node.height() * sy
+      const cx = node.x() + w / 2
+      const cy = node.y() + h / 2
+      node.rotation(savedRotation)
+      node.x(cx - (w * Math.cos(θ) - h * Math.sin(θ)) / 2)
+      node.y(cy - (w * Math.sin(θ) + h * Math.cos(θ)) / 2)
+    }
+    cropSavedRotationRef.current = 0
     mainLayerRef.current.batchDraw()
     historyPushRef.current?.()
     scheduleSnapshot()
@@ -1662,6 +1691,20 @@ const CanvasView = forwardRef(function CanvasView(
   }
 
   function cancelCrop() {
+    const node = cropNodeRef.current
+    const savedRotation = cropSavedRotationRef.current
+    if (node && savedRotation !== 0) {
+      const θ  = savedRotation * Math.PI / 180
+      const sx = node.scaleX(), sy = node.scaleY()
+      const w  = node.width() * sx, h = node.height() * sy
+      const cx = node.x() + w / 2
+      const cy = node.y() + h / 2
+      node.rotation(savedRotation)
+      node.x(cx - (w * Math.cos(θ) - h * Math.sin(θ)) / 2)
+      node.y(cy - (w * Math.sin(θ) + h * Math.cos(θ)) / 2)
+      mainLayerRef.current.batchDraw()
+    }
+    cropSavedRotationRef.current = 0
     setCropMode(false)
     cropNodeRef.current = null
   }
