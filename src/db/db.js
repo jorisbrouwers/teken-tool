@@ -49,8 +49,8 @@ function newNote(title = 'Naamloos') {
 
 export async function createNote(title = 'Naamloos', isTemplate = false) {
   const all = await db.notes.where('deleted_at').equals(0).toArray()
-  const minOrder = all.reduce((m, n) => Math.min(m, n.sort_order ?? 0), 1)
-  const note = { ...newNote(title), sort_order: minOrder - 1, is_template: isTemplate }
+  const maxOrder = all.reduce((m, n) => Math.max(m, n.sort_order ?? 0), 0)
+  const note = { ...newNote(title), sort_order: maxOrder + 1, is_template: isTemplate }
   await db.notes.add(note)
   return note
 }
@@ -72,7 +72,7 @@ export async function getNote(id) {
 export async function duplicateNote(id) {
   const src = await db.notes.get(id)
   const all = await db.notes.where('deleted_at').equals(0).toArray()
-  const minOrder = all.reduce((m, n) => Math.min(m, n.sort_order ?? 0), 1)
+  const maxOrder = all.reduce((m, n) => Math.max(m, n.sort_order ?? 0), 0)
   const note = {
     ...src,
     id: generateUUID(),
@@ -80,7 +80,7 @@ export async function duplicateNote(id) {
     created_at: new Date().toISOString(),
     modified_at: new Date().toISOString(),
     deleted_at: 0,
-    sort_order: minOrder - 1,
+    sort_order: maxOrder + 1,
   }
   await db.notes.add(note)
   return note

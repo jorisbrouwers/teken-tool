@@ -71,6 +71,10 @@ const CanvasView = forwardRef(function CanvasView(
 
   function scheduleSnapshot() { persistenceScheduleRef.current?.() }
 
+  // Survives Effect 3 re-runs (which reset local closure vars) so onClick doesn't
+  // clear a selection that was just applied by a rubber-band drag.
+  const justRubberBandedRef = useRef(false)
+
   // ─── Toolbar positioning ────────────────────────────────────────────────────
   const positionAndShowToolbar = useCallback((node) => {
     const div   = toolbarDivRef.current
@@ -863,7 +867,7 @@ const CanvasView = forwardRef(function CanvasView(
     let dragOriginPos       = { x: 0, y: 0 }
     let dragNodeOrigins     = []    // [{ node, x, y }] snapshot at drag start
     let dragSavedNodes      = []    // full transformer selection, restored after drag
-    let justRubberBanded    = false // prevents onClick from clearing a fresh rubber-band selection
+    const justRubberBanded  = justRubberBandedRef // ref — survives Effect 3 re-runs
 
     function scheduleRenderLiveStroke() {
       if (rafId !== null) return
@@ -1307,9 +1311,9 @@ const CanvasView = forwardRef(function CanvasView(
         selecting = false
         selRect.visible(false)
         drawingLayer.batchDraw()
+        // Convert selRect (content-space) to container pixels so it matches
+        // getClientRect() which includes the stage transform.
         const scale = stage.scaleX()
-        // Compute selBox in container-pixel space manually — selRect.getClientRect()
-        // can return wrong coords when the stage is panned or zoomed.
         const selBox = {
           x:      selRect.x() * scale + stage.x(),
           y:      selRect.y() * scale + stage.y(),
@@ -1320,13 +1324,33 @@ const CanvasView = forwardRef(function CanvasView(
           const selected = mainLayer.getChildren().filter(n => {
             if (n.getClassName() === 'Transformer') return false
             if (n.attrs.isLocked) return false
-            return Konva.Util.haveIntersection(selBox, n.getClientRect())
+            const nodeBox = n.getClientRect()
+            if (!Konva.Util.haveIntersection(selBox, nodeBox)) return false
+            // Hollow shapes: reject if the entire selection sits inside the unfilled
+            // interior — the stroke border must be touched to count as a hit.
+            const cls = n.getClassName()
+            if (cls === 'Rect' || cls === 'Ellipse') {
+              const sw = n.strokeWidth() * scale
+              const inner = {
+                x: nodeBox.x + sw,
+                y: nodeBox.y + sw,
+                width:  Math.max(0, nodeBox.width  - sw * 2),
+                height: Math.max(0, nodeBox.height - sw * 2),
+              }
+              if (
+                inner.width > 0 && inner.height > 0 &&
+                selBox.x >= inner.x && selBox.y >= inner.y &&
+                selBox.x + selBox.width  <= inner.x + inner.width &&
+                selBox.y + selBox.height <= inner.y + inner.height
+              ) return false
+            }
+            return true
           })
           transformer.nodes(selected)
           mainLayer.batchDraw()
           if (selected.length === 1) positionAndShowToolbar(selected[0])
           else if (selected.length > 1) positionToolbarAtTransformer()
-          if (selected.length > 0) justRubberBanded = true
+          if (selected.length > 0) justRubberBanded.current = true
         }
       }
     }
@@ -1347,7 +1371,7 @@ const CanvasView = forwardRef(function CanvasView(
 
       if (tool === 'select') {
         // onClick fires after onPointerUp — skip if we just applied rubber-band selection.
-        if (justRubberBanded) { justRubberBanded = false; return }
+        if (justRubberBanded.current) { justRubberBanded.current = false; return }
         if (hit === stage) {
           // A locked image has listening:false so Konva reports stage as the hit target.
           // Manually check if a locked image sits under the pointer before clearing.

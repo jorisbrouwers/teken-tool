@@ -111,6 +111,16 @@ export default function ProjectsPanel({
     setRenamingNoteId(note?.id ?? null)
   }
 
+  async function handleDuplicate(id) {
+    const note = await onDuplicate(id)
+    setRenamingNoteId(note?.id ?? null)
+  }
+
+  async function handleCreateTemplate() {
+    const note = await onCreateTemplate()
+    setRenamingNoteId(note?.id ?? null)
+  }
+
   return (
     <div className="projects-backdrop" onClick={onClose}>
       <div className="projects-panel" onClick={(e) => e.stopPropagation()}>
@@ -209,7 +219,7 @@ export default function ProjectsPanel({
 
         {tab === 'Templates' && (
           <div className="projects-actions">
-            <button className="projects-new-btn" onClick={() => onCreateTemplate()}>
+            <button className="projects-new-btn" onClick={handleCreateTemplate}>
               + Nieuwe template
             </button>
           </div>
@@ -232,7 +242,7 @@ export default function ProjectsPanel({
                     onSelect={() => { onSelect(note.id); onClose() }}
                     onRename={onRename}
                     onDelete={onDelete}
-                    onDuplicate={onDuplicate}
+                    onDuplicate={handleDuplicate}
                     onMove={onMove}
                     autoRename={note.id === renamingNoteId}
                     onAutoRenameDone={() => setRenamingNoteId(null)}
@@ -258,8 +268,10 @@ export default function ProjectsPanel({
                     onSelect={() => { onSelect(note.id); onClose() }}
                     onRename={onRename}
                     onDelete={onDelete}
-                    onDuplicate={null}
-                    onMove={null}
+                    onDuplicate={handleDuplicate}
+                    onMove={onMove}
+                    autoRename={note.id === renamingNoteId}
+                    onAutoRenameDone={() => setRenamingNoteId(null)}
                   />
                 ))
               )}
