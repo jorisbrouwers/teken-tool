@@ -1,0 +1,28 @@
+.minimap-panel {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  width: 160px;
+  height: 160px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  cursor: crosshair;
+  user-select: none;
+  z-index: 10;
+  opacity: 0.88;
+  transition: opacity 0.15s;
+}
+
+.minimap-panel:hover {
+  opacity: 1;
+}
+
+.minimap-img {
+  display: block;
+  position: absolute;
+  pointer-events: none;
+}
+

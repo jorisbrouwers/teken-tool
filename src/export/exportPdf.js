@@ -90,5 +90,5 @@ export async function exportPdf(note, stage, showGrid) {
   const orientation = outputW >= outputH ? 'landscape' : 'portrait'
   const pdf = new jsPDF({ orientation, unit: 'px', format: [outputW, outputH] })
   pdf.addImage(dataUrl, 'JPEG', 0, 0, outputW, outputH)
-  pdf.save(`schets_${note.title.replace(/[^a-z0-9_\-. ]/gi, '_')}.pdf`)
+  pdf.save(`notitie_${note.title.replace(/[^a-z0-9_\-. ]/gi, '_')}.pdf`)
 }

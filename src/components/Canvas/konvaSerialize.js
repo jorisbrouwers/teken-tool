@@ -1,5 +1,14 @@
 import Konva from 'konva'
 
+// Serialize a specific set of nodes (for copy/paste).
+export function serializeNodes(nodes) {
+  return nodes.map(node => {
+    const attrs = { ...node.attrs }
+    if (node.getClassName() === 'Image') delete attrs.image
+    return { type: node.getClassName(), attrs }
+  })
+}
+
 // Serialize all user content (including images) — used for persistence.
 // Transformer is always excluded.
 export function serializeLayer(layer) {

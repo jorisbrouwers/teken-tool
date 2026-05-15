@@ -149,13 +149,13 @@ export async function sweepExpiredNotes() {
 export async function importNote(noteObj) {
   const now = new Date().toISOString()
   const all = await db.notes.where('deleted_at').equals(0).toArray()
-  const minOrder = all.reduce((m, n) => Math.min(m, n.sort_order ?? 0), 1)
+  const maxOrder = all.reduce((m, n) => Math.max(m, n.sort_order ?? 0), 0)
   const note = {
     ...noteObj,
     id: generateUUID(),
     deleted_at: 0,
     modified_at: now,
-    sort_order: minOrder - 1,
+    sort_order: maxOrder + 1,
     is_template: false,
   }
   await db.notes.add(note)

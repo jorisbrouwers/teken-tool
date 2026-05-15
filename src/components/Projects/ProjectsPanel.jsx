@@ -74,6 +74,7 @@ export default function ProjectsPanel({
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false)
   const importRef = useRef(null)
   const templateDropdownRef = useRef(null)
+  const lastTemplateSelectRef = useRef(0)
 
   // Validate stored template — fall back to blank if it no longer exists
   const validTemplateId = templateNotes.find(t => t.id === selectedTemplateId)?.id ?? null
@@ -90,6 +91,7 @@ export default function ProjectsPanel({
   }, [showTemplateDropdown])
 
   function selectTemplate(id) {
+    lastTemplateSelectRef.current = Date.now()
     setSelectedTemplateId(id)
     if (id) localStorage.setItem('jnote-new-note-template', id)
     else localStorage.removeItem('jnote-new-note-template')
@@ -97,6 +99,9 @@ export default function ProjectsPanel({
   }
 
   async function handleNewNote() {
+    // Ghost-click guard: touch/pen fires pointerup+click on the button behind the
+    // dropdown after it closes. Ignore if called within 400ms of a template selection.
+    if (Date.now() - lastTemplateSelectRef.current < 400) return
     if (validTemplateId) {
       const note = await onCreateFromTemplate(validTemplateId)
       setRenamingNoteId(note?.id ?? null)
@@ -170,10 +175,10 @@ export default function ProjectsPanel({
                       </svg>
                     </button>
                     {showTemplateDropdown && (
-                      <div className="new-note-dropdown">
+                      <div className="new-note-dropdown" onPointerDown={e => e.stopPropagation()}>
                         <div
                           className={`new-note-dropdown-item${!validTemplateId ? ' active' : ''}`}
-                          onPointerDown={(e) => { e.preventDefault(); selectTemplate(null) }}
+                          onClick={(e) => { e.stopPropagation(); selectTemplate(null) }}
                         >
                           <span>Leeg</span>
                           {!validTemplateId && <span className="new-note-dropdown-check">✓</span>}
@@ -182,7 +187,7 @@ export default function ProjectsPanel({
                           <div
                             key={t.id}
                             className={`new-note-dropdown-item${validTemplateId === t.id ? ' active' : ''}`}
-                            onPointerDown={(e) => { e.preventDefault(); selectTemplate(t.id) }}
+                            onClick={(e) => { e.stopPropagation(); selectTemplate(t.id) }}
                           >
                             <span>{t.title}</span>
                             {validTemplateId === t.id && <span className="new-note-dropdown-check">✓</span>}

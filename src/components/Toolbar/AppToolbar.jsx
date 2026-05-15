@@ -118,6 +118,8 @@ export default function AppToolbar({
   setActiveTool,
   showGrid,
   onToggleGrid,
+  snapEnabled,
+  onToggleSnap,
   onRename,
   onImportImage,
   onUndo,
@@ -126,6 +128,10 @@ export default function AppToolbar({
   menuSlot,
   notes,
   onSelectNote,
+  hasClipboard,
+  hasSelection,
+  onCopy,
+  onPaste,
 }) {
   const [renamingTitle, setRenamingTitle] = useState(false)
   const [titleValue, setTitleValue] = useState(note?.title ?? '')
@@ -294,6 +300,40 @@ export default function AppToolbar({
 
       <div className="toolbar-sep" />
 
+      {/* Undo/Redo */}
+      <button className="toolbar-btn" title="Ongedaan maken (Ctrl+Z)" onClick={onUndo}>{Icons.undo}</button>
+      <button className="toolbar-btn" title="Opnieuw (Ctrl+Y)" onClick={onRedo}>{Icons.redo}</button>
+
+      <div className="toolbar-sep" />
+
+      {/* Kopiëren / Plakken */}
+      <button
+        className="toolbar-btn"
+        title="Kopiëren"
+        onClick={hasSelection ? onCopy : undefined}
+        style={hasSelection ? {} : { opacity: 0.4, pointerEvents: 'none' }}
+      >
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="7" y="7" width="9" height="9" rx="1.5" />
+          <path d="M4 13V4h9" />
+        </svg>
+      </button>
+      <button
+        className="toolbar-btn"
+        title="Plakken"
+        onClick={hasClipboard ? onPaste : undefined}
+        style={hasClipboard ? {} : { opacity: 0.4, pointerEvents: 'none' }}
+      >
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7 3h6a1 1 0 0 1 1 1v1H6V4a1 1 0 0 1 1-1z" />
+          <rect x="4" y="5" width="12" height="13" rx="1.5" />
+          <line x1="7" y1="10" x2="13" y2="10" />
+          <line x1="7" y1="13" x2="11" y2="13" />
+        </svg>
+      </button>
+
+      <div className="toolbar-sep" />
+
       {/* Tekentools */}
       {TOOLS.map((tool) => (
         <button
@@ -308,12 +348,6 @@ export default function AppToolbar({
 
       <div className="toolbar-sep" />
 
-      {/* Undo/Redo */}
-      <button className="toolbar-btn" title="Ongedaan maken (Ctrl+Z)" onClick={onUndo}>{Icons.undo}</button>
-      <button className="toolbar-btn" title="Opnieuw (Ctrl+Y)" onClick={onRedo}>{Icons.redo}</button>
-
-      <div className="toolbar-sep" />
-
       {/* Grid toggle */}
       <button
         className={`toolbar-btn${showGrid ? ' active' : ''}`}
@@ -321,6 +355,19 @@ export default function AppToolbar({
         onClick={onToggleGrid}
       >
         {Icons.grid}
+      </button>
+
+      {/* Snap toggle */}
+      <button
+        className={`toolbar-btn${snapEnabled ? ' active' : ''}`}
+        title={snapEnabled ? 'Snappen aan/uit (nu aan)' : 'Snappen aan/uit (nu uit)'}
+        onClick={onToggleSnap}
+      >
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 15V8a5 5 0 0 1 10 0v7" />
+          <line x1="2.5" y1="15" x2="7.5" y2="15" />
+          <line x1="12.5" y1="15" x2="17.5" y2="15" />
+        </svg>
       </button>
 
       <div className="toolbar-sep" />
@@ -345,6 +392,7 @@ export default function AppToolbar({
       <button className="toolbar-btn" title="Camera" onClick={openCamera}>
         {Icons.camera}
       </button>
+
 
       {/* Camera modal */}
       {showCamera && (

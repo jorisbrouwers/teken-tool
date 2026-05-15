@@ -7,6 +7,7 @@ import StylePanel, { SIZE_MAP } from './components/StylePanel/StylePanel.jsx'
 import HamburgerMenu from './components/HamburgerMenu/HamburgerMenu.jsx'
 import ProjectsPanel from './components/Projects/ProjectsPanel.jsx'
 import { updateNoteSettings } from './db/db.js'
+import Calculator from './components/Calculator/Calculator.jsx'
 import { exportJnote } from './export/exportJnote.js'
 import { exportPdf } from './export/exportPdf.js'
 import { parseJnote } from './import/importJnote.js'
@@ -32,8 +33,12 @@ export default function App() {
   } = useNotes()
 
   const [projectsOpen, setProjectsOpen] = useState(false)
+  const [clipboardData, setClipboardData] = useState(null)
+  const [calcOpen, setCalcOpen] = useState(false)
+  const [hasSelection, setHasSelection] = useState(false)
   const [centerOnSelect, setCenterOnSelect] = useState(false)
   const [activeTool, setActiveTool] = useState('pen')
+  const [snapEnabled, setSnapEnabled] = useState(true)
 
   useEffect(() => { setCenterOnSelect(false) }, [activeNoteId])
 
@@ -132,6 +137,23 @@ export default function App() {
     return dup
   }, [duplicateNote, refreshNotes])
 
+  const handleCopyData = useCallback((data) => {
+    setClipboardData(data)
+  }, [])
+
+  const handleCopyClick = useCallback(() => {
+    canvasViewRef.current?.copySelection()
+  }, [])
+
+  const handlePaste = useCallback(() => {
+    if (!clipboardData) return
+    canvasViewRef.current?.pasteNodes(clipboardData)
+  }, [clipboardData])
+
+  const handleSelectionChange = useCallback((has) => {
+    setHasSelection(has)
+  }, [])
+
   const handleImportImage = useCallback((file) => {
     const addImage = canvasViewRef.current?.addImage
     if (!addImage) return
@@ -191,6 +213,8 @@ export default function App() {
               setActiveTool={handleToolSelect}
               showGrid={showGrid}
               onToggleGrid={handleToggleGrid}
+              snapEnabled={snapEnabled}
+              onToggleSnap={() => setSnapEnabled(v => !v)}
               onRename={renameNote}
               onImportImage={handleImportImage}
               onUndo={() => canvasViewRef.current?.undo()}
@@ -199,6 +223,10 @@ export default function App() {
               menuSlot={hamburgerMenu}
               notes={notes}
               onSelectNote={handleSelectNote}
+              hasClipboard={!!clipboardData}
+              hasSelection={hasSelection}
+              onCopy={handleCopyClick}
+              onPaste={handlePaste}
             />
             <CanvasView
               key={activeNote.id}
@@ -212,6 +240,9 @@ export default function App() {
               pressureSensitive={pressureSensitive}
               onInputDetected={handleInputDetected}
               shouldCenter={centerOnSelect}
+              onCopy={handleCopyData}
+              onSelectionChange={handleSelectionChange}
+              snapEnabled={snapEnabled}
             />
             <StylePanel
               activeTool={activeTool}
@@ -226,6 +257,28 @@ export default function App() {
               pressureSensitive={pressureSensitive}
               setPressureSensitive={setPressureSensitive}
             />
+            {calcOpen
+              ? <Calculator onClose={() => setCalcOpen(false)} />
+              : (
+                <button
+                  className="calc-fab"
+                  title="Rekenmachine"
+                  onClick={() => setCalcOpen(true)}
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="4" y="2" width="12" height="16" rx="1.5" />
+                    <rect x="6.5" y="4.5" width="7" height="3.5" rx="0.8" />
+                    <circle cx="7" cy="12" r="0.8" fill="currentColor" stroke="none" />
+                    <circle cx="10" cy="12" r="0.8" fill="currentColor" stroke="none" />
+                    <circle cx="13" cy="12" r="0.8" fill="currentColor" stroke="none" />
+                    <circle cx="7" cy="15" r="0.8" fill="currentColor" stroke="none" />
+                    <circle cx="10" cy="15" r="0.8" fill="currentColor" stroke="none" />
+                    <circle cx="13" cy="15" r="0.8" fill="currentColor" stroke="none" />
+                  </svg>
+                </button>
+              )
+            }
+
             <button
               className="center-content-fab"
               title="Centreer op inhoud"

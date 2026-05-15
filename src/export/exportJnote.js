@@ -19,7 +19,7 @@ export function exportJnote(note, mainLayer) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `schets_${note.title.replace(/[^a-z0-9_\-. ]/gi, '_')}.zip`
+  a.download = `notitie_${note.title.replace(/[^a-z0-9_\-. ]/gi, '_')}.zip`
   a.click()
   URL.revokeObjectURL(url)
 }

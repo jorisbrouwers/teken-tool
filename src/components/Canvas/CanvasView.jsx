@@ -5,6 +5,14 @@ import Konva from 'konva'
 // Larger = easier to tap thin lines; smaller = more precise eraser.
 const HIT_MARGIN = 8
 
+// Maps raw tablet pressure to a perceptual curve: flat in the 0.4–0.8 mid-range
+// (normal writing), thin below 0.4, thick only with deliberate hard press above 0.8.
+function transformPressure(raw) {
+  if (raw < 0.3) return 0.3 * (raw / 0.4)
+  if (raw < 0.7) return 0.3 + 0.35 * ((raw - 0.4) / 0.4)
+  return 0.65 + 0.35 * ((raw - 0.8) / 0.2)
+}
+
 
 import { getStroke } from 'perfect-freehand'
 import { getSvgPathFromStroke } from '../../math/svgPath.js'
@@ -12,14 +20,15 @@ import { usePersistence } from './usePersistence.js'
 import { useHistory } from './useHistory.js'
 import { useGrid } from './useGrid.js'
 import { evaluateExpression } from '../../math/mathEval.js'
-import { deserializeLayer } from './konvaSerialize.js'
+import { deserializeLayer, serializeNodes } from './konvaSerialize.js'
 import { liveSnapshotCache } from './usePersistence.js'
 import { getNote, updateNoteSettings } from '../../db/db.js'
 import CropOverlay from './CropOverlay.jsx'
+import Minimap from '../Minimap/Minimap.jsx'
 import './Canvas.css'
 
 const CanvasView = forwardRef(function CanvasView(
-  { note, activeTool, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, shouldCenter },
+  { note, activeTool, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, shouldCenter, onCopy, onSelectionChange, snapEnabled = true },
   ref
 ) {
   // ─── DOM + Konva refs ───────────────────────────────────────────────────────
@@ -55,6 +64,7 @@ const CanvasView = forwardRef(function CanvasView(
   const [selectedType, setSelectedType] = useState(null)
   const [deleteHolding, setDeleteHolding] = useState(false)
   const deleteTimerRef = useRef(null)
+  const [minimapVersion, setMinimapVersion] = useState(0)
   const [cropMode, setCropMode] = useState(false)
   const cropNodeRef = useRef(null)
   const cropSavedRotationRef = useRef(0)
@@ -63,6 +73,12 @@ const CanvasView = forwardRef(function CanvasView(
 
   const showGrid = note.settings?.background === 'grid'
 
+  const onSelectionChangeRef = useRef(onSelectionChange)
+  onSelectionChangeRef.current = onSelectionChange
+  const snapEnabledRef = useRef(snapEnabled)
+  snapEnabledRef.current = snapEnabled
+  useEffect(() => { onSelectionChangeRef.current?.(selectedType !== null) }, [selectedType])
+
   // ─── History + persistence ──────────────────────────────────────────────────
   const history = useHistory(mainLayerRef, transformerRef)
   const historyPushRef = useRef(null)
@@ -70,7 +86,10 @@ const CanvasView = forwardRef(function CanvasView(
   const persistenceScheduleRef = useRef(null)
   usePersistence(mainLayerRef, note.id, persistenceScheduleRef)
 
-  function scheduleSnapshot() { persistenceScheduleRef.current?.() }
+  function scheduleSnapshot() {
+    persistenceScheduleRef.current?.()
+    setMinimapVersion(v => v + 1)
+  }
 
   // Survives Effect 3 re-runs (which reset local closure vars) so onClick doesn't
   // clear a selection that was just applied by a rubber-band drag.
@@ -146,10 +165,10 @@ const CanvasView = forwardRef(function CanvasView(
       keepRatio: false,
       borderStroke: '#1971c2',
       borderStrokeWidth: 1,
-      anchorSize: 22,
+      anchorSize: 44,
       anchorStroke: '#1971c2',
       anchorFill: '#fff',
-      anchorCornerRadius: 11,   // fully circular
+      anchorCornerRadius: 22,   // fully circular
     })
     mainLayer.add(transformer)
     transformerRef.current = transformer
@@ -186,6 +205,16 @@ const CanvasView = forwardRef(function CanvasView(
     // Load snapshot: in-memory cache first (always current within a session),
     // then fall back to IndexedDB for first load or after page reload.
     function afterLoad() {
+      // Apply saved zoom/pan immediately so the stage is positioned correctly
+      // for operations (e.g. paste) that happen before the settle timeout below.
+      if (!capturedShouldCenter) {
+        const zoom = note.settings?.zoom
+        const pan  = note.settings?.pan
+        if (zoom) stage.scale({ x: zoom, y: zoom })
+        if (pan)  stage.position(pan)
+        if (zoom || pan) stage.batchDraw()
+      }
+
       setTimeout(() => {
         if (cancelled) return
         // Old snapshots may have been saved with culled (visible:false) nodes — reset them all.
@@ -218,13 +247,9 @@ const CanvasView = forwardRef(function CanvasView(
           stage.batchDraw()
           updateNoteSettings(note.id, { ...note.settings, zoom: scale, pan: { x: newX, y: newY } })
         } else {
-          // Page restored (screen unlock / reload) — resume where user left off.
-          const zoom = note.settings?.zoom
-          const pan  = note.settings?.pan
-          if (zoom) stage.scale({ x: zoom, y: zoom })
-          if (pan)  stage.position(pan)
-          if (zoom || pan) stage.batchDraw()
+          stage.batchDraw()
         }
+        setMinimapVersion(v => v + 1)
       }, 150)
     }
 
@@ -402,6 +427,11 @@ const CanvasView = forwardRef(function CanvasView(
       if (!stage || !mainLayer) return
       const pos = getContainerPos(clientX, clientY)
       eraseAtContainerPos(pos, mainLayer, transformer)
+    }
+
+    function updateAnchorSize(scale) {
+      const tr = transformerRef.current
+      if (tr) tr.anchorSize(Math.max(20, Math.min(44, 44 / scale)))
     }
 
     function savePanZoom() {
@@ -662,6 +692,7 @@ const CanvasView = forwardRef(function CanvasView(
               x: info.mid.x - box.left - midOnStage.x * newZoom + (lastPinchMid ? info.mid.x - lastPinchMid.x : 0),
               y: info.mid.y - box.top  - midOnStage.y * newZoom + (lastPinchMid ? info.mid.y - lastPinchMid.y : 0),
             })
+            updateAnchorSize(newZoom)
             applyNavTransform()
                       }
           lastPinchDist = info.dist
@@ -800,6 +831,7 @@ const CanvasView = forwardRef(function CanvasView(
         x: ptr.x - (ptr.x - stage.x()) * (newScale / oldScale),
         y: ptr.y - (ptr.y - stage.y()) * (newScale / oldScale),
       })
+      updateAnchorSize(newScale)
       applyNavTransform()
     }
 
@@ -859,6 +891,7 @@ const CanvasView = forwardRef(function CanvasView(
     let freehandPoints      = []    // accumulated [x, y, pressure] points
     let shapePreview        = null  // temporary shape on drawingLayer
     let shapeStart          = { x: 0, y: 0 }
+    let snapIndicator       = null  // dashed snap indicator line on drawingLayer
     let selecting           = false
     let selStart            = { x: 0, y: 0 }
     let erasing             = false
@@ -878,13 +911,13 @@ const CanvasView = forwardRef(function CanvasView(
         rafId = null
         // Aantal voorspelde punten: 0 = geen vooruitlopen (stabiel), hoger = responsiever maar kans op uitschieten.
         // Typisch bruikbaar bereik: 1–3. Aanpassen als tekenen spastisch aanvoelt.
-        const PREDICTED_POINTS = 1
+        const PREDICTED_POINTS = 0
         const predicted = []
         if (lastRawEvent?.getPredictedEvents) {
           for (const ce of lastRawEvent.getPredictedEvents().slice(0, PREDICTED_POINTS)) {
             const p = clientToStage(ce.clientX, ce.clientY)
             const raw = pressureSensitiveRef.current ? (ce.pressure ?? 0.5) : 0.5
-            predicted.push([p.x, p.y, Math.pow(raw, 1.5)])
+            predicted.push([p.x, p.y, transformPressure(raw)])
           }
         }
         renderLiveStroke(predicted)
@@ -917,9 +950,9 @@ const CanvasView = forwardRef(function CanvasView(
 
       const strokePoints = getStroke(allPts, {
         size: penSizeRef.current * 2,
-        thinning: pressureSensitiveRef.current ? 0.75 : 0,
-        smoothing: 0.5,
-        streamline: 0.5,
+        thinning: pressureSensitiveRef.current ? 0.6 : 0,
+        smoothing: 0.2,
+        streamline: 0.2,
         simulatePressure: false,
       })
       if (!strokePoints.length) return
@@ -1033,6 +1066,34 @@ const CanvasView = forwardRef(function CanvasView(
     // ── Commit helpers ──────────────────────────────────────────────────────
     function commitFreehand() {
       clearLiveCanvas()
+
+      // Tap detection: single point or all points within ~4px → draw a dot.
+      if (freehandPoints.length >= 1) {
+        const [x0, y0] = freehandPoints[0]
+        const isTap = freehandPoints.length < 2 || freehandPoints.every(([x, y]) => Math.hypot(x - x0, y - y0) < 0.5)
+        if (isTap) {
+          const sw  = penSizeRef.current
+          const avgPressure = freehandPoints.reduce((s, p) => s + (p[2] ?? 0.5), 0) / freehandPoints.length
+          const radius = sw * (0.6 + 0.6 * avgPressure)
+          const dot = new Konva.Circle({
+            x: x0, y: y0,
+            radius,
+            fill: penColorRef.current,
+            opacity: opacityRef.current / 100,
+            draggable: false,
+            perfectDrawEnabled: false,
+            shadowForStrokeEnabled: false,
+            hitStrokeWidth: HIT_MARGIN,
+          })
+          freehandPoints = []
+          mainLayer.add(dot); transformer.moveToTop()
+          mainLayer.batchDraw()
+          history.pushState()
+          scheduleSnapshot()
+          return
+        }
+      }
+
       if (freehandPoints.length < 2) { freehandPoints = []; return }
 
       const style = strokeStyleRef.current
@@ -1045,7 +1106,7 @@ const CanvasView = forwardRef(function CanvasView(
           strokeWidth: sw * 2,
           hitStrokeWidth: Math.max(sw * 4, HIT_MARGIN),
           opacity: opacityRef.current / 100,
-          dash: style === 'dashed' ? [sw * 3, sw * 2] : [1, sw * 3],
+          dash: style === 'dashed' ? [sw * 4, sw * 6] : [0.001, sw * 6],
           lineCap: 'round',
           lineJoin: 'round',
           draggable: false,
@@ -1053,11 +1114,20 @@ const CanvasView = forwardRef(function CanvasView(
           shadowForStrokeEnabled: false,
         })
       } else {
-        const pathData = getSvgPathFromStroke(getStroke(freehandPoints, {
+        // Fade pressure at start/end so short strokes taper naturally like a real pen.
+        const n = freehandPoints.length
+        const ramp = Math.min(3, Math.floor(n / 4))
+        const pts = freehandPoints.map((pt, i) => {
+          const p = pt[2] ?? 0.5
+          if (ramp > 0 && i < ramp)       return [pt[0], pt[1], p * (i + 1) / (ramp + 1)]
+          if (ramp > 0 && i >= n - ramp)  return [pt[0], pt[1], p * (n - i) / (ramp + 1)]
+          return pt
+        })
+        const pathData = getSvgPathFromStroke(getStroke(pts, {
           size: penSizeRef.current * 2,
-          thinning: pressureSensitiveRef.current ? 0.75 : 0,
-          smoothing: 0.5,
-          streamline: 0.5,
+          thinning: pressureSensitiveRef.current ? 0.6 : 0,
+          smoothing: 0.2,
+          streamline: 0.2,
           simulatePressure: false,
         }))
         if (pathData) {
@@ -1072,7 +1142,7 @@ const CanvasView = forwardRef(function CanvasView(
           })
         }
       }
-      if (node) { mainLayer.add(node) }
+      if (node) { mainLayer.add(node); transformer.moveToTop() }
       freehandPoints = []
       mainLayer.batchDraw()
       history.pushState()
@@ -1081,6 +1151,8 @@ const CanvasView = forwardRef(function CanvasView(
 
     function commitShape() {
       if (!shapePreview) return
+      snapIndicator?.destroy()
+      snapIndicator = null
       const cls = shapePreview.getClassName()
       // Strip transparent fill so the hit canvas only covers the stroke border.
       // Without this, getIntersection fires inside a hollow Rect/Ellipse.
@@ -1090,6 +1162,7 @@ const CanvasView = forwardRef(function CanvasView(
       shapePreview = null
       drawingLayer.batchDraw()
       mainLayer.add(clone)
+      transformer.moveToTop()
       mainLayer.batchDraw()
       history.pushState()
       scheduleSnapshot()
@@ -1113,7 +1186,7 @@ const CanvasView = forwardRef(function CanvasView(
 
       if (tool === 'pen') {
         const raw = pressureSensitiveRef.current ? (e.evt.pressure ?? 0.5) : 0.5
-        freehandPoints = [[pos.x, pos.y, Math.pow(raw, 2.5)]]
+        freehandPoints = [[pos.x, pos.y, transformPressure(raw)]]
         rawUpdateActive = false // reset so pointerrawupdate can re-engage this stroke
         return
       }
@@ -1124,9 +1197,9 @@ const CanvasView = forwardRef(function CanvasView(
         const sw    = penSizeRef.current
         const op    = opacityRef.current / 100
         const style = strokeStyleRef.current
-        const dash  = style === 'dashed' ? [sw * 3, sw * 2] : style === 'dotted' ? [1, sw * 3] : undefined
+        const dash  = style === 'dashed' ? [sw * 4, sw * 6] : style === 'dotted' ? [0.001, sw * 6] : undefined
         const hsw   = Math.max(sw * 4, HIT_MARGIN)
-        const base  = { stroke: color, strokeWidth: sw * 2, opacity: op, listening: false, hitStrokeWidth: hsw, perfectDrawEnabled: false, shadowForStrokeEnabled: false, ...(dash ? { dash } : {}) }
+        const base  = { stroke: color, strokeWidth: sw * 2, opacity: op, listening: false, hitStrokeWidth: hsw, perfectDrawEnabled: false, shadowForStrokeEnabled: false, ...(dash ? { dash, lineCap: 'round', lineJoin: 'round' } : {}) }
         if (tool === 'rect') {
           shapePreview = new Konva.Rect({ x: pos.x, y: pos.y, width: 0, height: 0, fill: 'transparent', ...base })
         } else if (tool === 'circle') {
@@ -1223,7 +1296,7 @@ const CanvasView = forwardRef(function CanvasView(
           for (const ce of nativeEvents) {
             const p = clientToStage(ce.clientX, ce.clientY)
             const raw = pressureSensitiveRef.current ? (ce.pressure ?? 0.5) : 0.5
-            freehandPoints.push([p.x, p.y, Math.pow(raw, 2.5)])
+            freehandPoints.push([p.x, p.y, transformPressure(raw)])
           }
           lastRawEvent = e.evt
           scheduleRenderLiveStroke()
@@ -1248,7 +1321,44 @@ const CanvasView = forwardRef(function CanvasView(
             radiusY: Math.abs(dy) / 2,
           })
         } else if (tool === 'line' || tool === 'arrow') {
-          shapePreview.points([shapeStart.x, shapeStart.y, pos.x, pos.y])
+          let endX = pos.x, endY = pos.y
+          const rdx = pos.x - shapeStart.x, rdy = pos.y - shapeStart.y
+          const angle = Math.atan2(rdy, rdx)
+          const snappedAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4)
+          const SNAP_RAD = 3 * Math.PI / 180
+          const isSnapping = snapEnabledRef.current && Math.abs(angle - snappedAngle) < SNAP_RAD
+          if (isSnapping) {
+            const len = Math.hypot(rdx, rdy)
+            endX = shapeStart.x + Math.cos(snappedAngle) * len
+            endY = shapeStart.y + Math.sin(snappedAngle) * len
+          }
+          shapePreview.points([shapeStart.x, shapeStart.y, endX, endY])
+          if (isSnapping) {
+            // Extend indicator to full canvas edges in the snapped direction
+            const sc = Math.cos(snappedAngle), ss = Math.sin(snappedAngle)
+            const sc2 = stage.scaleX()
+            const left   = (-stage.x()) / sc2
+            const right  = (stage.width()  - stage.x()) / sc2
+            const top    = (-stage.y()) / sc2
+            const bottom = (stage.height() - stage.y()) / sc2
+            const ts = []
+            if (Math.abs(sc) > 1e-9) { ts.push((left  - shapeStart.x) / sc); ts.push((right - shapeStart.x) / sc) }
+            if (Math.abs(ss) > 1e-9) { ts.push((top   - shapeStart.y) / ss); ts.push((bottom - shapeStart.y) / ss) }
+            const tMin = Math.min(...ts), tMax = Math.max(...ts)
+            const p1x = shapeStart.x + tMin * sc, p1y = shapeStart.y + tMin * ss
+            const p2x = shapeStart.x + tMax * sc, p2y = shapeStart.y + tMax * ss
+            if (!snapIndicator) {
+              snapIndicator = new Konva.Line({
+                stroke: '#1971c2', strokeWidth: 1, strokeScaleEnabled: false,
+                dash: [6, 5], opacity: 0.55, listening: false, perfectDrawEnabled: false,
+              })
+              drawingLayer.add(snapIndicator)
+            }
+            snapIndicator.points([p1x, p1y, p2x, p2y])
+          } else {
+            snapIndicator?.destroy()
+            snapIndicator = null
+          }
         } else if (tool === 'lshape') {
           const dx = Math.abs(pos.x - shapeStart.x)
           const dy = Math.abs(pos.y - shapeStart.y)
@@ -1494,7 +1604,42 @@ const CanvasView = forwardRef(function CanvasView(
     })
 
     // Reposition toolbar after transform / drag
+    transformer.on('transformstart', () => {
+      transformer.nodes().forEach(node => {
+        if (node.attrs.isImage) return
+        node.setAttr('_origSw', node.strokeWidth())
+      })
+    })
+
+    // Keep strokeWidth visually constant while handles are dragged.
+    transformer.on('transform', () => {
+      transformer.nodes().forEach(node => {
+        if (node.attrs.isImage) return
+        const origSw = node.getAttr('_origSw')
+        if (origSw == null) return
+        const s = Math.sqrt(Math.abs(node.scaleX()) * Math.abs(node.scaleY()))
+        if (s > 0) node.strokeWidth(origSw / s)
+      })
+    })
+
     transformer.on('transformend', () => {
+      transformer.nodes().forEach(node => {
+        if (node.attrs.isImage) return  // images: keep scale as-is
+        // Restore original strokeWidth before baking geometry (compensated value was only visual).
+        const origSw = node.getAttr('_origSw')
+        if (origSw != null) { node.strokeWidth(origSw); node.setAttr('_origSw', null) }
+        const sx = node.scaleX(), sy = node.scaleY()
+        if (Math.abs(sx - 1) < 1e-6 && Math.abs(sy - 1) < 1e-6) return
+        const cls = node.getClassName()
+        if (cls === 'Rect') {
+          node.setAttrs({ width: node.width() * sx, height: node.height() * sy, scaleX: 1, scaleY: 1 })
+        } else if (cls === 'Ellipse') {
+          node.setAttrs({ radiusX: node.radiusX() * sx, radiusY: node.radiusY() * sy, scaleX: 1, scaleY: 1 })
+        } else if (cls === 'Line' || cls === 'Arrow') {
+          const pts = node.points()
+          node.setAttrs({ points: pts.map((v, i) => v * (i % 2 === 0 ? sx : sy)), scaleX: 1, scaleY: 1 })
+        }
+      })
       history.pushState()
       scheduleSnapshot()
       const target = toolbarTargetRef.current
@@ -1516,7 +1661,7 @@ const CanvasView = forwardRef(function CanvasView(
       rawUpdateActive = true
       const p = clientToStage(e.clientX, e.clientY)
       const raw = pressureSensitiveRef.current ? (e.pressure ?? 0.5) : 0.5
-      freehandPoints.push([p.x, p.y, Math.pow(raw, 2.5)])
+      freehandPoints.push([p.x, p.y, transformPressure(raw)])
       lastRawEvent = e
       scheduleRenderLiveStroke()
     }
@@ -1537,6 +1682,8 @@ const CanvasView = forwardRef(function CanvasView(
       stage.off('pointerup',   onPointerUp)
       stage.off('click',       onClick)
       stage.off('dblclick',    onDblClick)
+      transformer.off('transformstart')
+      transformer.off('transform')
       transformer.off('transformend')
       mainLayer.off('dragend')
       if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null }
@@ -1827,6 +1974,14 @@ const CanvasView = forwardRef(function CanvasView(
     scheduleSnapshot()
   }
 
+  function handleCopy() {
+    const transformer = transformerRef.current
+    const nodes = [...(transformer?.nodes() ?? [])]
+    if (toolbarTargetRef.current && !nodes.includes(toolbarTargetRef.current)) nodes.push(toolbarTargetRef.current)
+    if (!nodes.length) return
+    onCopy?.(serializeNodes(nodes))
+  }
+
   function handleDuplicate() {
     const mainLayer  = mainLayerRef.current
     const transformer = transformerRef.current
@@ -1853,6 +2008,7 @@ const CanvasView = forwardRef(function CanvasView(
       return clone
     })
 
+    transformer?.moveToTop()
     transformer?.nodes(newNodes)
     if (newNodes.length === 1) positionAndShowToolbar(newNodes[0])
     else positionToolbarAtTransformer()
@@ -1867,6 +2023,7 @@ const CanvasView = forwardRef(function CanvasView(
     getMainLayer: () => mainLayerRef.current,
     undo: history.undo,
     redo: history.redo,
+    copySelection: handleCopy,
     addImage: (konvaImageNode) => {
       const mainLayer  = mainLayerRef.current
       const transformer = transformerRef.current
@@ -1877,6 +2034,69 @@ const CanvasView = forwardRef(function CanvasView(
       mainLayer.batchDraw()
       transformer?.nodes([konvaImageNode])
       positionAndShowToolbar(konvaImageNode)
+      scheduleSnapshot()
+    },
+    pasteNodes: (data) => {
+      const mainLayer  = mainLayerRef.current
+      const transformer = transformerRef.current
+      const stage      = stageRef.current
+      if (!mainLayer || !data?.length || !stage) return
+
+      // Compute centroid of pasted nodes in content-space.
+      // Lines/arrows store their coordinates in attrs.points (absolute) with x=0,y=0,
+      // so we must include point coordinates, not just x/y/width/height.
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      data.forEach(({ attrs }) => {
+        const nx = attrs.x ?? 0, ny = attrs.y ?? 0
+        if (attrs.points?.length >= 2) {
+          for (let i = 0; i < attrs.points.length - 1; i += 2) {
+            const px = nx + attrs.points[i], py = ny + attrs.points[i + 1]
+            minX = Math.min(minX, px); maxX = Math.max(maxX, px)
+            minY = Math.min(minY, py); maxY = Math.max(maxY, py)
+          }
+        } else {
+          const w = attrs.width ?? 0, h = attrs.height ?? 0
+          minX = Math.min(minX, nx); maxX = Math.max(maxX, nx + w)
+          minY = Math.min(minY, ny); maxY = Math.max(maxY, ny + h)
+        }
+      })
+      const srcCx = (minX + maxX) / 2
+      const srcCy = (minY + maxY) / 2
+      const scale = stage.scaleX()
+      const viewCx = (stage.width()  / 2 - stage.x()) / scale
+      const viewCy = (stage.height() / 2 - stage.y()) / scale
+      const dx = viewCx - srcCx, dy = viewCy - srcCy
+
+      const newNodes = []
+      data.forEach(({ type, attrs }) => {
+        const newAttrs = { ...attrs, x: (attrs.x ?? 0) + dx, y: (attrs.y ?? 0) + dy }
+        if (type === 'Image') {
+          const img = new Image()
+          img.onload = () => {
+            const node = new Konva.Image({ ...newAttrs, image: img, isLocked: false, listening: true, draggable: true })
+            mainLayer.add(node)
+            node.moveToBottom()
+            transformer?.moveToTop()
+            mainLayer.batchDraw()
+          }
+          img.src = attrs.src
+        } else {
+          const Cls = Konva[type]
+          if (!Cls) return
+          const node = new Cls({ ...newAttrs, draggable: false })
+          mainLayer.add(node)
+          newNodes.push(node)
+        }
+      })
+
+      transformer?.moveToTop()
+      if (newNodes.length) {
+        transformer?.nodes(newNodes)
+        if (newNodes.length === 1) positionAndShowToolbar(newNodes[0])
+        else positionToolbarAtTransformer()
+      }
+      mainLayer.batchDraw()
+      history.pushState()
       scheduleSnapshot()
     },
     centerToContent: () => {
@@ -1933,6 +2153,8 @@ const CanvasView = forwardRef(function CanvasView(
           onCancel={cancelCrop}
         />
       )}
+
+      <Minimap stageRef={stageRef} mainLayerRef={mainLayerRef} version={minimapVersion} />
 
       <div ref={toolbarDivRef} className="object-toolbar">
         {selectedType === 'image' && (
