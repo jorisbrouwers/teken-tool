@@ -5,14 +5,6 @@ import Konva from 'konva'
 // Larger = easier to tap thin lines; smaller = more precise eraser.
 const HIT_MARGIN = 8
 
-// Maps raw tablet pressure to a perceptual curve: flat in the 0.4–0.8 mid-range
-// (normal writing), thin below 0.4, thick only with deliberate hard press above 0.8.
-function transformPressure(raw) {
-  if (raw < 0.3) return 0.3 * (raw / 0.4)
-  if (raw < 0.7) return 0.3 + 0.35 * ((raw - 0.4) / 0.4)
-  return 0.65 + 0.35 * ((raw - 0.8) / 0.2)
-}
-
 
 import { getStroke } from 'perfect-freehand'
 import { getSvgPathFromStroke } from '../../math/svgPath.js'
@@ -165,7 +157,7 @@ const CanvasView = forwardRef(function CanvasView(
       keepRatio: false,
       borderStroke: '#1971c2',
       borderStrokeWidth: 1,
-      anchorSize: 44,
+      anchorSize: 25,
       anchorStroke: '#1971c2',
       anchorFill: '#fff',
       anchorCornerRadius: 22,   // fully circular
@@ -431,7 +423,7 @@ const CanvasView = forwardRef(function CanvasView(
 
     function updateAnchorSize(scale) {
       const tr = transformerRef.current
-      if (tr) tr.anchorSize(Math.max(20, Math.min(44, 44 / scale)))
+      if (tr) tr.anchorSize(Math.max(10, Math.min(22, 22 / scale)))
     }
 
     function savePanZoom() {
@@ -911,13 +903,13 @@ const CanvasView = forwardRef(function CanvasView(
         rafId = null
         // Aantal voorspelde punten: 0 = geen vooruitlopen (stabiel), hoger = responsiever maar kans op uitschieten.
         // Typisch bruikbaar bereik: 1–3. Aanpassen als tekenen spastisch aanvoelt.
-        const PREDICTED_POINTS = 0
+        const PREDICTED_POINTS = 1
         const predicted = []
         if (lastRawEvent?.getPredictedEvents) {
           for (const ce of lastRawEvent.getPredictedEvents().slice(0, PREDICTED_POINTS)) {
             const p = clientToStage(ce.clientX, ce.clientY)
             const raw = pressureSensitiveRef.current ? (ce.pressure ?? 0.5) : 0.5
-            predicted.push([p.x, p.y, transformPressure(raw)])
+            predicted.push([p.x, p.y, Math.pow(raw, 1.5)])
           }
         }
         renderLiveStroke(predicted)
@@ -945,22 +937,27 @@ const CanvasView = forwardRef(function CanvasView(
       if (!canvas || !ctx) return
       ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-      const allPts = predictedPts.length ? [...freehandPoints, ...predictedPts] : freehandPoints
-      if (allPts.length < 2) return
+      const rawPts = predictedPts.length ? [...freehandPoints, ...predictedPts] : freehandPoints
+      if (rawPts.length < 2) return
+
+      // Normalize to screen space so perfect-freehand always works with realistic
+      // coordinate magnitudes regardless of zoom level.
+      const scale = stage.scaleX()
+      const allPts = rawPts.map(([x, y, p]) => [x * scale, y * scale, p])
 
       const strokePoints = getStroke(allPts, {
-        size: penSizeRef.current * 2,
-        thinning: pressureSensitiveRef.current ? 0.6 : 0,
-        smoothing: 0.2,
-        streamline: 0.2,
+        size: penSizeRef.current * 2 * scale,
+        thinning: pressureSensitiveRef.current ? 0.75 : 0,
+        smoothing: 0.5,
+        streamline: 0.5,
         simulatePressure: false,
       })
       if (!strokePoints.length) return
 
-      const scale = stage.scaleX()
-      const dpr   = window.devicePixelRatio || 1
+      const dpr = window.devicePixelRatio || 1
       ctx.save()
-      ctx.setTransform(scale * dpr, 0, 0, scale * dpr, stage.x() * dpr, stage.y() * dpr)
+      // Points are already in screen space (content × scale), so only pan + dpr needed.
+      ctx.setTransform(dpr, 0, 0, dpr, stage.x() * dpr, stage.y() * dpr)
       ctx.fillStyle = penColorRef.current
       ctx.globalAlpha = opacityRef.current / 100
 
@@ -1066,34 +1063,6 @@ const CanvasView = forwardRef(function CanvasView(
     // ── Commit helpers ──────────────────────────────────────────────────────
     function commitFreehand() {
       clearLiveCanvas()
-
-      // Tap detection: single point or all points within ~4px → draw a dot.
-      if (freehandPoints.length >= 1) {
-        const [x0, y0] = freehandPoints[0]
-        const isTap = freehandPoints.length < 2 || freehandPoints.every(([x, y]) => Math.hypot(x - x0, y - y0) < 0.5)
-        if (isTap) {
-          const sw  = penSizeRef.current
-          const avgPressure = freehandPoints.reduce((s, p) => s + (p[2] ?? 0.5), 0) / freehandPoints.length
-          const radius = sw * (0.6 + 0.6 * avgPressure)
-          const dot = new Konva.Circle({
-            x: x0, y: y0,
-            radius,
-            fill: penColorRef.current,
-            opacity: opacityRef.current / 100,
-            draggable: false,
-            perfectDrawEnabled: false,
-            shadowForStrokeEnabled: false,
-            hitStrokeWidth: HIT_MARGIN,
-          })
-          freehandPoints = []
-          mainLayer.add(dot); transformer.moveToTop()
-          mainLayer.batchDraw()
-          history.pushState()
-          scheduleSnapshot()
-          return
-        }
-      }
-
       if (freehandPoints.length < 2) { freehandPoints = []; return }
 
       const style = strokeStyleRef.current
@@ -1114,25 +1083,21 @@ const CanvasView = forwardRef(function CanvasView(
           shadowForStrokeEnabled: false,
         })
       } else {
-        // Fade pressure at start/end so short strokes taper naturally like a real pen.
-        const n = freehandPoints.length
-        const ramp = Math.min(3, Math.floor(n / 4))
-        const pts = freehandPoints.map((pt, i) => {
-          const p = pt[2] ?? 0.5
-          if (ramp > 0 && i < ramp)       return [pt[0], pt[1], p * (i + 1) / (ramp + 1)]
-          if (ramp > 0 && i >= n - ramp)  return [pt[0], pt[1], p * (n - i) / (ramp + 1)]
-          return pt
-        })
-        const pathData = getSvgPathFromStroke(getStroke(pts, {
-          size: penSizeRef.current * 2,
-          thinning: pressureSensitiveRef.current ? 0.6 : 0,
-          smoothing: 0.2,
-          streamline: 0.2,
+        // Normalize to screen space so perfect-freehand works well at any zoom level.
+        const sc = stage.scaleX()
+        const scaledPts = freehandPoints.map(([x, y, p]) => [x * sc, y * sc, p])
+        const pathData = getSvgPathFromStroke(getStroke(scaledPts, {
+          size: penSizeRef.current * 2 * sc,
+          thinning: pressureSensitiveRef.current ? 0.75 : 0,
+          smoothing: 0.5,
+          streamline: 0.5,
           simulatePressure: false,
         }))
         if (pathData) {
           node = new Konva.Path({
             data: pathData,
+            scaleX: 1 / sc,
+            scaleY: 1 / sc,
             fill: penColorRef.current,
             hitStrokeWidth: HIT_MARGIN,
             opacity: opacityRef.current / 100,
@@ -1186,7 +1151,7 @@ const CanvasView = forwardRef(function CanvasView(
 
       if (tool === 'pen') {
         const raw = pressureSensitiveRef.current ? (e.evt.pressure ?? 0.5) : 0.5
-        freehandPoints = [[pos.x, pos.y, transformPressure(raw)]]
+        freehandPoints = [[pos.x, pos.y, Math.pow(raw, 2.5)]]
         rawUpdateActive = false // reset so pointerrawupdate can re-engage this stroke
         return
       }
@@ -1296,7 +1261,7 @@ const CanvasView = forwardRef(function CanvasView(
           for (const ce of nativeEvents) {
             const p = clientToStage(ce.clientX, ce.clientY)
             const raw = pressureSensitiveRef.current ? (ce.pressure ?? 0.5) : 0.5
-            freehandPoints.push([p.x, p.y, transformPressure(raw)])
+            freehandPoints.push([p.x, p.y, Math.pow(raw, 2.5)])
           }
           lastRawEvent = e.evt
           scheduleRenderLiveStroke()
@@ -1661,7 +1626,7 @@ const CanvasView = forwardRef(function CanvasView(
       rawUpdateActive = true
       const p = clientToStage(e.clientX, e.clientY)
       const raw = pressureSensitiveRef.current ? (e.pressure ?? 0.5) : 0.5
-      freehandPoints.push([p.x, p.y, transformPressure(raw)])
+      freehandPoints.push([p.x, p.y, Math.pow(raw, 2.5)])
       lastRawEvent = e
       scheduleRenderLiveStroke()
     }
@@ -1695,6 +1660,18 @@ const CanvasView = forwardRef(function CanvasView(
   }, [note.id, positionAndShowToolbar, hideToolbar, positionToolbarAtTransformer, history])
 
   // ───────────────────────────────────────────────────────────────────────────
+  // EFFECT 4a — Deselect when switching away from select tool
+  // ───────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (activeTool === 'select') return
+    const tr = transformerRef.current
+    const ml = mainLayerRef.current
+    if (!tr || !tr.nodes().length) return
+    tr.nodes([])
+    hideToolbar()
+    ml?.batchDraw()
+  }, [activeTool, hideToolbar])
+
   // EFFECT 4 — Cursor and draggable state
   // ───────────────────────────────────────────────────────────────────────────
   useEffect(() => {
