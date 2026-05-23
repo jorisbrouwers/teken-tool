@@ -156,8 +156,8 @@ export default function AppToolbar({
         setShowNoteDropdown(false)
       }
     }
-    document.addEventListener('pointerdown', onClickOutside)
-    return () => document.removeEventListener('pointerdown', onClickOutside)
+    document.addEventListener('pointerdown', onClickOutside, true)
+    return () => document.removeEventListener('pointerdown', onClickOutside, true)
   }, [showNoteDropdown])
 
   useEffect(() => {
@@ -230,7 +230,7 @@ export default function AppToolbar({
 
   function openNoteDropdown() {
     const r = noteTitleRef.current.getBoundingClientRect()
-    setNoteDropdownPos({ top: r.bottom + 4, left: r.left })
+    setNoteDropdownPos({ top: r.bottom + 4, left: r.left, width: r.width, maxHeight: window.innerHeight - r.bottom - 12 })
     setShowNoteDropdown(true)
   }
 
@@ -280,17 +280,13 @@ export default function AppToolbar({
         <div
           ref={noteDropdownRef}
           className="note-switcher-dropdown"
-          style={{ top: noteDropdownPos.top, left: noteDropdownPos.left }}
+          style={{ top: noteDropdownPos.top, left: noteDropdownPos.left, width: noteDropdownPos.width, maxHeight: noteDropdownPos.maxHeight }}
         >
           {(notes ?? []).map(n => (
             <div
               key={n.id}
               className={`note-switcher-item${n.id === note?.id ? ' note-switcher-item--active' : ''}`}
-              onPointerDown={(e) => {
-                e.preventDefault()
-                onSelectNote(n.id)
-                setShowNoteDropdown(false)
-              }}
+              onClick={() => { onSelectNote(n.id); setShowNoteDropdown(false) }}
             >
               <span className="note-switcher-item-title">{n.title}</span>
             </div>

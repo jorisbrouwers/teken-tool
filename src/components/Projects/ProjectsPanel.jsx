@@ -127,8 +127,8 @@ export default function ProjectsPanel({
   }
 
   return (
-    <div className="projects-backdrop" onClick={onClose}>
-      <div className="projects-panel" onClick={(e) => e.stopPropagation()}>
+    <div className="projects-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="projects-panel" onPointerDown={(e) => e.stopPropagation()}>
         <div className="projects-header">
           <span className="projects-title">Projecten</span>
           <button className="projects-close" onClick={onClose} title="Sluiten">✕</button>
