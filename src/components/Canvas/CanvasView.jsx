@@ -8,6 +8,7 @@ const HIT_MARGIN = 8
 
 import { getStroke } from 'perfect-freehand'
 import { getSvgPathFromStroke } from '../../math/svgPath.js'
+import { INPUT_CONFIG } from '../../platform/inputConfig.js'
 import { usePersistence } from './usePersistence.js'
 import { useHistory } from './useHistory.js'
 import { useGrid } from './useGrid.js'
@@ -60,6 +61,7 @@ const CanvasView = forwardRef(function CanvasView(
   const [cropMode, setCropMode] = useState(false)
   const cropNodeRef = useRef(null)
   const cropSavedRotationRef = useRef(0)
+  const cropSavedFlipRef = useRef({ x: 1, y: 1 })
   const [cropImageRect, setCropImageRect] = useState({ x: 0, y: 0, w: 0, h: 0 })
   const [cropRect, setCropRect] = useState({ left: 0, top: 0, right: 0, bottom: 0 })
 
@@ -161,6 +163,7 @@ const CanvasView = forwardRef(function CanvasView(
       anchorStroke: '#1971c2',
       anchorFill: '#fff',
       anchorCornerRadius: 22,   // fully circular
+      padding: 16,
     })
     mainLayer.add(transformer)
     transformerRef.current = transformer
@@ -905,11 +908,13 @@ const CanvasView = forwardRef(function CanvasView(
         // Typisch bruikbaar bereik: 1–3. Aanpassen als tekenen spastisch aanvoelt.
         const PREDICTED_POINTS = 1
         const predicted = []
-        if (lastRawEvent?.getPredictedEvents) {
+        // Op iOS/Safari zijn predicted events onstabiel en worden overgeslagen.
+        // Op Windows/Chromium werken ze correct (pointerrawupdate + getPredictedEvents).
+        if (INPUT_CONFIG.usePredictedEvents && lastRawEvent?.getPredictedEvents) {
           for (const ce of lastRawEvent.getPredictedEvents().slice(0, PREDICTED_POINTS)) {
             const p = clientToStage(ce.clientX, ce.clientY)
             const raw = pressureSensitiveRef.current ? (ce.pressure ?? 0.5) : 0.5
-            predicted.push([p.x, p.y, Math.pow(raw, 1.5)])
+            predicted.push([p.x, p.y, Math.pow(raw, INPUT_CONFIG.pressureExponentRender)])
           }
         }
         renderLiveStroke(predicted)
@@ -948,8 +953,8 @@ const CanvasView = forwardRef(function CanvasView(
       const strokePoints = getStroke(allPts, {
         size: penSizeRef.current * 2 * scale,
         thinning: pressureSensitiveRef.current ? 0.75 : 0,
-        smoothing: 0.5,
-        streamline: 0.5,
+        smoothing: INPUT_CONFIG.smoothing,
+        streamline: INPUT_CONFIG.streamline,
         simulatePressure: false,
       })
       if (!strokePoints.length) return
@@ -1076,6 +1081,9 @@ const CanvasView = forwardRef(function CanvasView(
           hitStrokeWidth: Math.max(sw * 4, HIT_MARGIN),
           opacity: opacityRef.current / 100,
           dash: style === 'dashed' ? [sw * 4, sw * 6] : [0.001, sw * 6],
+          // Catmull-Rom spline: verdeelt het dash-patroon over een gladde curve
+          // in plaats van ruwe polyline-segmenten → consistente stippel/streepafstand.
+          tension: 0.5,
           lineCap: 'round',
           lineJoin: 'round',
           draggable: false,
@@ -1089,8 +1097,8 @@ const CanvasView = forwardRef(function CanvasView(
         const pathData = getSvgPathFromStroke(getStroke(scaledPts, {
           size: penSizeRef.current * 2 * sc,
           thinning: pressureSensitiveRef.current ? 0.75 : 0,
-          smoothing: 0.5,
-          streamline: 0.5,
+          smoothing: INPUT_CONFIG.smoothing,
+          streamline: INPUT_CONFIG.streamline,
           simulatePressure: false,
         }))
         if (pathData) {
@@ -1151,7 +1159,7 @@ const CanvasView = forwardRef(function CanvasView(
 
       if (tool === 'pen') {
         const raw = pressureSensitiveRef.current ? (e.evt.pressure ?? 0.5) : 0.5
-        freehandPoints = [[pos.x, pos.y, Math.pow(raw, 2.5)]]
+        freehandPoints = [[pos.x, pos.y, Math.pow(raw, INPUT_CONFIG.pressureExponentDown)]]
         rawUpdateActive = false // reset so pointerrawupdate can re-engage this stroke
         return
       }
@@ -1261,7 +1269,7 @@ const CanvasView = forwardRef(function CanvasView(
           for (const ce of nativeEvents) {
             const p = clientToStage(ce.clientX, ce.clientY)
             const raw = pressureSensitiveRef.current ? (ce.pressure ?? 0.5) : 0.5
-            freehandPoints.push([p.x, p.y, Math.pow(raw, 2.5)])
+            freehandPoints.push([p.x, p.y, Math.pow(raw, INPUT_CONFIG.pressureExponentDown)])
           }
           lastRawEvent = e.evt
           scheduleRenderLiveStroke()
@@ -1826,18 +1834,26 @@ const CanvasView = forwardRef(function CanvasView(
     const stage = stageRef.current
     if (!node || !stage) return
 
-    // Temporarily reset rotation so the crop overlay and math are axis-aligned.
+    // Temporarily reset rotation and flip so crop overlay and math are axis-aligned.
     const savedRotation = node.rotation()
+    const savedScaleX = node.scaleX()
+    const savedScaleY = node.scaleY()
     cropSavedRotationRef.current = savedRotation
-    if (savedRotation !== 0) {
-      const θ  = savedRotation * Math.PI / 180
-      const sx = node.scaleX(), sy = node.scaleY()
-      const w  = node.width() * sx, h = node.height() * sy
-      const cx = node.x() + (w * Math.cos(θ) - h * Math.sin(θ)) / 2
-      const cy = node.y() + (w * Math.sin(θ) + h * Math.cos(θ)) / 2
+    cropSavedFlipRef.current = { x: savedScaleX < 0 ? -1 : 1, y: savedScaleY < 0 ? -1 : 1 }
+
+    if (savedRotation !== 0 || savedScaleX < 0 || savedScaleY < 0) {
+      const θ   = savedRotation * Math.PI / 180
+      // Signed scale gives signed w/h — center formula works correctly for all combinations
+      const w   = node.width()  * savedScaleX
+      const h   = node.height() * savedScaleY
+      const cx  = node.x() + (w * Math.cos(θ) - h * Math.sin(θ)) / 2
+      const cy  = node.y() + (w * Math.sin(θ) + h * Math.cos(θ)) / 2
+      const wAbs = Math.abs(w), hAbs = Math.abs(h)
       node.rotation(0)
-      node.x(cx - w / 2)
-      node.y(cy - h / 2)
+      node.scaleX(Math.abs(savedScaleX))
+      node.scaleY(Math.abs(savedScaleY))
+      node.x(cx - wAbs / 2)
+      node.y(cy - hAbs / 2)
       mainLayerRef.current.batchDraw()
     }
 
@@ -1875,19 +1891,28 @@ const CanvasView = forwardRef(function CanvasView(
       x:          node.x() + left / stage.scaleX(),
       y:          node.y() + top  / stage.scaleY(),
     })
-    // Restore rotation that was reset in handleStartCrop.
+    // Restore rotation and flip that were reset in handleStartCrop.
     const savedRotation = cropSavedRotationRef.current
-    if (savedRotation !== 0) {
-      const θ  = savedRotation * Math.PI / 180
-      const sx = node.scaleX(), sy = node.scaleY()
-      const w  = node.width() * sx, h = node.height() * sy
-      const cx = node.x() + w / 2
-      const cy = node.y() + h / 2
+    const savedFlip     = cropSavedFlipRef.current
+    if (savedRotation !== 0 || savedFlip.x < 0 || savedFlip.y < 0) {
+      const θ          = savedRotation * Math.PI / 180
+      const absScaleX  = node.scaleX(), absScaleY = node.scaleY()  // positive after normalization
+      const w          = node.width() * absScaleX
+      const h          = node.height() * absScaleY
+      const cx         = node.x() + w / 2
+      const cy         = node.y() + h / 2
+      const finalScaleX = savedFlip.x * absScaleX
+      const finalScaleY = savedFlip.y * absScaleY
       node.rotation(savedRotation)
-      node.x(cx - (w * Math.cos(θ) - h * Math.sin(θ)) / 2)
-      node.y(cy - (w * Math.sin(θ) + h * Math.cos(θ)) / 2)
+      node.scaleX(finalScaleX)
+      node.scaleY(finalScaleY)
+      const wS = node.width() * finalScaleX
+      const hS = node.height() * finalScaleY
+      node.x(cx - (wS * Math.cos(θ) - hS * Math.sin(θ)) / 2)
+      node.y(cy - (wS * Math.sin(θ) + hS * Math.cos(θ)) / 2)
     }
     cropSavedRotationRef.current = 0
+    cropSavedFlipRef.current = { x: 1, y: 1 }
     mainLayerRef.current.batchDraw()
     historyPushRef.current?.()
     scheduleSnapshot()
@@ -1896,20 +1921,29 @@ const CanvasView = forwardRef(function CanvasView(
   }
 
   function cancelCrop() {
-    const node = cropNodeRef.current
+    const node          = cropNodeRef.current
     const savedRotation = cropSavedRotationRef.current
-    if (node && savedRotation !== 0) {
-      const θ  = savedRotation * Math.PI / 180
-      const sx = node.scaleX(), sy = node.scaleY()
-      const w  = node.width() * sx, h = node.height() * sy
-      const cx = node.x() + w / 2
-      const cy = node.y() + h / 2
+    const savedFlip     = cropSavedFlipRef.current
+    if (node && (savedRotation !== 0 || savedFlip.x < 0 || savedFlip.y < 0)) {
+      const θ          = savedRotation * Math.PI / 180
+      const absScaleX  = node.scaleX(), absScaleY = node.scaleY()
+      const w          = node.width() * absScaleX
+      const h          = node.height() * absScaleY
+      const cx         = node.x() + w / 2
+      const cy         = node.y() + h / 2
+      const finalScaleX = savedFlip.x * absScaleX
+      const finalScaleY = savedFlip.y * absScaleY
       node.rotation(savedRotation)
-      node.x(cx - (w * Math.cos(θ) - h * Math.sin(θ)) / 2)
-      node.y(cy - (w * Math.sin(θ) + h * Math.cos(θ)) / 2)
+      node.scaleX(finalScaleX)
+      node.scaleY(finalScaleY)
+      const wS = node.width() * finalScaleX
+      const hS = node.height() * finalScaleY
+      node.x(cx - (wS * Math.cos(θ) - hS * Math.sin(θ)) / 2)
+      node.y(cy - (wS * Math.sin(θ) + hS * Math.cos(θ)) / 2)
       mainLayerRef.current.batchDraw()
     }
     cropSavedRotationRef.current = 0
+    cropSavedFlipRef.current = { x: 1, y: 1 }
     setCropMode(false)
     cropNodeRef.current = null
   }
@@ -2157,11 +2191,19 @@ const CanvasView = forwardRef(function CanvasView(
         {selectedType === 'image' && !imageLocked && (
           <>
             <button className="object-toolbar-btn" title="90° met de klok mee draaien" onClick={handleRotate}>
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                {/* 270° CW arc: top → right → bottom → left, leaving 90° gap at top-left */}
-                <path d="M 10 4 A 6 6 0 1 1 4 10" />
-                {/* Arrowhead at (4,10) pointing upward (CW tangent direction at left) */}
-                <polyline points="1 13 4 10 7 13" />
+              <svg
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M6 4a7 7 0 0 1 10 2" />
+                <polyline points="16 2.5 16 7 11.5 7" />
+
+                <path d="M14 16a7 7 0 0 1-10-2" />
+                <polyline points="4 17.5 4 13 8.5 13" />
               </svg>
             </button>
             <button className="object-toolbar-btn" title="Horizontaal spiegelen" onClick={handleFlipH}>
