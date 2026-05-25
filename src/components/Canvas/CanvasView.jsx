@@ -360,6 +360,10 @@ const CanvasView = forwardRef(function CanvasView(
       })
     }
 
+    // Double-tap detection state (touch/finger only)
+    let lastTapTime   = 0
+    let lastTapClient = null   // { x, y } of the previous tap
+
     // 1-finger touch image drag state
     let touchDragNode = null      // selected image being dragged with 1 finger
     let touchDragStageStart = null
@@ -437,6 +441,33 @@ const CanvasView = forwardRef(function CanvasView(
         zoom: stage.scaleX(),
         pan: { x: stage.x(), y: stage.y() },
       })
+    }
+
+    // Smooth animated pan+zoom to a target stage position and scale.
+    // Uses the frozenCanvas overlay so the canvas stays crisp during the animation.
+    function animateNav(targetX, targetY, targetScale, duration = 280) {
+      const stage = stageRef.current
+      if (!stage) return
+      startNav()
+      const x0 = stage.x(), y0 = stage.y(), s0 = stage.scaleX()
+      const t0 = performance.now()
+      function ease(t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t }
+      function frame(now) {
+        const t = Math.min((now - t0) / duration, 1)
+        const e = ease(t)
+        const s = s0 + (targetScale - s0) * e
+        stage.scale({ x: s, y: s })
+        stage.position({ x: x0 + (targetX - x0) * e, y: y0 + (targetY - y0) * e })
+        updateAnchorSize(s)
+        applyNavTransform()
+        if (t < 1) {
+          requestAnimationFrame(frame)
+        } else {
+          endNav()
+          savePanZoom()
+        }
+      }
+      requestAnimationFrame(frame)
     }
 
     // Deselect everything at navigation start so Konva never calls getClientRect()
@@ -753,7 +784,59 @@ const CanvasView = forwardRef(function CanvasView(
           // but we detect the gesture via navActive having been true during the gesture).
           // Use the moved threshold: multi-finger gestures always move > 12 px total.
           if (moved < 12) {
-            // Tap: manual hit-test and selection.
+            // ── Double-tap detection (finger only) ──────────────────────────
+            const now = Date.now()
+            const tapDist = lastTapClient
+              ? Math.hypot(e.clientX - lastTapClient.x, e.clientY - lastTapClient.y)
+              : Infinity
+            if (now - lastTapTime < 350 && tapDist < 40) {
+              // Double-tap: navigate to the tapped location.
+              lastTapTime   = 0
+              lastTapClient = null
+              const stage = stageRef.current
+              const cont  = stage?.container()
+              if (stage && cont) {
+                const pos = getContainerPos(e.clientX, e.clientY)
+                const mainLayer = mainLayerRef.current
+                // Hit-test: check normal nodes, then locked images manually.
+                let hit = mainLayer?.getIntersection(pos)
+                if (!hit || hit.getClassName() === 'Transformer') {
+                  const children = mainLayer?.getChildren() ?? []
+                  for (let i = children.length - 1; i >= 0; i--) {
+                    const n = children[i]
+                    if (!n.attrs.isLocked) continue
+                    const r = n.getClientRect()
+                    if (pos.x >= r.x && pos.x <= r.x + r.width &&
+                        pos.y >= r.y && pos.y <= r.y + r.height) { hit = n; break }
+                  }
+                }
+                const cW = cont.clientWidth, cH = cont.clientHeight
+                const sc = stage.scaleX()
+                if (hit && hit.getClassName() !== 'Transformer' && hit.attrs.isImage) {
+                  // Zoom to fit the image with margin.
+                  const rect = hit.getClientRect()
+                  const MARGIN = 1.5
+                  const targetScale = Math.max(0.1, Math.min(10,
+                    Math.min(cW / (rect.width  / sc * MARGIN),
+                             cH / (rect.height / sc * MARGIN))
+                  ))
+                  const imgCX = (rect.x + rect.width  / 2 - stage.x()) / sc
+                  const imgCY = (rect.y + rect.height / 2 - stage.y()) / sc
+                  animateNav(cW / 2 - imgCX * targetScale, cH / 2 - imgCY * targetScale, targetScale)
+                } else {
+                  // Center canvas on the tapped point, keep current zoom.
+                  const stCoord = clientToStageCoord(e.clientX, e.clientY)
+                  animateNav(cW / 2 - stCoord.x * sc, cH / 2 - stCoord.y * sc, sc)
+                }
+              }
+              savePanZoom()
+              return
+            }
+            // Record this tap for potential double-tap detection next time.
+            lastTapTime   = now
+            lastTapClient = { x: e.clientX, y: e.clientY }
+
+            // ── Single tap: manual hit-test and selection ────────────────────
             // Locked images have listening:false so getIntersection skips them;
             // we check them manually via bounding-box after the normal hit test.
             const pos = getContainerPos(e.clientX, e.clientY)
