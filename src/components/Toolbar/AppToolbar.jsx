@@ -99,17 +99,20 @@ const Icons = {
   ),
 }
 
-const TOOLS = [
+const DRAW_TOOLS = [
   { id: 'select', icon: Icons.select, title: 'Selecteren' },
   { id: 'pen',    icon: Icons.pen,    title: 'Tekenen' },
   { id: 'eraser', icon: Icons.eraser, title: 'Gum' },
   { id: 'text',   icon: Icons.text,   title: 'Tekst' },
-  { id: 'rect',   icon: Icons.rect,   title: 'Rechthoek' },
-  { id: 'circle', icon: Icons.circle, title: 'Cirkel' },
-  { id: 'line',    icon: Icons.line,    title: 'Lijn' },
-  { id: 'arrow',   icon: Icons.arrow,   title: 'Pijl' },
-  { id: 'lshape',    icon: Icons.lshape,    title: 'L-vorm' },
-  { id: 'triangle',  icon: Icons.triangle,  title: 'Driehoek' },
+]
+
+const SHAPE_TOOLS = [
+  { id: 'rect',     icon: Icons.rect,     title: 'Rechthoek' },
+  { id: 'circle',   icon: Icons.circle,   title: 'Cirkel' },
+  { id: 'line',     icon: Icons.line,     title: 'Lijn' },
+  { id: 'arrow',    icon: Icons.arrow,    title: 'Pijl' },
+  { id: 'lshape',   icon: Icons.lshape,   title: 'L-vorm' },
+  { id: 'triangle', icon: Icons.triangle, title: 'Driehoek' },
 ]
 
 export default function AppToolbar({
@@ -331,7 +334,21 @@ export default function AppToolbar({
       <div className="toolbar-sep" />
 
       {/* Tekentools */}
-      {TOOLS.map((tool) => (
+      {DRAW_TOOLS.map((tool) => (
+        <button
+          key={tool.id}
+          className={`toolbar-btn${activeTool === tool.id ? ' active' : ''}`}
+          title={tool.title}
+          onClick={() => setActiveTool(tool.id)}
+        >
+          {tool.icon}
+        </button>
+      ))}
+
+      <div className="toolbar-sep" />
+
+      {/* Vormen */}
+      {SHAPE_TOOLS.map((tool) => (
         <button
           key={tool.id}
           className={`toolbar-btn${activeTool === tool.id ? ' active' : ''}`}

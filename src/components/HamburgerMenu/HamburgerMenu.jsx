@@ -7,6 +7,7 @@ export default function HamburgerMenu({
   onExportJnote,
   onExportAll,
   onSaveAsTemplate,
+  onOpenSettings,
 }) {
   const [open, setOpen] = useState(false)
   const menuRef = useRef(null)
@@ -55,6 +56,8 @@ export default function HamburgerMenu({
           {item('Exporteren als .zip', () => onExportJnote(), !activeNote)}
           <div className="hamburger-sep" />
           {item('Opslaan als template', () => onSaveAsTemplate(activeNote), !activeNote)}
+          <div className="hamburger-sep" />
+          {item('Instellingen', () => onOpenSettings?.())}
         </div>
       )}
     </div>

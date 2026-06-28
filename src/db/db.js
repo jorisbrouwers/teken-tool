@@ -26,6 +26,11 @@ db.version(2).stores({
   })
 )
 
+db.version(3).stores({
+  notes: '&id, title, deleted_at, modified_at, sort_order',
+  app_settings: '&key',
+})
+
 // deleted_at: 0 = actief, Unix ms timestamp = zachte verwijdering
 // sort_order: lager getal = hoger in de lijst
 // is_template: true = template (niet zichtbaar in gewone notitieslijst)
@@ -160,6 +165,17 @@ export async function importNote(noteObj) {
   }
   await db.notes.add(note)
   return note
+}
+
+const SETTINGS_KEY = 'global'
+
+export async function getAppSettings() {
+  const row = await db.app_settings.get(SETTINGS_KEY)
+  return row?.data ?? {}
+}
+
+export async function saveAppSettings(data) {
+  await db.app_settings.put({ key: SETTINGS_KEY, data })
 }
 
 export default db

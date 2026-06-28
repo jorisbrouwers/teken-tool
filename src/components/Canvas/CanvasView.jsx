@@ -5,23 +5,35 @@ import Konva from 'konva'
 // Larger = easier to tap thin lines; smaller = more precise eraser.
 const HIT_MARGIN = 8
 
+// crypto.randomUUID() requires a secure context (https/localhost).
+// This fallback works over plain http (e.g. local network IP).
+function generateId() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+  })
+}
+
 
 import { getStroke } from 'perfect-freehand'
 import { getSvgPathFromStroke } from '../../math/svgPath.js'
 import { INPUT_CONFIG } from '../../platform/inputConfig.js'
 import { usePersistence } from './usePersistence.js'
 import { useHistory } from './useHistory.js'
-import { useGrid } from './useGrid.js'
+import { useGrid, GRID_SIZE } from './useGrid.js'
 import { evaluateExpression } from '../../math/mathEval.js'
 import { deserializeLayer, serializeNodes } from './konvaSerialize.js'
 import { liveSnapshotCache } from './usePersistence.js'
 import { getNote, updateNoteSettings } from '../../db/db.js'
 import CropOverlay from './CropOverlay.jsx'
 import Minimap from '../Minimap/Minimap.jsx'
+import LineGizmo from './LineGizmo.jsx'
+import MeasurementLabels from './MeasurementLabels.jsx'
+import { COLORS } from '../StylePanel/StylePanel.jsx'
 import './Canvas.css'
 
 const CanvasView = forwardRef(function CanvasView(
-  { note, activeTool, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, shouldCenter, onCopy, onSelectionChange, snapEnabled = true },
+  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true },
   ref
 ) {
   // ─── DOM + Konva refs ───────────────────────────────────────────────────────
@@ -55,6 +67,8 @@ const CanvasView = forwardRef(function CanvasView(
   const toolbarTargetRef = useRef(null)
   const [imageLocked, setImageLocked] = useState(false)
   const [selectedType, setSelectedType] = useState(null)
+  const [selectedColor, setSelectedColor] = useState(null)
+  const [showColorPicker, setShowColorPicker] = useState(false)
   const [deleteHolding, setDeleteHolding] = useState(false)
   const deleteTimerRef = useRef(null)
   const [minimapVersion, setMinimapVersion] = useState(0)
@@ -64,6 +78,26 @@ const CanvasView = forwardRef(function CanvasView(
   const cropSavedFlipRef = useRef({ x: 1, y: 1 })
   const [cropImageRect, setCropImageRect] = useState({ x: 0, y: 0, w: 0, h: 0 })
   const [cropRect, setCropRect] = useState({ left: 0, top: 0, right: 0, bottom: 0 })
+
+  // ─── Line gizmo state ───────────────────────────────────────────────────────
+  const [lineGizmoNode, setLineGizmoNode] = useState(null)
+  const lineGizmoNodeRef = useRef(null)
+  const [lineGizmoVersion, setLineGizmoVersion] = useState(0)
+  const suppressMeasureRef  = useRef(false)
+  const bodyXAlignRef       = useRef(null)   // pink vertical guide during body drag
+  const bodyYAlignRef       = useRef(null)   // pink horizontal guide during body drag
+  const gizmoAutoEditRef    = useRef(false)  // when true, LineGizmo opens edit mode on mount
+
+  function setGizmoNode(node) {
+    lineGizmoNodeRef.current = node
+    setLineGizmoNode(node)
+  }
+
+  function isSingleLinear(node) {
+    if (!node) return false
+    const cls = node.getClassName()
+    return (cls === 'Line' || cls === 'Arrow') && node.points().length === 4
+  }
 
   const showGrid = note.settings?.background === 'grid'
 
@@ -78,6 +112,7 @@ const CanvasView = forwardRef(function CanvasView(
   const historyPushRef = useRef(null)
   historyPushRef.current = history.pushState
   const persistenceScheduleRef = useRef(null)
+  const animateNavRef = useRef(null)
   usePersistence(mainLayerRef, note.id, persistenceScheduleRef)
 
   function scheduleSnapshot() {
@@ -85,10 +120,214 @@ const CanvasView = forwardRef(function CanvasView(
     setMinimapVersion(v => v + 1)
   }
 
+  function propagateDelta(startNodeId, startEp, delta, layer, visited = new Set()) {
+    const key = `${startNodeId}_${startEp}`
+    if (visited.has(key)) return
+    visited.add(key)
+    const node = layer.findOne(`#${startNodeId}`)
+    if (!node) return
+    const conn = node.getAttr(startEp === 0 ? '_ep0conn' : '_ep1conn')
+    if (!conn) return
+    const connKey = `${conn.id}_${conn.ep}`
+    if (visited.has(connKey)) return
+    visited.add(connKey)
+    const connNode = layer.findOne(`#${conn.id}`)
+    if (!connNode) return
+    connNode.x(connNode.x() + delta.x)
+    connNode.y(connNode.y() + delta.y)
+    propagateDelta(conn.id, 1 - conn.ep, delta, layer, visited)
+  }
+
+  // Walk the connected hierarchy from startNode, return all endpoint absolute positions
+  // except those in excludeList [{id, ep}].
+  function collectBodyHierarchyVertices(startNode, layer, excludeList) {
+    const visited = new Set()
+    const verts = []
+    function walk(n) {
+      const id = n.id()
+      if (visited.has(id)) return
+      visited.add(id)
+      const pts = n.points()
+      if (pts.length !== 4) return
+      for (let ep = 0; ep < 2; ep++) {
+        if (!excludeList.some(e => e.id === id && e.ep === ep)) {
+          verts.push({ x: n.x() + pts[ep * 2], y: n.y() + pts[ep * 2 + 1] })
+        }
+        const conn = n.getAttr(ep === 0 ? '_ep0conn' : '_ep1conn')
+        if (conn) { const cn = layer.findOne(`#${conn.id}`); if (cn) walk(cn) }
+      }
+    }
+    walk(startNode)
+    return verts
+  }
+
+  // Breaks connections on adjacent nodes then destroys each node.
+  // Returns true if the active gizmo node was deleted or had a connection cleared
+  // (caller must then either call hideToolbar() or setLineGizmoVersion()).
+  function disconnectAndDestroy(nodesToDelete, layer) {
+    const gizmoNode = lineGizmoNodeRef.current
+    let gizmoAffected = false
+    for (const node of nodesToDelete) {
+      for (const attr of ['_ep0conn', '_ep1conn']) {
+        const conn = node.getAttr(attr)
+        if (!conn) continue
+        const peer = layer.findOne(`#${conn.id}`)
+        if (!peer) continue
+        peer.setAttr(conn.ep === 0 ? '_ep0conn' : '_ep1conn', undefined)
+        if (peer === gizmoNode) gizmoAffected = true
+      }
+      if (node === gizmoNode) gizmoAffected = true
+      node.destroy()
+    }
+    return gizmoAffected
+  }
+
+  function handleExtrude(endpointIndex, directionAngleRad) {
+    const node = lineGizmoNodeRef.current
+    const layer = mainLayerRef.current
+    if (!node || !layer) return
+    const pts = node.points()
+    const ex = node.x() + pts[endpointIndex * 2]
+    const ey = node.y() + pts[endpointIndex * 2 + 1]
+    const len = 4 * GRID_SIZE
+    const cls = node.getClassName()
+    const newNode = new Konva[cls]({
+      id: generateId(),
+      x: ex, y: ey,
+      points: [0, 0, Math.cos(directionAngleRad) * len, Math.sin(directionAngleRad) * len],
+      stroke: node.stroke(), strokeWidth: node.strokeWidth(), opacity: node.opacity(),
+      hitStrokeWidth: node.hitStrokeWidth(), listening: true, draggable: true,
+      perfectDrawEnabled: false, shadowForStrokeEnabled: false,
+      ...(node.dash()?.length ? { dash: node.dash(), lineCap: 'round', lineJoin: 'round' } : {}),
+      ...(cls === 'Arrow' ? { fill: node.fill(), pointerLength: node.pointerLength(), pointerWidth: node.pointerWidth() } : {}),
+    })
+    node.setAttr(endpointIndex === 0 ? '_ep0conn' : '_ep1conn', { id: newNode.id(), ep: 0 })
+    newNode.setAttr('_ep0conn', { id: node.id(), ep: endpointIndex })
+    layer.add(newNode)
+    transformerRef.current?.moveToTop()
+    layer.batchDraw()
+    positionAndShowToolbar(newNode)
+    historyPushRef.current?.()
+    scheduleSnapshot()
+  }
+
+  function handleLineEndpointDragMove(endpointIndex, absX, absY) {
+    const node = lineGizmoNodeRef.current
+    const layer = mainLayerRef.current
+    if (!node || !layer) return
+    // Only pull the directly connected endpoint — no chain propagation.
+    // Body drag (dragmove on the line itself) handles full-chain propagation.
+    const conn = node.getAttr(endpointIndex === 0 ? '_ep0conn' : '_ep1conn')
+    if (!conn) return
+    const connNode = layer.findOne(`#${conn.id}`)
+    if (!connNode) return
+    const pts = connNode.points().slice()
+    pts[conn.ep * 2]     = absX - connNode.x()
+    pts[conn.ep * 2 + 1] = absY - connNode.y()
+    connNode.points(pts)
+    layer.batchDraw()
+  }
+
+  function handleLineEndpointDragEnd() {
+    historyPushRef.current?.()
+    scheduleSnapshot()
+  }
+
+  function handleMeasureConfirm(meters, nodeOverride) {
+    const node = nodeOverride ?? lineGizmoNodeRef.current
+    const layer = mainLayerRef.current
+    if (!node || !layer || meters <= 0) return
+    const pts = node.points()
+    const angle = Math.atan2(pts[3] - pts[1], pts[2] - pts[0])
+    const newLen = meters * GRID_SIZE
+    const newPts = [pts[0], pts[1], pts[0] + Math.cos(angle) * newLen, pts[1] + Math.sin(angle) * newLen]
+    node.points(newPts)
+    // Stretch the adjacent segment's endpoint at ep1 to follow the new position —
+    // same as endpoint drag does. Using propagateDelta (body shift) breaks closed
+    // loops because it moves the node connected back to ep0 away from its anchor.
+    const conn1 = node.getAttr('_ep1conn')
+    if (conn1) {
+      const connNode = layer.findOne(`#${conn1.id}`)
+      if (connNode) {
+        const connPts = connNode.points().slice()
+        connPts[conn1.ep * 2]     = (node.x() + newPts[2]) - connNode.x()
+        connPts[conn1.ep * 2 + 1] = (node.y() + newPts[3]) - connNode.y()
+        connNode.points(connPts)
+      }
+    }
+    layer.batchDraw()
+    historyPushRef.current?.()
+    scheduleSnapshot()
+  }
+
+  function handleLineEndpointSnap(draggedEp, targetNodeId, targetEp) {
+    const node = lineGizmoNodeRef.current
+    const layer = mainLayerRef.current
+    if (!node || !layer) return
+
+    // Save original connections BEFORE any breaking — needed for zero-length rewiring below.
+    const origDraggedConn = node.getAttr(draggedEp === 0 ? '_ep0conn' : '_ep1conn')
+    const origOtherConn   = node.getAttr((1 - draggedEp) === 0 ? '_ep0conn' : '_ep1conn')
+
+    // Break any existing connection at node's draggedEp
+    if (origDraggedConn) {
+      const exNode = layer.findOne(`#${origDraggedConn.id}`)
+      if (exNode) exNode.setAttr(origDraggedConn.ep === 0 ? '_ep0conn' : '_ep1conn', undefined)
+      node.setAttr(draggedEp === 0 ? '_ep0conn' : '_ep1conn', undefined)
+    }
+
+    // Break any existing connection at target's targetEp
+    const targetNode = layer.findOne(`#${targetNodeId}`)
+    if (!targetNode) return
+    const targetExisting = targetNode.getAttr(targetEp === 0 ? '_ep0conn' : '_ep1conn')
+    if (targetExisting) {
+      const txNode = layer.findOne(`#${targetExisting.id}`)
+      if (txNode) txNode.setAttr(targetExisting.ep === 0 ? '_ep0conn' : '_ep1conn', undefined)
+      targetNode.setAttr(targetEp === 0 ? '_ep0conn' : '_ep1conn', undefined)
+    }
+
+    // Create bidirectional connection
+    node.setAttr(draggedEp === 0 ? '_ep0conn' : '_ep1conn', { id: targetNodeId, ep: targetEp })
+    targetNode.setAttr(targetEp === 0 ? '_ep0conn' : '_ep1conn', { id: node.id(), ep: draggedEp })
+
+    // If the node collapsed to zero length, remove it and wire its two former peers together.
+    const pts = node.points()
+    if (Math.hypot(pts[2] - pts[0], pts[3] - pts[1]) < 0.5) {
+      // Undo the temporary connection we just made to targetNode.
+      targetNode.setAttr(targetEp === 0 ? '_ep0conn' : '_ep1conn', undefined)
+
+      // Wire origDraggedConn's peer (e.g. B) directly to origOtherConn's peer (e.g. D).
+      if (origDraggedConn && origOtherConn) {
+        const fromNode = layer.findOne(`#${origDraggedConn.id}`)
+        const toNode   = layer.findOne(`#${origOtherConn.id}`)
+        if (fromNode && toNode && fromNode !== toNode) {
+          fromNode.setAttr(origDraggedConn.ep === 0 ? '_ep0conn' : '_ep1conn', { id: toNode.id(),   ep: origOtherConn.ep })
+          toNode.setAttr(origOtherConn.ep   === 0 ? '_ep0conn' : '_ep1conn', { id: fromNode.id(), ep: origDraggedConn.ep })
+        }
+      }
+      // If only one or neither peer exists they're already free from the breaking steps above.
+
+      node.setAttr('_ep0conn', undefined)
+      node.setAttr('_ep1conn', undefined)
+      node.destroy()
+      hideToolbar()
+      layer.batchDraw()
+    }
+  }
+
   // Survives Effect 3 re-runs (which reset local closure vars) so onClick doesn't
   // clear a selection that was just applied by a rubber-band drag.
-  const justRubberBandedRef = useRef(false)
-  const justHandledTapRef   = useRef(false)
+  const justRubberBandedRef      = useRef(false)
+  const justHandledTapRef        = useRef(false)
+  const justCommittedLinearRef   = useRef(false)
+
+  function handlePillClick(nodeId) {
+    const node = mainLayerRef.current?.findOne(`#${nodeId}`)
+    if (!node) return
+    onToolSelect?.('select')
+    gizmoAutoEditRef.current = true
+    positionAndShowToolbar(node)
+  }
 
   // ─── Toolbar positioning ────────────────────────────────────────────────────
   const positionAndShowToolbar = useCallback((node) => {
@@ -100,20 +339,53 @@ const CanvasView = forwardRef(function CanvasView(
     const isImage = !!node.attrs.isImage
     setSelectedType(isImage ? 'image' : 'other')
     setImageLocked(!!node.attrs.isLocked)
+    setShowColorPicker(false)
+    setSelectedColor(!isImage && node.getClassName() !== 'Text' ? getNodeColor(node) : null)
+    // Lines/arrows get a custom gizmo instead of the transformer.
+    const isLinear = isSingleLinear(node)
+    if (isLinear) {
+      tr?.nodes([])
+      setGizmoNode(node)
+    } else {
+      setGizmoNode(null)
+    }
     // Images get their own rotate buttons — hide the transformer rotation handle.
     if (tr) tr.rotateEnabled(!isImage)
     // getClientRect() is container-relative; position:fixed needs viewport coords.
-    const r   = node.getClientRect()
     const box = stage.container().getBoundingClientRect()
-    div.style.left = `${box.left + r.x + r.width / 2}px`
-    div.style.top  = `${box.top + r.y - 48}px`
+    if (isLinear) {
+      // Position above the full connected hierarchy, not just the selected segment.
+      const visited = new Set()
+      let minX = Infinity, minY = Infinity, maxX = -Infinity
+      function walkHier(n) {
+        if (visited.has(n.id())) return
+        visited.add(n.id())
+        const r = n.getClientRect()
+        minX = Math.min(minX, r.x); minY = Math.min(minY, r.y)
+        maxX = Math.max(maxX, r.x + r.width)
+        for (const attr of ['_ep0conn', '_ep1conn']) {
+          const conn = n.getAttr(attr)
+          if (conn) { const cn = mainLayerRef.current?.findOne(`#${conn.id}`); if (cn) walkHier(cn) }
+        }
+      }
+      walkHier(node)
+      div.style.left = `${box.left + (minX + maxX) / 2}px`
+      div.style.top  = `${box.top + minY - 48}px`
+    } else {
+      const r = node.getClientRect()
+      div.style.left = `${box.left + r.x + r.width / 2}px`
+      div.style.top  = `${box.top + r.y - 48}px`
+    }
     div.style.display = 'flex'
   }, [])
 
   const hideToolbar = useCallback(() => {
     toolbarTargetRef.current = null
     setSelectedType(null)
+    setSelectedColor(null)
+    setShowColorPicker(false)
     setImageLocked(false)
+    setGizmoNode(null)
     if (toolbarDivRef.current) toolbarDivRef.current.style.display = 'none'
     // Restore rotation handle when deselecting.
     const tr = transformerRef.current
@@ -129,6 +401,9 @@ const CanvasView = forwardRef(function CanvasView(
     toolbarTargetRef.current = null
     setSelectedType('multi')
     setImageLocked(false)
+    setShowColorPicker(false)
+    const firstColored = tr.nodes().find(n => !n.attrs.isImage && n.getClassName() !== 'Text')
+    setSelectedColor(firstColored ? getNodeColor(firstColored) : null)
     tr.rotateEnabled(true) // multi-selection keeps the rotation handle
     const r = tr.getClientRect()
     const box = stage.container().getBoundingClientRect()
@@ -164,6 +439,8 @@ const CanvasView = forwardRef(function CanvasView(
       anchorFill: '#fff',
       anchorCornerRadius: 22,   // fully circular
       padding: 16,
+      rotationSnaps: Array.from({ length: 36 }, (_, i) => i * 10),
+      rotationSnapTolerance: 3,
     })
     mainLayer.add(transformer)
     transformerRef.current = transformer
@@ -290,18 +567,24 @@ const CanvasView = forwardRef(function CanvasView(
       for (let dx = -R; dx <= R; dx += STEP) {
         if (dx * dx + dy * dy > R * R) continue
         const hit = mainLayer.getIntersection({ x: containerPos.x + dx, y: containerPos.y + dy })
-        if (hit && hit.getClassName() !== 'Transformer' && !hit.attrs.isImage) {
+        if (hit && hit.getClassName() !== 'Transformer' && !hit.attrs.isImage && !hit.name()?.startsWith('lineGizmoHandle')) {
           toDestroy.add(hit)
         }
       }
     }
-    let erased = false
-    for (const node of toDestroy) {
-      if (node.getLayer()) { node.destroy(); erased = true }
-    }
-    if (erased) {
+    const alive = [...toDestroy].filter(n => n.getLayer())
+    if (alive.length) {
+      const gizmoAffected = disconnectAndDestroy(alive, mainLayer)
       transformer?.nodes([])
       mainLayer.batchDraw()
+      if (gizmoAffected) {
+        if (lineGizmoNodeRef.current?.getLayer()) {
+          // Gizmo node is alive but had a connection cleared — refresh fan buttons
+          setLineGizmoVersion(v => v + 1)
+        } else {
+          hideToolbar()
+        }
+      }
     }
   }
 
@@ -469,6 +752,7 @@ const CanvasView = forwardRef(function CanvasView(
       }
       requestAnimationFrame(frame)
     }
+    animateNavRef.current = animateNav
 
     // Deselect everything at navigation start so Konva never calls getClientRect()
     // on selected nodes during batchDraw() while panning/zooming.
@@ -483,7 +767,10 @@ const CanvasView = forwardRef(function CanvasView(
       const stage = stageRef.current
       const tr = transformerRef.current
       if (tr) {
-        savedSelection = tr.nodes().slice()
+        const isLockedImg = n => n.attrs.isImage && n.attrs.isLocked
+        // Locked images auto-deselect on any navigation — they're navigation anchors, not selections.
+        savedSelection = tr.nodes().filter(n => !isLockedImg(n))
+        if (isLockedImg(toolbarTargetRef.current)) toolbarTargetRef.current = null
         tr.nodes([])
       }
       // Capture the stage state as the initial CSS-transform baseline.
@@ -800,6 +1087,7 @@ const CanvasView = forwardRef(function CanvasView(
                 const mainLayer = mainLayerRef.current
                 // Hit-test: check normal nodes, then locked images manually.
                 let hit = mainLayer?.getIntersection(pos)
+                if (hit?.name()?.startsWith('lineGizmoHandle')) hit = null
                 if (!hit || hit.getClassName() === 'Transformer') {
                   const children = mainLayer?.getChildren() ?? []
                   for (let i = children.length - 1; i >= 0; i--) {
@@ -843,6 +1131,7 @@ const CanvasView = forwardRef(function CanvasView(
             const mainLayer  = mainLayerRef.current
             const transformer = transformerRef.current
             let hit = mainLayer?.getIntersection(pos)
+            if (hit?.name()?.startsWith('lineGizmoHandle')) hit = null
 
             if (!hit || hit.getClassName() === 'Transformer') {
               // Fall back to manual bounding-box check for locked images.
@@ -980,8 +1269,9 @@ const CanvasView = forwardRef(function CanvasView(
     let dragOriginPos       = { x: 0, y: 0 }
     let dragNodeOrigins     = []    // [{ node, x, y }] snapshot at drag start
     let dragSavedNodes      = []    // full transformer selection, restored after drag
-    const justRubberBanded  = justRubberBandedRef // ref — survives Effect 3 re-runs
+    const justRubberBanded  = justRubberBandedRef  // ref — survives Effect 3 re-runs
     const justHandledTap    = justHandledTapRef
+    const justCommittedLinear = justCommittedLinearRef
 
     function scheduleRenderLiveStroke() {
       if (rafId !== null) return
@@ -1213,7 +1503,7 @@ const CanvasView = forwardRef(function CanvasView(
       // Strip transparent fill so the hit canvas only covers the stroke border.
       // Without this, getIntersection fires inside a hollow Rect/Ellipse.
       const fillOverride = (cls === 'Rect' || cls === 'Ellipse' || (cls === 'Line' && shapePreview.closed())) ? { fill: null, fillEnabled: false } : {}
-      const clone = shapePreview.clone({ listening: true, draggable: false, ...fillOverride })
+      const clone = shapePreview.clone({ listening: true, draggable: false, id: generateId(), ...fillOverride })
       shapePreview.destroy()
       shapePreview = null
       drawingLayer.batchDraw()
@@ -1222,6 +1512,21 @@ const CanvasView = forwardRef(function CanvasView(
       mainLayer.batchDraw()
       history.pushState()
       scheduleSnapshot()
+      // After drawing any shape, auto-select it and switch to the select tool.
+      if (isSingleLinear(clone)) {
+        // A click without drag produces a near-zero-length line. Give it a
+        // default horizontal length so it's visible and usable.
+        const pts = clone.points()
+        if (Math.hypot(pts[2] - pts[0], pts[3] - pts[1]) < 2) {
+          clone.points([pts[0], pts[1], pts[0] + 2 * GRID_SIZE, pts[1]])
+        }
+      } else {
+        transformer.nodes([clone])
+        mainLayer.batchDraw()
+      }
+      justCommittedLinearRef.current = true
+      onToolSelect?.('select')
+      positionAndShowToolbar(clone)
     }
 
     // ── Konva stage event handlers ──────────────────────────────────────────
@@ -1520,10 +1825,30 @@ const CanvasView = forwardRef(function CanvasView(
             }
             return true
           })
-          transformer.nodes(selected)
+          // Expand selection: if 2+ linear segments are included, add all nodes
+          // connected to them so the entire hierarchy is always selected as a unit.
+          const linearSelected = selected.filter(n => isSingleLinear(n))
+          let finalSelected = selected
+          if (linearSelected.length >= 2) {
+            const toSelect = new Set(selected)
+            const expandNode = node => {
+              for (const attr of ['_ep0conn', '_ep1conn']) {
+                const conn = node.getAttr(attr)
+                if (!conn) continue
+                const connNode = mainLayer.findOne(`#${conn.id}`)
+                if (connNode && !toSelect.has(connNode)) {
+                  toSelect.add(connNode)
+                  expandNode(connNode)
+                }
+              }
+            }
+            linearSelected.forEach(expandNode)
+            if (toSelect.size > selected.length) finalSelected = [...toSelect]
+          }
+          transformer.nodes(finalSelected)
           mainLayer.batchDraw()
-          if (selected.length === 1) positionAndShowToolbar(selected[0])
-          else if (selected.length > 1) positionToolbarAtTransformer()
+          if (finalSelected.length === 1) positionAndShowToolbar(finalSelected[0])
+          else if (finalSelected.length > 1) positionToolbarAtTransformer()
           if (selected.length > 0) justRubberBanded.current = true
         } else {
           // Small movement = tap: handle selection/deselection directly.
@@ -1531,6 +1856,7 @@ const CanvasView = forwardRef(function CanvasView(
           const cp = stage.getPointerPosition()
           if (cp) {
             let hit = mainLayer.getIntersection(cp)
+            if (hit?.name()?.startsWith('lineGizmoHandle')) hit = null
             // Locked images have listening:false — check them manually.
             if (!hit || hit.getClassName() === 'Transformer') {
               const children = mainLayer.getChildren()
@@ -1594,6 +1920,8 @@ const CanvasView = forwardRef(function CanvasView(
         if (justHandledTap.current) { justHandledTap.current = false; return }
         // Skip if we just applied rubber-band selection.
         if (justRubberBanded.current) { justRubberBanded.current = false; return }
+        // Skip if we just finished drawing a line/arrow (auto-selected in commitShape).
+        if (justCommittedLinear.current) { justCommittedLinear.current = false; return }
         if (hit === stage) {
           // A locked image has listening:false so Konva reports stage as the hit target.
           // Manually check if a locked image sits under the pointer before clearing.
@@ -1655,6 +1983,7 @@ const CanvasView = forwardRef(function CanvasView(
 
     // Lock aspect ratio when any image is in the selection; free for other shapes.
     transformer.on('transformstart', () => {
+      suppressMeasureRef.current = true
       const hasImage = transformer.nodes().some(n => n.getClassName() === 'Image')
       transformer.keepRatio(hasImage)
     })
@@ -1679,6 +2008,7 @@ const CanvasView = forwardRef(function CanvasView(
     })
 
     transformer.on('transformend', () => {
+      suppressMeasureRef.current = false
       transformer.nodes().forEach(node => {
         if (node.attrs.isImage) return  // images: keep scale as-is
         // Restore original strokeWidth before baking geometry (compensated value was only visual).
@@ -1701,10 +2031,114 @@ const CanvasView = forwardRef(function CanvasView(
       const target = toolbarTargetRef.current
       if (target) positionAndShowToolbar(target)
     })
+    const BODY_ALIGN_SNAP_PX = 20
+    function removeBodyAlignIndicators(layer) {
+      if (bodyXAlignRef.current) { bodyXAlignRef.current.destroy(); bodyXAlignRef.current = null }
+      if (bodyYAlignRef.current) { bodyYAlignRef.current.destroy(); bodyYAlignRef.current = null }
+      layer?.batchDraw()
+    }
+    let lastDragPos = null
+    mainLayer.on('dragstart', ev => {
+      lastDragPos = { x: ev.target.x(), y: ev.target.y() }
+    })
+    mainLayer.on('dragmove', ev => {
+      const target = ev.target
+      if (!isSingleLinear(target) || !lastDragPos) return
+      const layer = mainLayerRef.current
+      const stage = stageRef.current
+      if (!layer || !stage) return
+
+      // ── Vertex alignment snapping ───────────────────────────────────────
+      const pts = target.points()
+      const alignDist = BODY_ALIGN_SNAP_PX / (stage.scaleX() ?? 1)
+      const conn0 = target.getAttr('_ep0conn')
+      const conn1 = target.getAttr('_ep1conn')
+      const excludeList = [{ id: target.id(), ep: 0 }, { id: target.id(), ep: 1 }]
+      if (conn0) excludeList.push({ id: conn0.id, ep: conn0.ep })
+      if (conn1) excludeList.push({ id: conn1.id, ep: conn1.ep })
+      const verts = collectBodyHierarchyVertices(target, layer, excludeList)
+
+      const ep0x = target.x() + pts[0], ep0y = target.y() + pts[1]
+      const ep1x = target.x() + pts[2], ep1y = target.y() + pts[3]
+
+      let snapX = null, snapY = null
+      for (const v of verts) {
+        if (snapX === null) {
+          if (Math.abs(ep0x - v.x) < alignDist)      snapX = { val: v.x, ptIdx: 0 }
+          else if (Math.abs(ep1x - v.x) < alignDist) snapX = { val: v.x, ptIdx: 2 }
+        }
+        if (snapY === null) {
+          if (Math.abs(ep0y - v.y) < alignDist)      snapY = { val: v.y, ptIdx: 1 }
+          else if (Math.abs(ep1y - v.y) < alignDist) snapY = { val: v.y, ptIdx: 3 }
+        }
+        if (snapX !== null && snapY !== null) break
+      }
+
+      if (snapX !== null) target.x(snapX.val - pts[snapX.ptIdx])
+      if (snapY !== null) target.y(snapY.val - pts[snapY.ptIdx])
+
+      const sc = stage.scaleX()
+      const stageLeft   = (-stage.x()) / sc
+      const stageRight  = (stage.width()  - stage.x()) / sc
+      const stageTop    = (-stage.y()) / sc
+      const stageBottom = (stage.height() - stage.y()) / sc
+
+      if (snapX !== null) {
+        if (!bodyXAlignRef.current) {
+          bodyXAlignRef.current = new Konva.Line({
+            stroke: '#e64980', strokeWidth: 1, strokeScaleEnabled: false,
+            dash: [6, 5], opacity: 0.65, listening: false, perfectDrawEnabled: false,
+          })
+          layer.add(bodyXAlignRef.current)
+        }
+        bodyXAlignRef.current.points([snapX.val, stageTop, snapX.val, stageBottom])
+      } else if (bodyXAlignRef.current) {
+        bodyXAlignRef.current.destroy(); bodyXAlignRef.current = null
+      }
+
+      if (snapY !== null) {
+        if (!bodyYAlignRef.current) {
+          bodyYAlignRef.current = new Konva.Line({
+            stroke: '#e64980', strokeWidth: 1, strokeScaleEnabled: false,
+            dash: [6, 5], opacity: 0.65, listening: false, perfectDrawEnabled: false,
+          })
+          layer.add(bodyYAlignRef.current)
+        }
+        bodyYAlignRef.current.points([stageLeft, snapY.val, stageRight, snapY.val])
+      } else if (bodyYAlignRef.current) {
+        bodyYAlignRef.current.destroy(); bodyYAlignRef.current = null
+      }
+
+      // ── Stretch connected endpoints ─────────────────────────────────────
+      const delta = { x: target.x() - lastDragPos.x, y: target.y() - lastDragPos.y }
+      if (delta.x !== 0 || delta.y !== 0) {
+        // Only stretch the directly connected endpoints — don't propagate the
+        // full chain. This lets the user reposition a single wall within the
+        // hierarchy; adjacent walls deform to follow rather than all moving.
+        const updatedPts = target.points()
+        for (let i = 0; i < 2; i++) {
+          const conn = target.getAttr(i === 0 ? '_ep0conn' : '_ep1conn')
+          if (!conn) continue
+          const connNode = layer.findOne(`#${conn.id}`)
+          if (!connNode) continue
+          const newAbsX = target.x() + updatedPts[i * 2]
+          const newAbsY = target.y() + updatedPts[i * 2 + 1]
+          const connPts = connNode.points().slice()
+          connPts[conn.ep * 2]     = newAbsX - connNode.x()
+          connPts[conn.ep * 2 + 1] = newAbsY - connNode.y()
+          connNode.points(connPts)
+        }
+        layer.batchDraw()
+        lastDragPos = { x: target.x(), y: target.y() }
+      }
+    })
     mainLayer.on('dragend', ev => {
-      history.pushState()
+      const target = ev.target
+      lastDragPos = null
+      removeBodyAlignIndicators(mainLayerRef.current)
+      historyPushRef.current?.()
       scheduleSnapshot()
-      if (toolbarTargetRef.current === ev.target) positionAndShowToolbar(ev.target)
+      if (toolbarTargetRef.current === target) positionAndShowToolbar(target)
     })
 
     // pointerrawupdate fires at native device rate (~240 Hz on Surface Pen),
@@ -1742,13 +2176,15 @@ const CanvasView = forwardRef(function CanvasView(
       transformer.off('transform')
       transformer.off('transformend')
       mainLayer.off('dragend')
+      mainLayer.off('dragmove')
+      mainLayer.off('dragstart')
       if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null }
       selRect.destroy()
       clearLiveCanvas()
       shapePreview?.destroy()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [note.id, positionAndShowToolbar, hideToolbar, positionToolbarAtTransformer, history])
+  }, [note.id, positionAndShowToolbar, hideToolbar, positionToolbarAtTransformer])
 
   // ───────────────────────────────────────────────────────────────────────────
   // EFFECT 4a — Deselect when switching away from select tool
@@ -1757,7 +2193,9 @@ const CanvasView = forwardRef(function CanvasView(
     if (activeTool === 'select') return
     const tr = transformerRef.current
     const ml = mainLayerRef.current
-    if (!tr || !tr.nodes().length) return
+    if (!tr) return
+    const hasSelection = tr.nodes().length > 0 || !!lineGizmoNodeRef.current
+    if (!hasSelection) return
     tr.nodes([])
     hideToolbar()
     ml?.batchDraw()
@@ -1803,9 +2241,14 @@ const CanvasView = forwardRef(function CanvasView(
         const transformer = transformerRef.current
         if (!mainLayer || !transformer) return
         e.preventDefault()
-        const nodes = transformer.nodes()
+        const trNodes   = transformer.nodes()
+        const gizmoNode = lineGizmoNodeRef.current
+        const allNodes  = gizmoNode && !trNodes.includes(gizmoNode)
+          ? [...trNodes, gizmoNode]
+          : trNodes
+        if (!allNodes.length) return
         transformer.nodes([])
-        nodes.forEach(n => n.destroy())
+        disconnectAndDestroy(allNodes, mainLayer)
         mainLayer.batchDraw()
         hideToolbar()
         history.pushState()
@@ -2041,7 +2484,7 @@ const CanvasView = forwardRef(function CanvasView(
       const transformer = transformerRef.current
       if (!node || !mainLayer) return
       transformer?.nodes([])
-      node.destroy()
+      disconnectAndDestroy([node], mainLayer)
       mainLayer.batchDraw()
       hideToolbar()
       history.pushState()
@@ -2060,8 +2503,9 @@ const CanvasView = forwardRef(function CanvasView(
     if (!mainLayer) return
     const nodes = [...(transformer?.nodes() ?? [])]
     if (toolbarTargetRef.current && !nodes.includes(toolbarTargetRef.current)) nodes.push(toolbarTargetRef.current)
+    if (!nodes.length) return
     transformer?.nodes([])
-    nodes.forEach(n => n.destroy())
+    disconnectAndDestroy(nodes, mainLayer)
     mainLayer.batchDraw()
     hideToolbar()
     history.pushState()
@@ -2069,11 +2513,29 @@ const CanvasView = forwardRef(function CanvasView(
   }
 
   function handleCopy() {
+    const mainLayer = mainLayerRef.current
     const transformer = transformerRef.current
-    const nodes = [...(transformer?.nodes() ?? [])]
-    if (toolbarTargetRef.current && !nodes.includes(toolbarTargetRef.current)) nodes.push(toolbarTargetRef.current)
-    if (!nodes.length) return
-    onCopy?.(serializeNodes(nodes))
+    const seedNodes = [...(transformer?.nodes() ?? [])]
+    if (toolbarTargetRef.current && !seedNodes.includes(toolbarTargetRef.current)) seedNodes.push(toolbarTargetRef.current)
+    if (!seedNodes.length) return
+
+    // Expand to full hierarchy for any linear node, matching handleDuplicate behaviour.
+    const toSerializeSet = new Set(seedNodes)
+    for (const n of seedNodes) {
+      if (!isSingleLinear(n) || !mainLayer) continue
+      const vis = new Set()
+      function walkH(node) {
+        if (vis.has(node.id())) return
+        vis.add(node.id())
+        toSerializeSet.add(node)
+        for (const attr of ['_ep0conn', '_ep1conn']) {
+          const conn = node.getAttr(attr)
+          if (conn) { const cn = mainLayer.findOne(`#${conn.id}`); if (cn) walkH(cn) }
+        }
+      }
+      walkH(n)
+    }
+    onCopy?.(serializeNodes([...toSerializeSet]))
   }
 
   function handleDuplicate() {
@@ -2081,15 +2543,48 @@ const CanvasView = forwardRef(function CanvasView(
     const transformer = transformerRef.current
     if (!mainLayer) return
 
-    const nodes = [...(transformer?.nodes() ?? [])]
-    if (toolbarTargetRef.current && !nodes.includes(toolbarTargetRef.current)) nodes.push(toolbarTargetRef.current)
-    if (!nodes.length) return
+    const seedNodes = [...(transformer?.nodes() ?? [])]
+    if (toolbarTargetRef.current && !seedNodes.includes(toolbarTargetRef.current)) seedNodes.push(toolbarTargetRef.current)
+    if (!seedNodes.length) return
+
+    // Expand to full hierarchy for any linear node in the selection.
+    const toCloneSet = new Set(seedNodes)
+    for (const n of seedNodes) {
+      if (!isSingleLinear(n)) continue
+      const vis = new Set()
+      function walkH(node) {
+        if (vis.has(node.id())) return
+        vis.add(node.id())
+        toCloneSet.add(node)
+        for (const attr of ['_ep0conn', '_ep1conn']) {
+          const conn = node.getAttr(attr)
+          if (conn) { const cn = mainLayer.findOne(`#${conn.id}`); if (cn) walkH(cn) }
+        }
+      }
+      walkH(n)
+    }
+    const nodesToClone = [...toCloneSet]
+
+    // Build old-ID → new-ID remapping for every linear node to be cloned.
+    const idMap = new Map()
+    for (const n of nodesToClone) {
+      if (isSingleLinear(n)) idMap.set(n.id(), generateId())
+    }
 
     const offset = 20
-    const newNodes = nodes.map(n => {
+    const newNodes = nodesToClone.map(n => {
       const clone = n.clone()
       clone.x(n.x() + offset)
       clone.y(n.y() + offset)
+      if (isSingleLinear(n)) {
+        clone.id(idMap.get(n.id()))
+        for (const attr of ['_ep0conn', '_ep1conn']) {
+          const conn = n.getAttr(attr)
+          if (!conn) continue
+          // Remap to new ID if the peer is also being cloned; otherwise sever the link.
+          clone.setAttr(attr, idMap.has(conn.id) ? { id: idMap.get(conn.id), ep: conn.ep } : undefined)
+        }
+      }
       if (clone.attrs.isImage) {
         clone.setAttrs({ isLocked: false, listening: true, draggable: true })
         mainLayer.add(clone)
@@ -2107,6 +2602,29 @@ const CanvasView = forwardRef(function CanvasView(
     if (newNodes.length === 1) positionAndShowToolbar(newNodes[0])
     else positionToolbarAtTransformer()
     mainLayer.batchDraw()
+    history.pushState()
+    scheduleSnapshot()
+  }
+
+  // ─── Object toolbar: color change ───────────────────────────────────────────
+  function getNodeColor(node) {
+    return node.getClassName() === 'Path' ? (node.fill() || null) : (node.stroke() || null)
+  }
+
+  function handleColorChange(hex) {
+    const mainLayer   = mainLayerRef.current
+    const transformer = transformerRef.current
+    if (!mainLayer) return
+    const nodes = toolbarTargetRef.current
+      ? [toolbarTargetRef.current]
+      : (transformer?.nodes() ?? []).filter(n => !n.attrs.isImage && n.getClassName() !== 'Text')
+    if (!nodes.length) return
+    nodes.forEach(n => {
+      if (n.getClassName() === 'Path') n.fill(hex)
+      else n.stroke(hex)
+    })
+    mainLayer.batchDraw()
+    setSelectedColor(hex)
     history.pushState()
     scheduleSnapshot()
   }
@@ -2161,9 +2679,22 @@ const CanvasView = forwardRef(function CanvasView(
       const viewCy = (stage.height() / 2 - stage.y()) / scale
       const dx = viewCx - srcCx, dy = viewCy - srcCy
 
+      // Build old-ID → new-ID remapping so pasted nodes get fresh IDs and
+      // hierarchy connection attrs reference the new IDs instead of the originals.
+      const idMap = new Map()
+      data.forEach(({ attrs }) => { if (attrs.id) idMap.set(attrs.id, generateId()) })
+      const remapConn = conn => (conn && idMap.has(conn.id)) ? { id: idMap.get(conn.id), ep: conn.ep } : undefined
+
       const newNodes = []
       data.forEach(({ type, attrs }) => {
-        const newAttrs = { ...attrs, x: (attrs.x ?? 0) + dx, y: (attrs.y ?? 0) + dy }
+        const newAttrs = {
+          ...attrs,
+          id:       idMap.get(attrs.id) ?? generateId(),
+          x:        (attrs.x ?? 0) + dx,
+          y:        (attrs.y ?? 0) + dy,
+          _ep0conn: remapConn(attrs._ep0conn),
+          _ep1conn: remapConn(attrs._ep1conn),
+        }
         if (type === 'Image') {
           const img = new Image()
           img.onload = () => {
@@ -2222,10 +2753,7 @@ const CanvasView = forwardRef(function CanvasView(
       const cy = (minY + maxY) / 2
       const newX = viewW / 2 - cx * scale
       const newY = viewH / 2 - cy * scale
-      stage.scale({ x: scale, y: scale })
-      stage.position({ x: newX, y: newY })
-      stage.batchDraw()
-      updateNoteSettings(note.id, { ...note.settings, zoom: scale, pan: { x: newX, y: newY } })
+      animateNavRef.current?.(newX, newY, scale)
     },
   }))
 
@@ -2249,6 +2777,32 @@ const CanvasView = forwardRef(function CanvasView(
       )}
 
       <Minimap stageRef={stageRef} mainLayerRef={mainLayerRef} version={minimapVersion} />
+
+      <MeasurementLabels
+        mainLayerRef={mainLayerRef}
+        stageRef={stageRef}
+        skipNodeId={lineGizmoNode?.id()}
+        suppressRef={suppressMeasureRef}
+        onPillClick={handlePillClick}
+        showPills={showPills}
+      />
+
+      {lineGizmoNode && (
+        <LineGizmo
+          node={lineGizmoNode}
+          stageRef={stageRef}
+          mainLayerRef={mainLayerRef}
+          onEndpointDragMove={handleLineEndpointDragMove}
+          onEndpointDragEnd={handleLineEndpointDragEnd}
+          onEndpointSnap={handleLineEndpointSnap}
+          onExtrude={handleExtrude}
+          onMeasureConfirm={handleMeasureConfirm}
+          snapEnabledRef={snapEnabledRef}
+          version={lineGizmoVersion}
+          autoEditRef={gizmoAutoEditRef}
+          showPills={showPills}
+        />
+      )}
 
       <div ref={toolbarDivRef} className="object-toolbar">
         {selectedType === 'image' && (
@@ -2310,6 +2864,30 @@ const CanvasView = forwardRef(function CanvasView(
               </svg>
             </button>
           </>
+        )}
+
+        {selectedColor !== null && (
+          <div className="object-toolbar-color-wrap">
+            <button
+              className="object-toolbar-color-btn"
+              style={{ background: selectedColor }}
+              title="Kleur wijzigen"
+              onClick={() => setShowColorPicker(v => !v)}
+            />
+            {showColorPicker && (
+              <div className="object-toolbar-color-picker">
+                {COLORS.map(({ hex }) => (
+                  <button
+                    key={hex}
+                    className={`object-toolbar-color-swatch${selectedColor === hex ? ' active' : ''}`}
+                    style={{ background: hex }}
+                    title={hex}
+                    onClick={() => handleColorChange(hex)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         <button className="object-toolbar-btn" title="Dupliceren" onClick={handleDuplicate}>

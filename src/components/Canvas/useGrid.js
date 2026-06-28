@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 
 // Base grid spacing in stage-space units (pixels at 1:1 zoom).
 // Lines are drawn at this fixed real-world interval — just like OneNote.
-const GRID_SIZE = 25
+export const GRID_SIZE = 25
 
 export function useGrid(canvasWrapperRef, gridCanvasRef, stageRef, showGrid) {
   const animFrameRef = useRef(null)

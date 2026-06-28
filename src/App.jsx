@@ -6,11 +6,12 @@ import AppToolbar from './components/Toolbar/AppToolbar.jsx'
 import StylePanel, { SIZE_MAP } from './components/StylePanel/StylePanel.jsx'
 import HamburgerMenu from './components/HamburgerMenu/HamburgerMenu.jsx'
 import ProjectsPanel from './components/Projects/ProjectsPanel.jsx'
-import { updateNoteSettings } from './db/db.js'
+import { updateNoteSettings, getAppSettings, saveAppSettings } from './db/db.js'
 import Calculator from './components/Calculator/Calculator.jsx'
 import { exportJnote } from './export/exportJnote.js'
 import { exportPdf } from './export/exportPdf.js'
 import { parseJnote } from './import/importJnote.js'
+import SettingsPanel from './components/Settings/SettingsPanel.jsx'
 import './App.css'
 
 export default function App() {
@@ -33,11 +34,28 @@ export default function App() {
   } = useNotes()
 
   const [projectsOpen, setProjectsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [showPills, setShowPills] = useState(true)
+  const [showPillsInPdf, setShowPillsInPdf] = useState(true)
+  const settingsLoadedRef = useRef(false)
+
+  useEffect(() => {
+    getAppSettings().then(s => {
+      if (s.showPills !== undefined) setShowPills(s.showPills)
+      if (s.showPillsInPdf !== undefined) setShowPillsInPdf(s.showPillsInPdf)
+      settingsLoadedRef.current = true
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!settingsLoadedRef.current) return
+    saveAppSettings({ showPills, showPillsInPdf })
+  }, [showPills, showPillsInPdf])
   const [clipboardData, setClipboardData] = useState(null)
   const [calcOpen, setCalcOpen] = useState(false)
   const [hasSelection, setHasSelection] = useState(false)
   const [centerOnSelect, setCenterOnSelect] = useState(false)
-  const [activeTool, setActiveTool] = useState('pen')
+  const [activeTool, setActiveTool] = useState('select')
   const [snapEnabled, setSnapEnabled] = useState(true)
 
   useEffect(() => { setCenterOnSelect(false) }, [activeNoteId])
@@ -88,8 +106,8 @@ export default function App() {
   const handleExportPdf = useCallback(async () => {
     const stage = canvasViewRef.current?.getStage()
     if (!stage || !activeNote) return
-    await exportPdf(activeNote, stage, showGrid)
-  }, [activeNote, showGrid])
+    await exportPdf(activeNote, stage, showGrid, showPillsInPdf)
+  }, [activeNote, showGrid, showPillsInPdf])
 
   const handleExportJnote = useCallback(() => {
     const mainLayer = canvasViewRef.current?.getMainLayer()
@@ -101,9 +119,9 @@ export default function App() {
     const stage = canvasViewRef.current?.getStage()
     const mainLayer = canvasViewRef.current?.getMainLayer()
     if (!stage || !mainLayer || !activeNote) return
-    await exportPdf(activeNote, stage, showGrid)
+    await exportPdf(activeNote, stage, showGrid, showPillsInPdf)
     exportJnote(activeNote, mainLayer)
-  }, [activeNote, showGrid])
+  }, [activeNote, showGrid, showPillsInPdf])
 
   const handleImportJnote = useCallback(async (file) => {
     try {
@@ -199,6 +217,7 @@ export default function App() {
       onExportJnote={handleExportJnote}
       onExportAll={handleExportAll}
       onSaveAsTemplate={handleSaveAsTemplate}
+      onOpenSettings={() => setSettingsOpen(true)}
     />
   )
 
@@ -233,6 +252,7 @@ export default function App() {
               ref={canvasViewRef}
               note={activeNote}
               activeTool={activeTool}
+              onToolSelect={handleToolSelect}
               penColor={penColor}
               penSize={penSize}
               opacity={opacity}
@@ -243,6 +263,7 @@ export default function App() {
               onCopy={handleCopyData}
               onSelectionChange={handleSelectionChange}
               snapEnabled={snapEnabled}
+              showPills={showPills}
             />
             <StylePanel
               activeTool={activeTool}
@@ -309,6 +330,16 @@ export default function App() {
           </>
         )}
       </main>
+
+      {settingsOpen && (
+        <SettingsPanel
+          showPills={showPills}
+          onTogglePills={() => setShowPills(v => !v)}
+          showPillsInPdf={showPillsInPdf}
+          onTogglePillsInPdf={() => setShowPillsInPdf(v => !v)}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
 
       {projectsOpen && (
         <ProjectsPanel

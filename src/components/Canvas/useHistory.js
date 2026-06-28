@@ -3,10 +3,10 @@ import Konva from 'konva'
 
 const MAX_HISTORY = 50
 
-// Snapshot: exclude Transformer AND images (images are permanent, same as old Fabric approach).
+// Snapshot: exclude Transformer, images, and LineGizmo handle circles.
 function takeSnapshot(layer) {
   return layer.getChildren()
-    .filter(n => n.getClassName() !== 'Transformer' && n.getClassName() !== 'Image')
+    .filter(n => n.getClassName() !== 'Transformer' && n.getClassName() !== 'Image' && !n.name()?.startsWith('lineGizmoHandle'))
     .map(n => ({ type: n.getClassName(), attrs: { ...n.attrs } }))
 }
 

@@ -4,7 +4,7 @@ const GRID_SIZE  = 25     // must match useGrid.js
 const MARGIN     = 40     // whitespace around content, in stage-space units
 const MAX_LONG   = 8000   // max output pixels on the longest side
 
-export async function exportPdf(note, stage, showGrid) {
+export async function exportPdf(note, stage, showGrid, showPillsInPdf = false) {
   const mainLayer = stage.getLayers()[0]
   const nodes = mainLayer.getChildren().filter(n => n.getClassName() !== 'Transformer')
 
@@ -53,8 +53,6 @@ export async function exportPdf(note, stage, showGrid) {
   })
 
   // Composite in correct layer order: white background → grid → Konva content.
-  // Grid is drawn before Konva so drawings appear on top of grid lines.
-  // White fill is required before JPEG encoding (JPEG has no alpha channel).
   const finalCanvas = document.createElement('canvas')
   finalCanvas.width  = outputW
   finalCanvas.height = outputH
@@ -86,9 +84,64 @@ export async function exportPdf(note, stage, showGrid) {
 
   ctx.drawImage(konvaCanvas, 0, 0, outputW, outputH)
 
+  if (showPillsInPdf) {
+    drawMeasurementPills(ctx, nodes, cropSX, cropSY, targetScale)
+  }
+
   const dataUrl = finalCanvas.toDataURL('image/jpeg', 0.85)
   const orientation = outputW >= outputH ? 'landscape' : 'portrait'
   const pdf = new jsPDF({ orientation, unit: 'px', format: [outputW, outputH] })
   pdf.addImage(dataUrl, 'JPEG', 0, 0, outputW, outputH)
   pdf.save(`notitie_${note.title.replace(/[^a-z0-9_\-. ]/gi, '_')}.pdf`)
+}
+
+// Draw measurement pills for Line/Arrow nodes with exactly 4 points,
+// mirroring the logic in MeasurementLabels.jsx.
+function drawMeasurementPills(ctx, nodes, cropSX, cropSY, targetScale) {
+  const fontSize   = Math.round(9  * targetScale)
+  const padX       = Math.round(6  * targetScale)
+  const padY       = Math.round(3  * targetScale)
+
+  ctx.save()
+  ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`
+  ctx.textAlign    = 'center'
+  ctx.textBaseline = 'middle'
+
+  for (const node of nodes) {
+    const cls = node.getClassName()
+    if ((cls !== 'Line' && cls !== 'Arrow') || node.points().length !== 4) continue
+    const id = node.id()
+    if (!id) continue  // snap/align indicators have no id
+
+    const pts      = node.points()
+    const lengthPx = Math.hypot(pts[2] - pts[0], pts[3] - pts[1])
+    if (lengthPx < 1) continue
+
+    const mx = node.x() + (pts[0] + pts[2]) / 2
+    const my = node.y() + (pts[1] + pts[3]) / 2
+
+    // Stage coord → output pixel
+    const px = (mx - cropSX) * targetScale
+    const py = (my - cropSY) * targetScale
+
+    const lengthM = (lengthPx / GRID_SIZE).toFixed(2)
+    const text    = `${lengthM} m`
+
+    const textW = ctx.measureText(text).width
+    const w     = textW + padX * 2
+    const h     = fontSize + padY * 2
+    const r     = h / 2
+
+    // Pill background
+    ctx.fillStyle = '#1971c2'
+    ctx.beginPath()
+    ctx.roundRect(px - w / 2, py - h / 2, w, h, r)
+    ctx.fill()
+
+    // Label text
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(text, px, py)
+  }
+
+  ctx.restore()
 }
