@@ -1,11 +1,13 @@
 import { useEffect, useRef } from 'react'
 import Konva from 'konva'
 
-const DOT_RADIUS_PX = 5  // screen pixels
+const DOT_RADIUS_PX = 1.5  // screen pixels
 
-export default function HingeDecorations({ stageRef, mainLayerRef, editModeActive }) {
+export default function HingeDecorations({ stageRef, mainLayerRef, editModeActive, visible = true }) {
   const editModeActiveRef = useRef(editModeActive)
   editModeActiveRef.current = editModeActive
+  const visibleRef = useRef(visible)
+  visibleRef.current = visible
 
   useEffect(() => {
     let layer = null
@@ -29,7 +31,7 @@ export default function HingeDecorations({ stageRef, mainLayerRef, editModeActiv
         layer.zIndex(1)  // boven mainLayer, onder drawingLayer
       }
 
-      if (!ml || editModeActiveRef.current) {
+      if (!ml || editModeActiveRef.current || !visibleRef.current) {
         for (const c of circles.values()) c.visible(false)
         layer.batchDraw()
         rafId = requestAnimationFrame(tick)
@@ -37,7 +39,7 @@ export default function HingeDecorations({ stageRef, mainLayerRef, editModeActiv
       }
 
       const zoom = stage.scaleX() ?? 1
-      const r = DOT_RADIUS_PX / zoom
+      const r = DOT_RADIUS_PX / Math.min(zoom, 1)
       const seenKeys = new Set()
 
       for (const node of ml.getChildren()) {

@@ -34,7 +34,7 @@ import { COLORS } from '../StylePanel/StylePanel.jsx'
 import './Canvas.css'
 
 const CanvasView = forwardRef(function CanvasView(
-  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle },
+  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true },
   ref
 ) {
   // ─── DOM + Konva refs ───────────────────────────────────────────────────────
@@ -2807,6 +2807,7 @@ const CanvasView = forwardRef(function CanvasView(
         stageRef={stageRef}
         mainLayerRef={mainLayerRef}
         editModeActive={!!lineGizmoNode}
+        visible={showHinges}
       />
 
       <MeasurementLabels

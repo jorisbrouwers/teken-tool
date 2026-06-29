@@ -4,6 +4,7 @@ import './SettingsPanel.css'
 export default function SettingsPanel({
   showPills, onTogglePills,
   showPillsInPdf, onTogglePillsInPdf,
+  showHinges, onToggleHinges,
   pillColor, onPillColorChange,
   pillOpacity, onPillOpacityChange,
   pillFontSize, onPillFontSizeChange,
@@ -45,6 +46,18 @@ export default function SettingsPanel({
               className={`settings-toggle${showPillsInPdf ? ' on' : ''}`}
               onClick={onTogglePillsInPdf}
               aria-label={showPillsInPdf ? 'Uitschakelen' : 'Inschakelen'}
+            />
+          </div>
+
+          <div className="settings-row">
+            <div className="settings-row-text">
+              <span className="settings-row-label">Scharnieren</span>
+              <span className="settings-row-desc">Verbindingspunten altijd zichtbaar</span>
+            </div>
+            <button
+              className={`settings-toggle${showHinges ? ' on' : ''}`}
+              onClick={onToggleHinges}
+              aria-label={showHinges ? 'Uitschakelen' : 'Inschakelen'}
             />
           </div>
 

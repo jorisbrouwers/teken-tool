@@ -37,6 +37,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showPills, setShowPills] = useState(true)
   const [showPillsInPdf, setShowPillsInPdf] = useState(true)
+  const [showHinges, setShowHinges] = useState(true)
   const [pillColor, setPillColor] = useState('#1971c2')
   const [pillOpacity, setPillOpacity] = useState(100)
   const [pillFontSize, setPillFontSize] = useState(12)
@@ -47,6 +48,7 @@ export default function App() {
     getAppSettings().then(s => {
       if (s.showPills !== undefined) setShowPills(s.showPills)
       if (s.showPillsInPdf !== undefined) setShowPillsInPdf(s.showPillsInPdf)
+      if (s.showHinges !== undefined) setShowHinges(s.showHinges)
       if (s.pillColor !== undefined) setPillColor(s.pillColor)
       if (s.pillOpacity !== undefined) setPillOpacity(s.pillOpacity)
       if (s.pillFontSize !== undefined) setPillFontSize(s.pillFontSize)
@@ -57,8 +59,8 @@ export default function App() {
 
   useEffect(() => {
     if (!settingsLoadedRef.current) return
-    saveAppSettings({ showPills, showPillsInPdf, pillColor, pillOpacity, pillFontSize, pillTextColor })
-  }, [showPills, showPillsInPdf, pillColor, pillOpacity, pillFontSize, pillTextColor])
+    saveAppSettings({ showPills, showPillsInPdf, showHinges, pillColor, pillOpacity, pillFontSize, pillTextColor })
+  }, [showPills, showPillsInPdf, showHinges, pillColor, pillOpacity, pillFontSize, pillTextColor])
 
   const pillStyle = { pillColor, pillOpacity, pillFontSize, pillTextColor }
   const [clipboardData, setClipboardData] = useState(null)
@@ -275,6 +277,7 @@ export default function App() {
               snapEnabled={snapEnabled}
               showPills={showPills}
               pillStyle={pillStyle}
+              showHinges={showHinges}
             />
             <StylePanel
               activeTool={activeTool}
@@ -356,6 +359,8 @@ export default function App() {
           onPillFontSizeChange={setPillFontSize}
           pillTextColor={pillTextColor}
           onPillTextColorChange={setPillTextColor}
+          showHinges={showHinges}
+          onToggleHinges={() => setShowHinges(v => !v)}
           onClose={() => setSettingsOpen(false)}
         />
       )}
