@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import { GRID_SIZE } from './useGrid.js'
+import { getPillCssStyle } from './pillStyle.js'
 
 const FAN_RADIUS = 56
 const FAN_OFFSETS = [-Math.PI / 2, 0, Math.PI / 2]
@@ -9,6 +10,23 @@ const SNAP_RAD = 3 * Math.PI / 180
 
 const EP_SNAP_SCREEN_PX    = 30  // screen pixels within which endpoint-to-endpoint snapping kicks in
 const ALIGN_SNAP_SCREEN_PX = 20  // screen pixels within which vertex alignment snapping kicks in
+
+// Collect all Konva nodes in the connected hierarchy starting from startNode.
+function getAllHierarchyNodes(startNode, layer) {
+  const visited = new Set()
+  const nodes = []
+  function walk(n) {
+    if (!n || visited.has(n.id())) return
+    visited.add(n.id())
+    nodes.push(n)
+    for (const attr of ['_ep0conn', '_ep1conn']) {
+      const conn = n.getAttr(attr)
+      if (conn) walk(layer.findOne(`#${conn.id}`))
+    }
+  }
+  walk(startNode)
+  return nodes
+}
 
 // Walk the connected hierarchy from startNode and collect all endpoint absolute positions
 // except those in excludeList [{id, ep}] (the moving endpoints).
@@ -37,7 +55,7 @@ function collectHierarchyVertices(startNode, layer, excludeList) {
 }
 
 // eslint-disable-next-line no-unused-vars
-export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onExtrude, onMeasureConfirm, snapEnabledRef, version, autoEditRef, showPills = true }) {
+export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onExtrude, onMeasureConfirm, snapEnabledRef, version, autoEditRef, showPills = true, pillStyle }) {
   const [, setVersion] = useState(0)
   const [editing, setEditing] = useState(false)
   const [inputValue, setInputValue] = useState('')
@@ -98,24 +116,28 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
     let prevKey = ''
     function tick() {
       const stage = stageRef.current
-      if (!stage || !node) return
-      const pts = node.points()
-      const key = `${stage.x()},${stage.y()},${stage.scaleX()},${node.x()},${node.y()},${pts.join(',')}`
+      const layer = mainLayerRef.current
+      if (!stage || !node || !layer) return
+      const hNodes = getAllHierarchyNodes(node, layer)
+      const nodesKey = hNodes.map(n => {
+        const pts = n.points()
+        return `${n.id()}:${n.x()},${n.y()},${pts.join(',')}`
+      }).join('|')
+      const key = `${stage.x()},${stage.y()},${stage.scaleX()}|${nodesKey}`
       if (key !== prevKey) { prevKey = key; setVersion(v => v + 1) }
       rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [node, stageRef])
+  }, [node, stageRef, mainLayerRef])
 
   // Konva circles op mainLayer — drag is volledig manueel via native pointer events
   // zodat we op elk pointermove updaten (niet alleen per rAF-frame zoals Konva's eigen drag doet).
+  // Voor elke node in de connected hierarchy worden 2 circles aangemaakt (edit mode).
   useEffect(() => {
     const layer = mainLayerRef.current
     if (!layer || !node) return
-    const pts = node.points()
 
-    // Converts clientX/Y to stage (canvas) coordinates, accounting for pan + zoom.
     function clientToStage(clientX, clientY) {
       const stage = stageRef.current
       if (!stage) return null
@@ -126,46 +148,43 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
       })
     }
 
-    // Track which endpoint (0|1|null) is actively being dragged so the sync
-    // effect doesn't fight our manual position updates.
-    const windowListeners = []  // { move, up } pairs to remove on cleanup
+    const windowListeners = []
 
-    const circles = [0, 1].map(i => {
+    function createCircle(targetNode, i) {
+      const pts = targetNode.points()
+      const isSelectedNode = targetNode === node
       const circle = new Konva.Circle({
-        x: node.x() + pts[i * 2],
-        y: node.y() + pts[i * 2 + 1],
+        x: targetNode.x() + pts[i * 2],
+        y: targetNode.y() + pts[i * 2 + 1],
         radius: 10,
         fill: 'white',
-        stroke: '#1971c2',
-        strokeWidth: 2,
-        draggable: false,   // manual drag only
+        stroke: isSelectedNode ? '#1971c2' : '#868e96',
+        strokeWidth: isSelectedNode ? 2 : 1.5,
+        draggable: false,
         hitStrokeWidth: 14,
         perfectDrawEnabled: false,
-        name: `lineGizmoHandle_${i}`,
+        name: `lineGizmoHandle_${targetNode.id()}_${i}`,
       })
 
-      let startStagePt = null   // pointer pos in stage coords at drag start
-      let startCirclePt = null  // circle pos in stage coords at drag start
-      let lastAbsPos = null     // last propagated absolute position
+      let startStagePt = null
+      let startCirclePt = null
+      let lastAbsPos = null
 
       function applyMove(rawAbsX, rawAbsY) {
-        const currentPts = node.points().slice()
-        let cx = rawAbsX - node.x()
-        let cy = rawAbsY - node.y()
+        const currentPts = targetNode.points().slice()
+        let cx = rawAbsX - targetNode.x()
+        let cy = rawAbsY - targetNode.y()
 
-        const anchorAbsX = node.x() + currentPts[(1 - i) * 2]
-        const anchorAbsY = node.y() + currentPts[(1 - i) * 2 + 1]
+        const anchorAbsX = targetNode.x() + currentPts[(1 - i) * 2]
+        const anchorAbsY = targetNode.y() + currentPts[(1 - i) * 2 + 1]
 
         // ── 1. Endpoint-to-endpoint snapping ─────────────────────────────────
         const stage = stageRef.current
         const epSnapDist = EP_SNAP_SCREEN_PX / (stage?.scaleX() ?? 1)
-        // The endpoint we're currently connected to follows our drag in real time.
-        // Without this check the snap code would lock onto it every frame, causing
-        // the fixed-step stutter experienced when dragging a hinge.
-        const currentConn = node.getAttr(i === 0 ? '_ep0conn' : '_ep1conn')
+        const currentConn = targetNode.getAttr(i === 0 ? '_ep0conn' : '_ep1conn')
         let epSnap = null
         for (const other of layer.getChildren()) {
-          if (other === node || other.name()?.startsWith('lineGizmoHandle')) continue
+          if (other === targetNode || other.name()?.startsWith('lineGizmoHandle')) continue
           const cls = other.getClassName()
           if (cls !== 'Line' && cls !== 'Arrow') continue
           const otherPts = other.points()
@@ -175,7 +194,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
             const ex = other.x() + otherPts[j * 2]
             const ey = other.y() + otherPts[j * 2 + 1]
             if (Math.hypot(ex - anchorAbsX, ey - anchorAbsY) < epSnapDist) continue
-            if (Math.hypot((node.x() + cx) - ex, (node.y() + cy) - ey) < epSnapDist) {
+            if (Math.hypot((targetNode.x() + cx) - ex, (targetNode.y() + cy) - ey) < epSnapDist) {
               epSnap = { nodeId: other.id(), ep: j, absX: ex, absY: ey }
               break
             }
@@ -187,8 +206,8 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
         let snappedAngle = 0
 
         if (epSnap) {
-          cx = epSnap.absX - node.x()
-          cy = epSnap.absY - node.y()
+          cx = epSnap.absX - targetNode.x()
+          cy = epSnap.absY - targetNode.y()
           removeSnapIndicator(layer)
           removeAlignIndicators(layer)
           snapTargetRef.current = { nodeId: epSnap.nodeId, ep: epSnap.ep }
@@ -197,19 +216,19 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
 
           // ── 2. Vertex alignment snapping (pink guides) ────────────────────
           const alignSnapDist = ALIGN_SNAP_SCREEN_PX / (stage?.scaleX() ?? 1)
-          const excludeList = [{ id: node.id(), ep: i }]
+          const excludeList = [{ id: targetNode.id(), ep: i }]
           if (currentConn) excludeList.push({ id: currentConn.id, ep: currentConn.ep })
-          const vertices = collectHierarchyVertices(node, layer, excludeList)
+          const vertices = collectHierarchyVertices(targetNode, layer, excludeList)
 
           let snapX = null, snapY = null
           for (const v of vertices) {
-            if (snapX === null && Math.abs((node.x() + cx) - v.x) < alignSnapDist) snapX = v.x
-            if (snapY === null && Math.abs((node.y() + cy) - v.y) < alignSnapDist) snapY = v.y
+            if (snapX === null && Math.abs((targetNode.x() + cx) - v.x) < alignSnapDist) snapX = v.x
+            if (snapY === null && Math.abs((targetNode.y() + cy) - v.y) < alignSnapDist) snapY = v.y
             if (snapX !== null && snapY !== null) break
           }
 
-          if (snapX !== null) cx = snapX - node.x()
-          if (snapY !== null) cy = snapY - node.y()
+          if (snapX !== null) cx = snapX - targetNode.x()
+          if (snapY !== null) cy = snapY - targetNode.y()
 
           const sc2 = stage?.scaleX() ?? 1
           const stageLeft   = (-stage.x()) / sc2
@@ -246,34 +265,29 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
           }
 
           // ── 3. Angle snapping (blue guide) ───────────────────────────────────
-          // When one alignment axis is locked, angle snap adjusts only the free axis.
-          // Skipped only when both axes are locked (no degrees of freedom remain).
           const bothAxesLocked = snapX !== null && snapY !== null
           if (!bothAxesLocked && snapEnabledRef?.current) {
-            const dx = (node.x() + cx) - anchorAbsX
-            const dy = (node.y() + cy) - anchorAbsY
+            const dx = (targetNode.x() + cx) - anchorAbsX
+            const dy = (targetNode.y() + cy) - anchorAbsY
             const angle = Math.atan2(dy, dx)
             snappedAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4)
             if (Math.abs(angle - snappedAngle) < SNAP_RAD) {
               isAngleSnapping = true
               const cosA = Math.cos(snappedAngle), sinA = Math.sin(snappedAngle)
               if (snapY !== null) {
-                // Y locked by alignment — adjust only X to reach target angle
                 if (Math.abs(sinA) > 1e-9) {
-                  const len = ((node.y() + cy) - anchorAbsY) / sinA
-                  cx = (anchorAbsX + cosA * len) - node.x()
+                  const len = ((targetNode.y() + cy) - anchorAbsY) / sinA
+                  cx = (anchorAbsX + cosA * len) - targetNode.x()
                 }
               } else if (snapX !== null) {
-                // X locked by alignment — adjust only Y to reach target angle
                 if (Math.abs(cosA) > 1e-9) {
-                  const len = ((node.x() + cx) - anchorAbsX) / cosA
-                  cy = (anchorAbsY + sinA * len) - node.y()
+                  const len = ((targetNode.x() + cx) - anchorAbsX) / cosA
+                  cy = (anchorAbsY + sinA * len) - targetNode.y()
                 }
               } else {
-                // No alignment lock — free movement, constrain to angle ray from anchor
                 const len = Math.hypot(dx, dy)
-                cx = (anchorAbsX + cosA * len) - node.x()
-                cy = (anchorAbsY + sinA * len) - node.y()
+                cx = (anchorAbsX + cosA * len) - targetNode.x()
+                cy = (anchorAbsY + sinA * len) - targetNode.y()
               }
             }
           }
@@ -305,18 +319,18 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
           }
         }
 
-        const finalAbsX = node.x() + cx
-        const finalAbsY = node.y() + cy
+        const finalAbsX = targetNode.x() + cx
+        const finalAbsY = targetNode.y() + cy
         circle.position({ x: finalAbsX, y: finalAbsY })
 
         if (lastAbsPos && (finalAbsX !== lastAbsPos.x || finalAbsY !== lastAbsPos.y)) {
-          onEndpointDragMove?.(i, finalAbsX, finalAbsY)
+          onEndpointDragMove?.(targetNode.id(), i, finalAbsX, finalAbsY)
           lastAbsPos = { x: finalAbsX, y: finalAbsY }
         }
 
         currentPts[i * 2]     = cx
         currentPts[i * 2 + 1] = cy
-        node.points(currentPts)
+        targetNode.points(currentPts)
         layer.batchDraw()
         setVersion(v => v + 1)
       }
@@ -328,15 +342,14 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
         startStagePt  = sp
         startCirclePt = { x: circle.x(), y: circle.y() }
         lastAbsPos    = { x: circle.x(), y: circle.y() }
-        activeDragRef.current = i
+        activeDragRef.current = { nodeId: targetNode.id(), ep: i }
 
         function onMove(ev) {
-          if (activeDragRef.current !== i) return
+          const active = activeDragRef.current
+          if (!active || active.nodeId !== targetNode.id() || active.ep !== i) return
           const sp2 = clientToStage(ev.clientX, ev.clientY)
           if (!sp2 || !startStagePt) return
-          const rawAbsX = startCirclePt.x + (sp2.x - startStagePt.x)
-          const rawAbsY = startCirclePt.y + (sp2.y - startStagePt.y)
-          applyMove(rawAbsX, rawAbsY)
+          applyMove(startCirclePt.x + (sp2.x - startStagePt.x), startCirclePt.y + (sp2.y - startStagePt.y))
         }
 
         function onUp() {
@@ -348,8 +361,8 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
           layer.batchDraw()
           const snap = snapTargetRef.current
           snapTargetRef.current = null
-          if (snap) onEndpointSnap?.(i, snap.nodeId, snap.ep)
-          onEndpointDragEnd(i)
+          if (snap) onEndpointSnap?.(targetNode.id(), i, snap.nodeId, snap.ep)
+          onEndpointDragEnd()
           startStagePt = null; startCirclePt = null; lastAbsPos = null
         }
 
@@ -359,18 +372,19 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
       })
 
       layer.add(circle)
-      return circle
-    })
+      return { targetNode, ep: i, circle }
+    }
 
-    circlesRef.current = circles
+    const hierarchyNodes = getAllHierarchyNodes(node, layer)
+    const circleEntries = hierarchyNodes.flatMap(n => [0, 1].map(i => createCircle(n, i)))
+    circlesRef.current = circleEntries
     layer.batchDraw()
 
     return () => {
-      circles.forEach(c => c.destroy())
+      circleEntries.forEach(({ circle }) => circle.destroy())
       circlesRef.current = []
       activeDragRef.current = null
       snapTargetRef.current = null
-      // Clean up any lingering window listeners (e.g. component unmounted mid-drag)
       windowListeners.forEach(({ move, up }) => {
         window.removeEventListener('pointermove', move)
         window.removeEventListener('pointerup',   up)
@@ -380,17 +394,15 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
     }
   }, [node])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync circle posities na elke render (vangt body drag op).
-  // Skip the endpoint currently being manually dragged.
+  // Sync circle posities na elke render (vangt body drag en hierarchy-bewegingen op).
   useEffect(() => {
-    const pts = node?.points()
-    if (!pts || circlesRef.current.length < 2) return
     let dirty = false
-    for (let idx = 0; idx < 2; idx++) {
-      if (activeDragRef.current === idx) continue
-      const c = circlesRef.current[idx]
-      if (!c) continue
-      c.position({ x: node.x() + pts[idx * 2], y: node.y() + pts[idx * 2 + 1] })
+    const active = activeDragRef.current
+    for (const { targetNode, ep, circle } of circlesRef.current) {
+      if (active?.nodeId === targetNode.id() && active?.ep === ep) continue
+      const pts = targetNode.points()
+      if (!pts || pts.length < 4) continue
+      circle.position({ x: targetNode.x() + pts[ep * 2], y: targetNode.y() + pts[ep * 2 + 1] })
       dirty = true
     }
     if (dirty) mainLayerRef.current?.batchDraw()
@@ -400,7 +412,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
   useEffect(() => {
     const zoom = stageRef.current?.scaleX() ?? 1
     const r = Math.max(6, Math.min(12, 10 / zoom))
-    circlesRef.current.forEach(c => c?.radius(r))
+    circlesRef.current.forEach(({ circle }) => circle?.radius(r))
   })
 
   // Stage-coördinaten → schermcoördinaten (voor HTML overlay)
@@ -439,12 +451,12 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
     setEditing(false)
   }
 
-  function renderFan(epScreen, baseAngle, endpointIndex) {
+  function renderFan(epScreen, baseAngle, endpointIndex, sourceNode = node, keyPrefix = '') {
     return FAN_OFFSETS.map((offset, j) => {
       const angle = baseAngle + offset
       return (
         <button
-          key={j}
+          key={`${keyPrefix}${j}`}
           className="line-gizmo-fan-btn"
           style={{
             left: epScreen.x + Math.cos(angle) * FAN_RADIUS,
@@ -452,7 +464,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
           }}
           onPointerDown={e => {
             e.stopPropagation()
-            onExtrude(endpointIndex, angle)
+            onExtrude(endpointIndex, angle, sourceNode)
           }}
         >
           <svg viewBox="0 0 16 16" width="14" height="14"
@@ -466,19 +478,42 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
     })
   }
 
+  // Open uiteinden van de rest van de hiërarchie voor fan knoppen in edit mode
+  const layer = mainLayerRef.current
+  const hierarchyFans = []
+  if (layer) {
+    const hierarchyNodes = getAllHierarchyNodes(node, layer)
+    for (const hn of hierarchyNodes) {
+      if (hn === node) continue
+      const hpts = hn.points()
+      if (!hpts || hpts.length < 4) continue
+      const hnx = hn.x(), hny = hn.y()
+      const hAngle = Math.atan2(hpts[3] - hpts[1], hpts[2] - hpts[0])
+      if (!hn.getAttr('_ep0conn')) {
+        hierarchyFans.push({ hn, ep: 0, epScreen: toScreen(hnx + hpts[0], hny + hpts[1]), baseAngle: hAngle + Math.PI })
+      }
+      if (!hn.getAttr('_ep1conn')) {
+        hierarchyFans.push({ hn, ep: 1, epScreen: toScreen(hnx + hpts[2], hny + hpts[3]), baseAngle: hAngle })
+      }
+    }
+  }
+
   return (
     <>
       {!ep0Connected && renderFan(ep0Screen, ep0Dir, 0)}
       {!ep1Connected && renderFan(ep1Screen, ep1Dir, 1)}
+      {hierarchyFans.flatMap(({ hn, ep, epScreen, baseAngle }) =>
+        renderFan(epScreen, baseAngle, ep, hn, `h_${hn.id()}_${ep}_`)
+      )}
 
       {showPills && !editing && (
         <button
           className="line-gizmo-measure-label"
-          style={{ left: midScreen.x, top: midScreen.y }}
+          style={{ left: midScreen.x, top: midScreen.y, ...getPillCssStyle(pillStyle) }}
           onPointerDown={e => e.stopPropagation()}
           onClick={() => { const v = lengthM.toFixed(2); inputValueRef.current = v; setInputValue(v); setEditing(true) }}
         >
-          {lengthM.toFixed(2)} m
+          {lengthM.toFixed(2)}
         </button>
       )}
 

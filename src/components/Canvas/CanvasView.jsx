@@ -29,11 +29,12 @@ import CropOverlay from './CropOverlay.jsx'
 import Minimap from '../Minimap/Minimap.jsx'
 import LineGizmo from './LineGizmo.jsx'
 import MeasurementLabels from './MeasurementLabels.jsx'
+import HingeDecorations from './HingeDecorations.jsx'
 import { COLORS } from '../StylePanel/StylePanel.jsx'
 import './Canvas.css'
 
 const CanvasView = forwardRef(function CanvasView(
-  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true },
+  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle },
   ref
 ) {
   // ─── DOM + Konva refs ───────────────────────────────────────────────────────
@@ -113,6 +114,7 @@ const CanvasView = forwardRef(function CanvasView(
   historyPushRef.current = history.pushState
   const persistenceScheduleRef = useRef(null)
   const animateNavRef = useRef(null)
+  const centerToContentRef = useRef(null)
   usePersistence(mainLayerRef, note.id, persistenceScheduleRef)
 
   function scheduleSnapshot() {
@@ -182,8 +184,8 @@ const CanvasView = forwardRef(function CanvasView(
     return gizmoAffected
   }
 
-  function handleExtrude(endpointIndex, directionAngleRad) {
-    const node = lineGizmoNodeRef.current
+  function handleExtrude(endpointIndex, directionAngleRad, sourceNode) {
+    const node = sourceNode || lineGizmoNodeRef.current
     const layer = mainLayerRef.current
     if (!node || !layer) return
     const pts = node.points()
@@ -211,10 +213,11 @@ const CanvasView = forwardRef(function CanvasView(
     scheduleSnapshot()
   }
 
-  function handleLineEndpointDragMove(endpointIndex, absX, absY) {
-    const node = lineGizmoNodeRef.current
+  function handleLineEndpointDragMove(nodeId, endpointIndex, absX, absY) {
     const layer = mainLayerRef.current
-    if (!node || !layer) return
+    if (!layer) return
+    const node = layer.findOne(`#${nodeId}`)
+    if (!node) return
     // Only pull the directly connected endpoint — no chain propagation.
     // Body drag (dragmove on the line itself) handles full-chain propagation.
     const conn = node.getAttr(endpointIndex === 0 ? '_ep0conn' : '_ep1conn')
@@ -260,10 +263,11 @@ const CanvasView = forwardRef(function CanvasView(
     scheduleSnapshot()
   }
 
-  function handleLineEndpointSnap(draggedEp, targetNodeId, targetEp) {
-    const node = lineGizmoNodeRef.current
+  function handleLineEndpointSnap(sourceNodeId, draggedEp, targetNodeId, targetEp) {
     const layer = mainLayerRef.current
-    if (!node || !layer) return
+    if (!layer) return
+    const node = layer.findOne(`#${sourceNodeId}`)
+    if (!node) return
 
     // Save original connections BEFORE any breaking — needed for zero-length rewiring below.
     const origDraggedConn = node.getAttr(draggedEp === 0 ? '_ep0conn' : '_ep1conn')
@@ -495,29 +499,7 @@ const CanvasView = forwardRef(function CanvasView(
         })
         history.reset()
         if (capturedShouldCenter) {
-          // User explicitly opened this note — center on content.
-          const nodes = mainLayer.getChildren().filter(n => n.getClassName() !== 'Transformer')
-          if (!nodes.length) return
-          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-          nodes.forEach(n => {
-            const r = n.getClientRect({ relativeTo: stage })
-            minX = Math.min(minX, r.x)
-            minY = Math.min(minY, r.y)
-            maxX = Math.max(maxX, r.x + r.width)
-            maxY = Math.max(maxY, r.y + r.height)
-          })
-          const pad   = 60
-          const viewW = stage.width()
-          const viewH = stage.height()
-          const scale = Math.min((viewW - pad * 2) / (maxX - minX), (viewH - pad * 2) / (maxY - minY), 3)
-          const cx = (minX + maxX) / 2
-          const cy = (minY + maxY) / 2
-          const newX = viewW / 2 - cx * scale
-          const newY = viewH / 2 - cy * scale
-          stage.scale({ x: scale, y: scale })
-          stage.position({ x: newX, y: newY })
-          stage.batchDraw()
-          updateNoteSettings(note.id, { ...note.settings, zoom: scale, pan: { x: newX, y: newY } })
+          centerToContentRef.current?.()
         } else {
           stage.batchDraw()
         }
@@ -653,6 +635,7 @@ const CanvasView = forwardRef(function CanvasView(
     let touchDragNodeOrigin = null
     let touchDragMoved = false
     let twoFingerActive = false   // true once 2 fingers were active; blocks leftover-finger pan
+    let touchDraggableFrozen = false  // true when we've pre-emptively set draggable(false) on nodes
 
     // Transformer handle touch resize state.
     // When a touch lands near a handle we let the event pass through to Konva
@@ -754,6 +737,42 @@ const CanvasView = forwardRef(function CanvasView(
     }
     animateNavRef.current = animateNav
 
+    function doCenterToContent() {
+      const stage     = stageRef.current
+      const mainLayer = mainLayerRef.current
+      if (!stage || !mainLayer) return
+      const nodes = mainLayer.getChildren().filter(n => n.getClassName() !== 'Transformer')
+      if (!nodes.length) return
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      nodes.forEach(n => {
+        const r = n.getClientRect({ relativeTo: stage })
+        minX = Math.min(minX, r.x); minY = Math.min(minY, r.y)
+        maxX = Math.max(maxX, r.x + r.width); maxY = Math.max(maxY, r.y + r.height)
+      })
+
+      const pad = 60, viewW = stage.width(), viewH = stage.height()
+      const targetScale = Math.min((viewW - pad * 2) / (maxX - minX), (viewH - pad * 2) / (maxY - minY), 3)
+      const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
+      const targetX = viewW / 2 - cx * targetScale
+      const targetY = viewH / 2 - cy * targetScale
+
+      const x0 = stage.x(), y0 = stage.y(), s0 = stage.scaleX()
+      const t0 = performance.now(), duration = 280
+      function ease(t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t }
+      function frame(now) {
+        const t = Math.min((now - t0) / duration, 1)
+        const e = ease(t)
+        stage.scale({ x: s0 + (targetScale - s0) * e, y: s0 + (targetScale - s0) * e })
+        stage.position({ x: x0 + (targetX - x0) * e, y: y0 + (targetY - y0) * e })
+        stage.batchDraw()
+        if (t < 1) requestAnimationFrame(frame)
+        else updateNoteSettings(note.id, { ...note.settings, zoom: targetScale, pan: { x: targetX, y: targetY } })
+      }
+      requestAnimationFrame(frame)
+    }
+    centerToContentRef.current = doCenterToContent
+
     // Deselect everything at navigation start so Konva never calls getClientRect()
     // on selected nodes during batchDraw() while panning/zooming.
     // Also disable draggable on all nodes: Konva's internal drag system registers
@@ -767,7 +786,7 @@ const CanvasView = forwardRef(function CanvasView(
       const stage = stageRef.current
       const tr = transformerRef.current
       if (tr) {
-        const isLockedImg = n => n.attrs.isImage && n.attrs.isLocked
+        const isLockedImg = n => n?.attrs?.isImage && n?.attrs?.isLocked
         // Locked images auto-deselect on any navigation — they're navigation anchors, not selections.
         savedSelection = tr.nodes().filter(n => !isLockedImg(n))
         if (isLockedImg(toolbarTargetRef.current)) toolbarTargetRef.current = null
@@ -805,6 +824,7 @@ const CanvasView = forwardRef(function CanvasView(
     function endNav() {
       if (!navActive) return
       navActive = false
+      touchDraggableFrozen = false
       const tr = transformerRef.current
       const layer = mainLayerRef.current
       if (tr && savedSelection.length) {
@@ -859,6 +879,21 @@ const CanvasView = forwardRef(function CanvasView(
       // ── Pen tip ────────────────────────────────────────────────────────
       if (e.pointerType === 'pen') {
         notifyInputType('pen')
+        // Lijn-segmenten mogen buiten edit mode niet verschoven worden met de pen.
+        // Dit zetten we hier — vóór Konva drag-tracking start — via draggable(false).
+        if (activeToolRef.current === 'select') {
+          const stage = stageRef.current
+          if (stage) {
+            const box = stage.container().getBoundingClientRect()
+            const hitNode = stage.getIntersection({ x: e.clientX - box.left, y: e.clientY - box.top })
+            if (isSingleLinear(hitNode) && hitNode !== lineGizmoNodeRef.current) {
+              hitNode.draggable(false)
+              window.addEventListener('pointerup', function restore() {
+                if (activeToolRef.current === 'select') hitNode.draggable(true)
+              }, { once: true })
+            }
+          }
+        }
         return // Let Konva handle pen-tip events (Effect 3)
       }
 
@@ -909,6 +944,16 @@ const CanvasView = forwardRef(function CanvasView(
                 }
               }
             }
+          }
+          // Disable Konva drag on all non-image nodes immediately so that if this
+          // finger moves, Konva never starts dragging content. Images are excluded
+          // here because touchDragNode handles their movement manually. Draggable
+          // state is restored in endNav() (pan/zoom case) or onPointerUp (tap case).
+          if (!touchDragNode) {
+            touchDraggableFrozen = true
+            mainLayerRef.current?.getChildren().forEach(n => {
+              if (n.getClassName() !== 'Transformer' && !n.attrs.isImage) n.draggable(false)
+            })
           }
         } else if (touchPointers.size === 2) {
           // Second finger joins: always switch to pan/pinch, even when the first
@@ -1065,7 +1110,17 @@ const CanvasView = forwardRef(function CanvasView(
           touchDragMoved = false
           twoFingerActive = false
 
-          endNav() // restore selection + toolbar
+          endNav() // restore selection + toolbar (also restores draggable when navActive was true)
+          // If we froze draggable but navActive was never set (pure tap), endNav() was a
+          // no-op so we must restore draggable state here.
+          if (touchDraggableFrozen) {
+            touchDraggableFrozen = false
+            const layer = mainLayerRef.current
+            const canDrag = activeToolRef.current === 'select'
+            layer?.getChildren().forEach(n => {
+              if (n.getClassName() !== 'Transformer' && !n.attrs.isImage) n.draggable(canDrag)
+            })
+          }
           const moved = Math.hypot(e.clientX - ptr.startX, e.clientY - ptr.startY)
           // Skip tap detection after a multi-finger gesture (twoFingerActive was just cleared
           // but we detect the gesture via navActive having been true during the gesture).
@@ -2724,37 +2779,7 @@ const CanvasView = forwardRef(function CanvasView(
       history.pushState()
       scheduleSnapshot()
     },
-    centerToContent: () => {
-      const stage     = stageRef.current
-      const mainLayer = mainLayerRef.current
-      if (!stage || !mainLayer) return
-      const nodes = mainLayer.getChildren().filter(n => n.getClassName() !== 'Transformer')
-      if (!nodes.length) return
-
-      // Bounding box of all content in stage-space coordinates.
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-      nodes.forEach(n => {
-        const r = n.getClientRect({ relativeTo: stage })
-        minX = Math.min(minX, r.x)
-        minY = Math.min(minY, r.y)
-        maxX = Math.max(maxX, r.x + r.width)
-        maxY = Math.max(maxY, r.y + r.height)
-      })
-
-      const pad    = 60
-      const viewW  = stage.width()
-      const viewH  = stage.height()
-      const scale  = Math.min(
-        (viewW - pad * 2) / (maxX - minX),
-        (viewH - pad * 2) / (maxY - minY),
-        3,
-      )
-      const cx = (minX + maxX) / 2
-      const cy = (minY + maxY) / 2
-      const newX = viewW / 2 - cx * scale
-      const newY = viewH / 2 - cy * scale
-      animateNavRef.current?.(newX, newY, scale)
-    },
+    centerToContent: () => centerToContentRef.current?.(),
   }))
 
   useGrid(wrapperRef, gridCanvasRef, stageRef, showGrid)
@@ -2778,6 +2803,12 @@ const CanvasView = forwardRef(function CanvasView(
 
       <Minimap stageRef={stageRef} mainLayerRef={mainLayerRef} version={minimapVersion} />
 
+      <HingeDecorations
+        stageRef={stageRef}
+        mainLayerRef={mainLayerRef}
+        editModeActive={!!lineGizmoNode}
+      />
+
       <MeasurementLabels
         mainLayerRef={mainLayerRef}
         stageRef={stageRef}
@@ -2785,6 +2816,7 @@ const CanvasView = forwardRef(function CanvasView(
         suppressRef={suppressMeasureRef}
         onPillClick={handlePillClick}
         showPills={showPills}
+        pillStyle={pillStyle}
       />
 
       {lineGizmoNode && (
@@ -2801,6 +2833,7 @@ const CanvasView = forwardRef(function CanvasView(
           version={lineGizmoVersion}
           autoEditRef={gizmoAutoEditRef}
           showPills={showPills}
+          pillStyle={pillStyle}
         />
       )}
 

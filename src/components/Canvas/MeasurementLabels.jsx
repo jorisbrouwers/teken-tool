@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { GRID_SIZE } from './useGrid.js'
+import { getPillCssStyle } from './pillStyle.js'
 
-export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, suppressRef, onPillClick, showPills = true }) {
+export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, suppressRef, onPillClick, showPills = true, pillStyle }) {
   const containerRef    = useRef(null)
   const labelMapRef     = useRef(new Map())
   const rafRef          = useRef(null)
@@ -9,6 +10,8 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
   onPillClickRef.current = onPillClick
   const showPillsRef    = useRef(showPills)
   showPillsRef.current  = showPills
+  const pillStyleRef    = useRef(pillStyle)
+  pillStyleRef.current  = pillStyle
 
   useEffect(() => {
     const container = containerRef.current
@@ -44,7 +47,7 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
           const x       = box.left + sp.x
           const y       = box.top  + sp.y
           const lengthM = (lengthPx / GRID_SIZE).toFixed(2)
-          const text    = `${lengthM} m`
+          const text    = `${lengthM}`
 
           let el = labelMapRef.current.get(id)
           if (!el) {
@@ -59,6 +62,11 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
             container.appendChild(el)
             labelMapRef.current.set(id, el)
           }
+          const ps = getPillCssStyle(pillStyleRef.current)
+          el.style.background = ps.background
+          el.style.color      = ps.color
+          el.style.fontSize   = ps.fontSize
+          if (ps.boxShadow !== undefined) el.style.boxShadow = ps.boxShadow
           el.style.visibility = ''
           el.style.left    = x + 'px'
           el.style.top     = y + 'px'

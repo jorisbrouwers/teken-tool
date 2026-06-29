@@ -37,20 +37,30 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showPills, setShowPills] = useState(true)
   const [showPillsInPdf, setShowPillsInPdf] = useState(true)
+  const [pillColor, setPillColor] = useState('#1971c2')
+  const [pillOpacity, setPillOpacity] = useState(100)
+  const [pillFontSize, setPillFontSize] = useState(12)
+  const [pillTextColor, setPillTextColor] = useState('#ffffff')
   const settingsLoadedRef = useRef(false)
 
   useEffect(() => {
     getAppSettings().then(s => {
       if (s.showPills !== undefined) setShowPills(s.showPills)
       if (s.showPillsInPdf !== undefined) setShowPillsInPdf(s.showPillsInPdf)
+      if (s.pillColor !== undefined) setPillColor(s.pillColor)
+      if (s.pillOpacity !== undefined) setPillOpacity(s.pillOpacity)
+      if (s.pillFontSize !== undefined) setPillFontSize(s.pillFontSize)
+      if (s.pillTextColor !== undefined) setPillTextColor(s.pillTextColor)
       settingsLoadedRef.current = true
     })
   }, [])
 
   useEffect(() => {
     if (!settingsLoadedRef.current) return
-    saveAppSettings({ showPills, showPillsInPdf })
-  }, [showPills, showPillsInPdf])
+    saveAppSettings({ showPills, showPillsInPdf, pillColor, pillOpacity, pillFontSize, pillTextColor })
+  }, [showPills, showPillsInPdf, pillColor, pillOpacity, pillFontSize, pillTextColor])
+
+  const pillStyle = { pillColor, pillOpacity, pillFontSize, pillTextColor }
   const [clipboardData, setClipboardData] = useState(null)
   const [calcOpen, setCalcOpen] = useState(false)
   const [hasSelection, setHasSelection] = useState(false)
@@ -106,8 +116,8 @@ export default function App() {
   const handleExportPdf = useCallback(async () => {
     const stage = canvasViewRef.current?.getStage()
     if (!stage || !activeNote) return
-    await exportPdf(activeNote, stage, showGrid, showPillsInPdf)
-  }, [activeNote, showGrid, showPillsInPdf])
+    await exportPdf(activeNote, stage, showGrid, showPillsInPdf, pillStyle)
+  }, [activeNote, showGrid, showPillsInPdf, pillStyle])
 
   const handleExportJnote = useCallback(() => {
     const mainLayer = canvasViewRef.current?.getMainLayer()
@@ -119,9 +129,9 @@ export default function App() {
     const stage = canvasViewRef.current?.getStage()
     const mainLayer = canvasViewRef.current?.getMainLayer()
     if (!stage || !mainLayer || !activeNote) return
-    await exportPdf(activeNote, stage, showGrid, showPillsInPdf)
+    await exportPdf(activeNote, stage, showGrid, showPillsInPdf, pillStyle)
     exportJnote(activeNote, mainLayer)
-  }, [activeNote, showGrid, showPillsInPdf])
+  }, [activeNote, showGrid, showPillsInPdf, pillStyle])
 
   const handleImportJnote = useCallback(async (file) => {
     try {
@@ -264,6 +274,7 @@ export default function App() {
               onSelectionChange={handleSelectionChange}
               snapEnabled={snapEnabled}
               showPills={showPills}
+              pillStyle={pillStyle}
             />
             <StylePanel
               activeTool={activeTool}
@@ -337,6 +348,14 @@ export default function App() {
           onTogglePills={() => setShowPills(v => !v)}
           showPillsInPdf={showPillsInPdf}
           onTogglePillsInPdf={() => setShowPillsInPdf(v => !v)}
+          pillColor={pillColor}
+          onPillColorChange={setPillColor}
+          pillOpacity={pillOpacity}
+          onPillOpacityChange={setPillOpacity}
+          pillFontSize={pillFontSize}
+          onPillFontSizeChange={setPillFontSize}
+          pillTextColor={pillTextColor}
+          onPillTextColorChange={setPillTextColor}
           onClose={() => setSettingsOpen(false)}
         />
       )}

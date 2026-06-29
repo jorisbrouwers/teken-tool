@@ -1,10 +1,11 @@
 import { jsPDF } from 'jspdf'
+import { hexToRgb, getPdfFontSize } from '../components/Canvas/pillStyle.js'
 
 const GRID_SIZE  = 25     // must match useGrid.js
 const MARGIN     = 40     // whitespace around content, in stage-space units
 const MAX_LONG   = 8000   // max output pixels on the longest side
 
-export async function exportPdf(note, stage, showGrid, showPillsInPdf = false) {
+export async function exportPdf(note, stage, showGrid, showPillsInPdf = false, pillStyle) {
   const mainLayer = stage.getLayers()[0]
   const nodes = mainLayer.getChildren().filter(n => n.getClassName() !== 'Transformer')
 
@@ -85,7 +86,7 @@ export async function exportPdf(note, stage, showGrid, showPillsInPdf = false) {
   ctx.drawImage(konvaCanvas, 0, 0, outputW, outputH)
 
   if (showPillsInPdf) {
-    drawMeasurementPills(ctx, nodes, cropSX, cropSY, targetScale)
+    drawMeasurementPills(ctx, nodes, cropSX, cropSY, targetScale, pillStyle)
   }
 
   const dataUrl = finalCanvas.toDataURL('image/jpeg', 0.85)
@@ -97,10 +98,15 @@ export async function exportPdf(note, stage, showGrid, showPillsInPdf = false) {
 
 // Draw measurement pills for Line/Arrow nodes with exactly 4 points,
 // mirroring the logic in MeasurementLabels.jsx.
-function drawMeasurementPills(ctx, nodes, cropSX, cropSY, targetScale) {
-  const fontSize   = Math.round(9  * targetScale)
-  const padX       = Math.round(6  * targetScale)
-  const padY       = Math.round(3  * targetScale)
+function drawMeasurementPills(ctx, nodes, cropSX, cropSY, targetScale, pillStyle) {
+  const { pillColor = '#1971c2', pillOpacity = 100, pillFontSize = 12, pillTextColor = '#ffffff' } = pillStyle ?? {}
+  const fontSize = Math.round(getPdfFontSize(pillFontSize) * targetScale)
+  const padX     = Math.round(6 * targetScale)
+  const padY     = Math.round(3 * targetScale)
+  const alpha    = pillOpacity / 100
+  const noFill   = pillOpacity === 0
+  const { r: cr, g: cg, b: cb } = hexToRgb(pillColor)
+  const { r: tr, g: tg, b: tb } = hexToRgb(pillTextColor)
 
   ctx.save()
   ctx.font = `bold ${fontSize}px system-ui, -apple-system, sans-serif`
@@ -111,7 +117,7 @@ function drawMeasurementPills(ctx, nodes, cropSX, cropSY, targetScale) {
     const cls = node.getClassName()
     if ((cls !== 'Line' && cls !== 'Arrow') || node.points().length !== 4) continue
     const id = node.id()
-    if (!id) continue  // snap/align indicators have no id
+    if (!id) continue
 
     const pts      = node.points()
     const lengthPx = Math.hypot(pts[2] - pts[0], pts[3] - pts[1])
@@ -119,27 +125,24 @@ function drawMeasurementPills(ctx, nodes, cropSX, cropSY, targetScale) {
 
     const mx = node.x() + (pts[0] + pts[2]) / 2
     const my = node.y() + (pts[1] + pts[3]) / 2
-
-    // Stage coord → output pixel
     const px = (mx - cropSX) * targetScale
     const py = (my - cropSY) * targetScale
 
     const lengthM = (lengthPx / GRID_SIZE).toFixed(2)
-    const text    = `${lengthM} m`
+    const text    = `${lengthM}`
+    const textW   = ctx.measureText(text).width
+    const w       = textW + padX * 2
+    const h       = fontSize + padY * 2
+    const rad     = h / 2
 
-    const textW = ctx.measureText(text).width
-    const w     = textW + padX * 2
-    const h     = fontSize + padY * 2
-    const r     = h / 2
+    if (!noFill) {
+      ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha})`
+      ctx.beginPath()
+      ctx.roundRect(px - w / 2, py - h / 2, w, h, rad)
+      ctx.fill()
+    }
 
-    // Pill background
-    ctx.fillStyle = '#1971c2'
-    ctx.beginPath()
-    ctx.roundRect(px - w / 2, py - h / 2, w, h, r)
-    ctx.fill()
-
-    // Label text
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = `rgb(${tr},${tg},${tb})`
     ctx.fillText(text, px, py)
   }
 
