@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import Konva from 'konva'
 
-const DOT_RADIUS_PX = 1.5  // screen pixels
+const HINGE_RADIUS = 1.5  // content units (grid-based; 1 grid = 1 m)
 
 export default function HingeDecorations({ stageRef, mainLayerRef, editModeActive, visible = true }) {
   const editModeActiveRef = useRef(editModeActive)
@@ -26,7 +26,7 @@ export default function HingeDecorations({ stageRef, mainLayerRef, editModeActiv
 
       // Laag eenmalig aanmaken zodra stage beschikbaar is
       if (!layer) {
-        layer = new Konva.Layer({ listening: false })
+        layer = new Konva.Layer({ listening: false, name: 'hingeLayer' })
         stage.add(layer)
         layer.zIndex(1)  // boven mainLayer, onder drawingLayer
       }
@@ -38,8 +38,6 @@ export default function HingeDecorations({ stageRef, mainLayerRef, editModeActiv
         return
       }
 
-      const zoom = stage.scaleX() ?? 1
-      const r = DOT_RADIUS_PX / Math.min(zoom, 1)
       const seenKeys = new Set()
 
       for (const node of ml.getChildren()) {
@@ -50,7 +48,6 @@ export default function HingeDecorations({ stageRef, mainLayerRef, editModeActiv
         if (!pts || pts.length < 4) continue
 
         for (let ep = 0; ep <= 1; ep++) {
-          if (!node.getAttr(ep === 0 ? '_ep0conn' : '_ep1conn')) continue
           const ax = node.x() + pts[ep * 2]
           const ay = node.y() + pts[ep * 2 + 1]
           const key = `${Math.round(ax)}_${Math.round(ay)}`
@@ -64,7 +61,7 @@ export default function HingeDecorations({ stageRef, mainLayerRef, editModeActiv
             circles.set(key, c)
           }
           c.position({ x: ax, y: ay })
-          c.radius(r)
+          c.radius(HINGE_RADIUS)
           c.visible(true)
         }
       }

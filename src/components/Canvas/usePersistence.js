@@ -2,56 +2,79 @@ import { useEffect, useRef } from 'react'
 import { updateNoteSnapshot } from '../../db/db.js'
 import { serializeLayer } from './konvaSerialize.js'
 
-// In-memory cache: noteId → latest serialized snapshot.
-// Written synchronously on every draw so Effect 1 can read it instantly when
-// switching notes, avoiding any race between the async DB write and DB read.
 export const liveSnapshotCache = new Map()
 
-// Exposes a `scheduleRef.current()` function that debounces IndexedDB saves.
-// Called imperatively from CanvasView after any canvas mutation.
-export function usePersistence(mainLayerRef, noteId, scheduleRef) {
-  const timerRef = useRef(null)
-  // Only flush on cleanup if the user actually made changes since mount.
-  // Without this guard, React Strict Mode's mount→cleanup→remount cycle fires
-  // flush() while the layer is still empty (async DB load not yet complete),
-  // overwriting both the cache and IndexedDB with an empty snapshot.
-  const dirtyRef = useRef(false)
+export function usePersistence(mainLayerRef, noteId, scheduleRef, flushRef) {
+  const timerRef  = useRef(null)
+  const idleRef   = useRef(null)
+  const dirtyRef  = useRef(false)
 
   useEffect(() => {
     dirtyRef.current = false
+    console.log('[persist] effect mounted, noteId=', noteId)
+
+    function cancelPending() {
+      const hadTimer = timerRef.current !== null
+      const hadIdle  = idleRef.current  !== null
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+      if (typeof cancelIdleCallback !== 'undefined') cancelIdleCallback(idleRef.current)
+      idleRef.current = null
+      if (hadTimer || hadIdle) console.log('[persist] cancelPending — cancelled timer:', hadTimer, 'idle:', hadIdle)
+    }
+
+    function doSerializeAndSave() {
+      const layer = mainLayerRef.current
+      console.log('[persist] doSerializeAndSave — layer:', !!layer, 'noteId:', noteId)
+      if (!layer || !noteId) {
+        console.warn('[persist] doSerializeAndSave skipped — missing layer or noteId')
+        return
+      }
+      const data = serializeLayer(layer)
+      console.log('[persist] serialized, nodes:', data?.children?.length ?? '?')
+      liveSnapshotCache.set(noteId, data)
+      updateNoteSnapshot(noteId, data)
+        .then(() => console.log('[persist] DB write done for', noteId))
+        .catch(err => console.error('[persist] DB write failed', err))
+    }
 
     function flush() {
+      console.log('[persist] flush called — dirty:', dirtyRef.current, 'layer:', !!mainLayerRef.current)
       if (!dirtyRef.current) return
-      const layer = mainLayerRef.current
-      if (!layer || !noteId) return
-      const data = serializeLayer(layer)
-      liveSnapshotCache.set(noteId, data)
-      return updateNoteSnapshot(noteId, data)
+      dirtyRef.current = false
+      cancelPending()
+      doSerializeAndSave()
+    }
+
+    if (flushRef) {
+      flushRef.current = flush
+      console.log('[persist] flushRef wired up')
+    } else {
+      console.warn('[persist] no flushRef provided — Effect 1 cannot pre-flush')
     }
 
     scheduleRef.current = () => {
-      const layer = mainLayerRef.current
-      if (!layer || !noteId) return
       dirtyRef.current = true
-      // Serialize and cache immediately — this is the source of truth for the
-      // current session. IndexedDB write is debounced behind it.
-      const data = serializeLayer(layer)
-      liveSnapshotCache.set(noteId, data)
-      clearTimeout(timerRef.current)
-      timerRef.current = setTimeout(async () => {
-        const cached = liveSnapshotCache.get(noteId)
-        if (cached) await updateNoteSnapshot(noteId, cached)
-      }, 200)
+      cancelPending()
+      console.log('[persist] scheduleSnapshot — scheduling idle/timeout save')
+      if (typeof requestIdleCallback !== 'undefined') {
+        idleRef.current = requestIdleCallback(doSerializeAndSave, { timeout: 1500 })
+      } else {
+        timerRef.current = setTimeout(doSerializeAndSave, 600)
+      }
     }
 
-    // Flush on tab close / refresh (graceful shutdown only — hard crashes bypass this).
-    function onBeforeUnload() { flush() }
+    function onBeforeUnload() {
+      console.log('[persist] beforeunload — flushing')
+      flush()
+    }
     window.addEventListener('beforeunload', onBeforeUnload)
 
     return () => {
+      console.log('[persist] cleanup running — dirty:', dirtyRef.current, 'layer:', !!mainLayerRef.current, 'noteId:', noteId)
+      if (flushRef) flushRef.current = null
       window.removeEventListener('beforeunload', onBeforeUnload)
-      clearTimeout(timerRef.current)
-      // Flush to IndexedDB on unmount (note switch) so data survives a page reload.
+      cancelPending()
       flush()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

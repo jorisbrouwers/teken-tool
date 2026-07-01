@@ -9,7 +9,7 @@ export default function SettingsPanel({
   pillOpacity, onPillOpacityChange,
   pillFontSize, onPillFontSizeChange,
   pillTextColor, onPillTextColorChange,
-  onClose,
+  onClose, onReset,
 }) {
   const fontSize = typeof pillFontSize === 'number' ? pillFontSize : 12
   const pillPreviewStyle = getPillCssStyle({ pillColor, pillOpacity, pillFontSize, pillTextColor })
@@ -124,6 +124,12 @@ export default function SettingsPanel({
             <span className="settings-pill-preview" style={pillPreviewStyle}>
               3.50 m
             </span>
+          </div>
+
+          <div className="settings-reset-row">
+            <button className="settings-reset-btn" onClick={onReset}>
+              Herstel standaardinstellingen
+            </button>
           </div>
         </div>
       </div>

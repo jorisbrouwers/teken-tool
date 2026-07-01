@@ -113,9 +113,11 @@ const CanvasView = forwardRef(function CanvasView(
   const historyPushRef = useRef(null)
   historyPushRef.current = history.pushState
   const persistenceScheduleRef = useRef(null)
+  const persistenceFlushRef    = useRef(null)
+  const deferredDrawRef        = useRef(null)
   const animateNavRef = useRef(null)
   const centerToContentRef = useRef(null)
-  usePersistence(mainLayerRef, note.id, persistenceScheduleRef)
+  usePersistence(mainLayerRef, note.id, persistenceScheduleRef, persistenceFlushRef)
 
   function scheduleSnapshot() {
     persistenceScheduleRef.current?.()
@@ -528,6 +530,7 @@ const CanvasView = forwardRef(function CanvasView(
       cancelled = true
       ro.disconnect()
       dprQuery.removeEventListener('change', onDprChange)
+      persistenceFlushRef.current?.()   // flush while the layer still exists
       stage.destroy()
       stageRef.current = null
       mainLayerRef.current = null
@@ -590,6 +593,7 @@ const CanvasView = forwardRef(function CanvasView(
     let mousePanning = false
     let lastMousePos = { x: 0, y: 0 }
     let wheelRestoreTimer = null
+    let penEraserDirty = false  // true after pen-eraser-button erase, until pointerup
     let navActive = false        // true while any navigation gesture is in progress
     let savedSelection = []     // transformer nodes saved at nav start, restored at nav end
     let dragRaf       = null   // RAF token for image-drag redraws
@@ -800,6 +804,7 @@ const CanvasView = forwardRef(function CanvasView(
       }
       const layer = mainLayerRef.current
       if (layer) {
+        deferredDrawRef.current?.()
         layer.getChildren().forEach(n => {
           if (n.getClassName() !== 'Transformer') n.draggable(false)
         })
@@ -873,6 +878,7 @@ const CanvasView = forwardRef(function CanvasView(
         notifyInputType('pen-eraser')
         e.stopImmediatePropagation()
         doErase(e.clientX, e.clientY)
+        penEraserDirty = true
         return
       }
 
@@ -995,6 +1001,7 @@ const CanvasView = forwardRef(function CanvasView(
         e.stopImmediatePropagation()
         const events = e.getCoalescedEvents?.() ?? [e]
         for (const ce of events) doErase(ce.clientX, ce.clientY)
+        penEraserDirty = true
         return
       }
 
@@ -1074,6 +1081,14 @@ const CanvasView = forwardRef(function CanvasView(
     }
 
     function onPointerUp(e) {
+      // ── Pen eraser lift ────────────────────────────────────────────────
+      if (e.pointerType === 'pen' && penEraserDirty) {
+        penEraserDirty = false
+        historyPushRef.current?.()
+        persistenceScheduleRef.current?.()
+        return
+      }
+
       // ── Touch tap / pan end ────────────────────────────────────────────
       if (e.pointerType === 'touch') {
         // Single-finger resize end: let Konva handle, then clear resize state.
@@ -1328,6 +1343,31 @@ const CanvasView = forwardRef(function CanvasView(
     const justHandledTap    = justHandledTapRef
     const justCommittedLinear = justCommittedLinearRef
 
+    let batchRicId = null
+    let batchToId  = null
+
+    function deferBatchDraw() {
+      if (typeof cancelIdleCallback !== 'undefined') cancelIdleCallback(batchRicId)
+      clearTimeout(batchToId)
+      const doIt = () => { batchRicId = null; batchToId = null; mainLayer.batchDraw() }
+      if (typeof requestIdleCallback !== 'undefined') {
+        batchRicId = requestIdleCallback(doIt, { timeout: 300 })
+      } else {
+        batchToId = setTimeout(doIt, 0)
+      }
+    }
+
+    function flushDeferredBatch() {
+      if (batchRicId === null && batchToId === null) return
+      if (typeof cancelIdleCallback !== 'undefined') cancelIdleCallback(batchRicId)
+      clearTimeout(batchToId)
+      batchRicId = null
+      batchToId = null
+      mainLayer.draw()
+    }
+
+    deferredDrawRef.current = flushDeferredBatch
+
     function scheduleRenderLiveStroke() {
       if (rafId !== null) return
       rafId = requestAnimationFrame(() => {
@@ -1495,12 +1535,14 @@ const CanvasView = forwardRef(function CanvasView(
 
     // ── Commit helpers ──────────────────────────────────────────────────────
     function commitFreehand() {
-      clearLiveCanvas()
-      if (freehandPoints.length < 2) { freehandPoints = []; return }
+      if (freehandPoints.length < 2) { freehandPoints = []; clearLiveCanvas(); return }
 
       const style = strokeStyleRef.current
+      const isDashed = style === 'dashed' || style === 'dotted'
+      if (isDashed) clearLiveCanvas()  // dashed live preview toont verkeerde vorm — direct wissen
+
       let node
-      if (style === 'dashed' || style === 'dotted') {
+      if (isDashed) {
         const sw = penSizeRef.current
         node = new Konva.Line({
           points: freehandPoints.flatMap(([x, y]) => [x, y]),
@@ -1545,7 +1587,17 @@ const CanvasView = forwardRef(function CanvasView(
       }
       if (node) { mainLayer.add(node); transformer.moveToTop() }
       freehandPoints = []
-      mainLayer.batchDraw()
+
+      if (isDashed) {
+        mainLayer.batchDraw()
+      } else {
+        // Keep live canvas visible until Konva has drawn → no flicker.
+        // Check freehandPoints at draw time: if a new stroke has started, don't clear.
+        const onDraw = () => { mainLayer.off('draw', onDraw); if (!freehandPoints.length) clearLiveCanvas() }
+        mainLayer.on('draw', onDraw)
+        deferBatchDraw()
+      }
+
       history.pushState()
       scheduleSnapshot()
     }
@@ -2234,6 +2286,9 @@ const CanvasView = forwardRef(function CanvasView(
       mainLayer.off('dragmove')
       mainLayer.off('dragstart')
       if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null }
+      if (typeof cancelIdleCallback !== 'undefined') cancelIdleCallback(batchRicId)
+      clearTimeout(batchToId)
+      deferredDrawRef.current = null
       selRect.destroy()
       clearLiveCanvas()
       shapePreview?.destroy()

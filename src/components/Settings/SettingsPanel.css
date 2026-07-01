@@ -191,6 +191,29 @@
   padding-bottom: 14px;
 }
 
+.settings-reset-row {
+  padding: 8px 16px 16px;
+  border-top: 1px solid var(--color-sidebar-border);
+  margin-top: 4px;
+}
+
+.settings-reset-btn {
+  width: 100%;
+  padding: 9px 0;
+  border-radius: 8px;
+  border: 1px solid var(--color-sidebar-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.settings-reset-btn:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+
 .settings-pill-preview {
   font-size: 12px;
   font-weight: 600;

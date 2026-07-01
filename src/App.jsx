@@ -35,12 +35,12 @@ export default function App() {
 
   const [projectsOpen, setProjectsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [showPills, setShowPills] = useState(true)
-  const [showPillsInPdf, setShowPillsInPdf] = useState(true)
+  const [showPills, setShowPills] = useState(false)
+  const [showPillsInPdf, setShowPillsInPdf] = useState(false)
   const [showHinges, setShowHinges] = useState(true)
   const [pillColor, setPillColor] = useState('#1971c2')
   const [pillOpacity, setPillOpacity] = useState(100)
-  const [pillFontSize, setPillFontSize] = useState(12)
+  const [pillFontSize, setPillFontSize] = useState(8)
   const [pillTextColor, setPillTextColor] = useState('#ffffff')
   const settingsLoadedRef = useRef(false)
 
@@ -118,7 +118,7 @@ export default function App() {
   const handleExportPdf = useCallback(async () => {
     const stage = canvasViewRef.current?.getStage()
     if (!stage || !activeNote) return
-    await exportPdf(activeNote, stage, showGrid, showPillsInPdf, pillStyle)
+    await exportPdf(activeNote, stage, showGrid, showPillsInPdf, pillStyle, showHinges)
   }, [activeNote, showGrid, showPillsInPdf, pillStyle])
 
   const handleExportJnote = useCallback(() => {
@@ -131,7 +131,7 @@ export default function App() {
     const stage = canvasViewRef.current?.getStage()
     const mainLayer = canvasViewRef.current?.getMainLayer()
     if (!stage || !mainLayer || !activeNote) return
-    await exportPdf(activeNote, stage, showGrid, showPillsInPdf, pillStyle)
+    await exportPdf(activeNote, stage, showGrid, showPillsInPdf, pillStyle, showHinges)
     exportJnote(activeNote, mainLayer)
   }, [activeNote, showGrid, showPillsInPdf, pillStyle])
 
@@ -362,6 +362,15 @@ export default function App() {
           showHinges={showHinges}
           onToggleHinges={() => setShowHinges(v => !v)}
           onClose={() => setSettingsOpen(false)}
+          onReset={() => {
+            setShowPills(false)
+            setShowPillsInPdf(false)
+            setShowHinges(true)
+            setPillColor('#1971c2')
+            setPillOpacity(100)
+            setPillFontSize(8)
+            setPillTextColor('#ffffff')
+          }}
         />
       )}
 

@@ -5,7 +5,7 @@ const GRID_SIZE  = 25     // must match useGrid.js
 const MARGIN     = 40     // whitespace around content, in stage-space units
 const MAX_LONG   = 8000   // max output pixels on the longest side
 
-export async function exportPdf(note, stage, showGrid, showPillsInPdf = false, pillStyle) {
+export async function exportPdf(note, stage, showGrid, showPillsInPdf = false, pillStyle, showHinges = true) {
   const mainLayer = stage.getLayers()[0]
   const nodes = mainLayer.getChildren().filter(n => n.getClassName() !== 'Transformer')
 
