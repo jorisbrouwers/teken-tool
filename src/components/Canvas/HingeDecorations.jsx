@@ -46,17 +46,30 @@ export default function HingeDecorations({ stageRef, mainLayerRef, editModeActiv
       // van de vorige frame — anders kost deze loop elke frame een volledige
       // layer-redraw (full-screen clear op dpr²), ook tijdens schrijven.
       const seen = new Map()  // key -> { ax, ay }
+      // _culled heeft een 200px marge (CULL_PAD in viewportCulling.js) zodat
+      // content niet abrupt verdwijnt vlak buiten de rand — maar Konva's
+      // canvas heeft alleen pixels voor exact stage.width()×height(), dus in
+      // die marge is _culled soms al false terwijl er nog niets getekend is.
+      // Extra live scherm-check (géén marge) sluit dat gat.
+      const w = stage.width(), h = stage.height()
+      const transform = stage.getAbsoluteTransform()
 
       for (const node of ml.getChildren()) {
         const cls = node.getClassName()
         if (cls !== 'Line' && cls !== 'Arrow') continue
         if (!node.id()) continue
+        // Geculed = tijdens navigatie nog niet herteked (frozen-canvas
+        // mechanisme) — het scharnierpunt zou anders zichtbaar zijn vóórdat
+        // de muur zelf weer getekend is.
+        if (node._culled) continue
         const pts = node.points()
         if (!pts || pts.length < 4) continue
 
         for (let ep = 0; ep <= 1; ep++) {
           const ax = node.x() + pts[ep * 2]
           const ay = node.y() + pts[ep * 2 + 1]
+          const sp = transform.point({ x: ax, y: ay })
+          if (sp.x < 0 || sp.x > w || sp.y < 0 || sp.y > h) continue
           const key = `${Math.round(ax)}_${Math.round(ay)}`
           if (!seen.has(key)) seen.set(key, { ax, ay })
         }

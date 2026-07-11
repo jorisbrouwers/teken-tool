@@ -1304,6 +1304,26 @@ const CanvasView = forwardRef(function CanvasView(
       applyNavTransform()
     }
 
+    // Konva.Stage binds its OWN internal handlers to the native touchstart/
+    // touchmove/touchend/touchcancel events (in parallel with pointerdown/
+    // move/up/cancel — every touch input dispatches BOTH event families).
+    // We already fully own pointer-event-based touch handling above and
+    // never rely on Konva's synthetic pointerover/pointermove/click/tap
+    // events for touch (Effect 3's onClick/onDblClick bail out for touch).
+    // Left alone, Konva's touchmove-triggered _pointermove still runs on
+    // every move sample (getBoundingClientRect + a getImageData hit-test)
+    // and its touchend-triggered _pointerup still runs on every release
+    // (another getImageData hit-test, right after endNav's full redraw) —
+    // pure wasted main-thread work for the entire lifetime of every touch
+    // gesture. Stop these native events here, before they reach Konva's
+    // listener (bound to a descendant of `container`), the same way the
+    // pointer events above are already intercepted.
+    function stopNativeTouch(e) { e.stopImmediatePropagation() }
+    container.addEventListener('touchstart',  stopNativeTouch, { capture: true })
+    container.addEventListener('touchmove',   stopNativeTouch, { capture: true })
+    container.addEventListener('touchend',    stopNativeTouch, { capture: true })
+    container.addEventListener('touchcancel', stopNativeTouch, { capture: true })
+
     container.addEventListener('pointerdown',  onPointerDown, { capture: true })
     container.addEventListener('pointermove',  onPointerMove, { capture: true })
     container.addEventListener('pointerup',    onPointerUp,   { capture: true })
@@ -1311,6 +1331,10 @@ const CanvasView = forwardRef(function CanvasView(
     container.addEventListener('wheel',        onWheel,       { passive: false })
 
     return () => {
+      container.removeEventListener('touchstart',  stopNativeTouch, { capture: true })
+      container.removeEventListener('touchmove',   stopNativeTouch, { capture: true })
+      container.removeEventListener('touchend',    stopNativeTouch, { capture: true })
+      container.removeEventListener('touchcancel', stopNativeTouch, { capture: true })
       container.removeEventListener('pointerdown',  onPointerDown, { capture: true })
       container.removeEventListener('pointermove',  onPointerMove, { capture: true })
       container.removeEventListener('pointerup',    onPointerUp,   { capture: true })

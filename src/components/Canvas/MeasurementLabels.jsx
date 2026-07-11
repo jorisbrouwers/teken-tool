@@ -36,7 +36,10 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
           const id = node.id()
           if (!id) continue              // snap/align indicators have no user id
           if (id === skipNodeId) continue
-          seenIds.add(id)
+          // Geculed = tijdens navigatie nog niet herteked (frozen-canvas
+          // mechanisme) — de pill zou anders los van zijn muur zweven totdat
+          // endNav de echte inhoud bijwerkt.
+          if (node._culled) continue
 
           const pts      = node.points()
           const lengthPx = Math.hypot(pts[2] - pts[0], pts[3] - pts[1])
@@ -46,6 +49,12 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
           const sp      = transform.point({ x: mx, y: my })
           const x       = box.left + sp.x
           const y       = box.top  + sp.y
+          // Pills zijn position:fixed en ontsnappen daardoor aan het
+          // overflow:hidden van canvas-wrapper (dat clipt alleen het canvas
+          // zelf) — buiten de viewport dus zelf verbergen.
+          if (x < box.left || x > box.right || y < box.top || y > box.bottom) continue
+          seenIds.add(id)
+
           const lengthM = (lengthPx / GRID_SIZE).toFixed(2)
           const text    = `${lengthM}`
 
