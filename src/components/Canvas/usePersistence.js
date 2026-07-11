@@ -4,7 +4,7 @@ import { serializeLayer } from './konvaSerialize.js'
 
 export const liveSnapshotCache = new Map()
 
-export function usePersistence(mainLayerRef, noteId, scheduleRef, flushRef) {
+export function usePersistence(mainLayerRef, noteId, scheduleRef, flushRef, activityRef) {
   const timerRef  = useRef(null)
   const idleRef   = useRef(null)
   const dirtyRef  = useRef(false)
@@ -57,10 +57,25 @@ export function usePersistence(mainLayerRef, noteId, scheduleRef, flushRef) {
       dirtyRef.current = true
       cancelPending()
       console.log('[persist] scheduleSnapshot — scheduling idle/timeout save')
+      // De save is O(volledige notitie) (serialize + structured clone + IDB
+      // read-modify-write) en mag nooit tijdens actief schrijven/gummen op de
+      // main thread landen — dat blokkeert peninvoer midden in een streek.
+      // requestIdleCallback's timeout forceert hem anders alsnog mid-schrijven;
+      // daarom hier een extra activiteitspoort met retry. flush() blijft
+      // ongepoort (unmount/beforeunload moet altijd direct wegschrijven).
+      function attempt() {
+        idleRef.current = null
+        timerRef.current = null
+        if (activityRef && performance.now() - activityRef.current < 1500) {
+          timerRef.current = setTimeout(attempt, 500)
+          return
+        }
+        doSerializeAndSave()
+      }
       if (typeof requestIdleCallback !== 'undefined') {
-        idleRef.current = requestIdleCallback(doSerializeAndSave, { timeout: 1500 })
+        idleRef.current = requestIdleCallback(attempt, { timeout: 1500 })
       } else {
-        timerRef.current = setTimeout(doSerializeAndSave, 600)
+        timerRef.current = setTimeout(attempt, 600)
       }
     }
 

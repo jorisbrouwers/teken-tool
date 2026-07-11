@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { withCulledVisible } from '../Canvas/viewportCulling.js'
 import './Minimap.css'
 
 const MINIMAP_SIZE = 160
@@ -15,22 +16,36 @@ function computeLayout(cb) {
   }
 }
 
-export default function Minimap({ stageRef, mainLayerRef, version }) {
+export default function Minimap({ stageRef, mainLayerRef, version, activityRef }) {
   const [thumbnail, setThumbnail] = useState(null)
   const contentBoxRef = useRef(null)
   const panelRef      = useRef(null)
   const draggingRef   = useRef(false)
   const timerRef      = useRef(null)
+  const idleRef       = useRef(null)
 
   // Regenerate thumbnail whenever canvas content changes.
   useEffect(() => {
     clearTimeout(timerRef.current)
-    // Small delay so Konva finishes rendering the latest change before we snapshot.
-    timerRef.current = setTimeout(() => {
+    if (typeof cancelIdleCallback !== 'undefined') cancelIdleCallback(idleRef.current)
+
+    function generate() {
+      // De render is O(inhoud) en mag geen actieve peninvoer blokkeren —
+      // wacht tot de pen minstens 1,5 s stil is (timestamp-check: kan niet
+      // blijven hangen als een pointerup gemist wordt).
+      if (activityRef && performance.now() - activityRef.current < 1500) {
+        timerRef.current = setTimeout(generate, 500)
+        return
+      }
       const mainLayer = mainLayerRef.current
       const stage     = stageRef.current
       if (!mainLayer || !stage) return
+      // Geculde (off-screen) nodes tijdelijk tonen — de thumbnail moet de
+      // volledige inhoud bevatten; daarna wordt de cull-status hersteld.
+      withCulledVisible(mainLayer, () => generateVisible(mainLayer, stage))
+    }
 
+    function generateVisible(mainLayer, stage) {
       const nodes = mainLayer.getChildren().filter(n => n.getClassName() !== 'Transformer')
       if (!nodes.length) { setThumbnail(null); return }
 
@@ -44,6 +59,17 @@ export default function Minimap({ stageRef, mainLayerRef, version }) {
       minX -= PADDING; minY -= PADDING; maxX += PADDING; maxY += PADDING
       const cw = maxX - minX, ch = maxY - minY
       if (cw <= 0 || ch <= 0) return
+
+      // Detach the transformer before touching the stage transform: every
+      // stage.scale()/position() call fires 'absoluteTransformChange' on all
+      // descendants, and the transformer responds to each event from an attached
+      // node with an update() that calls getClientRect() on ALL attached nodes —
+      // O(N²) path-bbox work that freezes the app for seconds-to-minutes after
+      // a bulk move. Detach/re-attach is synchronous, so selection state and
+      // the on-screen canvas are unchanged when this function returns.
+      const transformer    = stage.findOne('Transformer')
+      const savedSelection = transformer ? transformer.nodes() : []
+      if (savedSelection.length) transformer.nodes([])
 
       // Temporarily apply a "center-to-content" transform so pixel coordinates are
       // guaranteed within stage bounds (avoids asymmetric clipping on any side).
@@ -78,13 +104,31 @@ export default function Minimap({ stageRef, mainLayerRef, version }) {
       stage.scale(savedScale)
       stage.position(savedPos)
 
+      // Re-attach after the transform is restored — a single O(N) update.
+      if (savedSelection.length) transformer.nodes(savedSelection)
+
       if (url) {
         setThumbnail(url)
         contentBoxRef.current = { x: minX, y: minY, w: cw, h: ch }
       }
+    }
+
+    // Small delay so Konva finishes rendering the latest change, then defer to
+    // idle time: generating costs tens of ms on tablets and must not land
+    // between two pen strokes or right after a drag release. The timeout caps
+    // how stale the thumbnail can get when the main thread stays busy.
+    timerRef.current = setTimeout(() => {
+      if (typeof requestIdleCallback !== 'undefined') {
+        idleRef.current = requestIdleCallback(generate, { timeout: 1000 })
+      } else {
+        generate()
+      }
     }, 150)
 
-    return () => clearTimeout(timerRef.current)
+    return () => {
+      clearTimeout(timerRef.current)
+      if (typeof cancelIdleCallback !== 'undefined') cancelIdleCallback(idleRef.current)
+    }
   }, [version, mainLayerRef, stageRef])
 
   function panToPoint(clientX, clientY) {

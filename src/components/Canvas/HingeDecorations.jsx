@@ -13,6 +13,7 @@ export default function HingeDecorations({ stageRef, mainLayerRef, editModeActiv
     let layer = null
     const circles = new Map()
     let rafId = null
+    let prevSig = null   // signatuur van de laatst getekende toestand
 
     function tick() {
       const stage = stageRef.current
@@ -32,13 +33,19 @@ export default function HingeDecorations({ stageRef, mainLayerRef, editModeActiv
       }
 
       if (!ml || editModeActiveRef.current || !visibleRef.current) {
-        for (const c of circles.values()) c.visible(false)
-        layer.batchDraw()
+        if (prevSig !== 'hidden') {
+          prevSig = 'hidden'
+          for (const c of circles.values()) c.visible(false)
+          layer.batchDraw()
+        }
         rafId = requestAnimationFrame(tick)
         return
       }
 
-      const seenKeys = new Set()
+      // Verzamel eerst de gewenste toestand en teken alleen als die afwijkt
+      // van de vorige frame — anders kost deze loop elke frame een volledige
+      // layer-redraw (full-screen clear op dpr²), ook tijdens schrijven.
+      const seen = new Map()  // key -> { ax, ay }
 
       for (const node of ml.getChildren()) {
         const cls = node.getClassName()
@@ -51,23 +58,33 @@ export default function HingeDecorations({ stageRef, mainLayerRef, editModeActiv
           const ax = node.x() + pts[ep * 2]
           const ay = node.y() + pts[ep * 2 + 1]
           const key = `${Math.round(ax)}_${Math.round(ay)}`
-          if (seenKeys.has(key)) continue
-          seenKeys.add(key)
-
-          let c = circles.get(key)
-          if (!c) {
-            c = new Konva.Circle({ fill: '#1d1d1d', listening: false, perfectDrawEnabled: false })
-            layer.add(c)
-            circles.set(key, c)
-          }
-          c.position({ x: ax, y: ay })
-          c.radius(HINGE_RADIUS)
-          c.visible(true)
+          if (!seen.has(key)) seen.set(key, { ax, ay })
         }
       }
 
+      // Stage-transform hoort in de signatuur: bij pan/zoom moet de laag
+      // opnieuw getekend worden, ook al liggen de scharnieren stil.
+      const sig = `${stage.x()},${stage.y()},${stage.scaleX()}|${[...seen.keys()].join(' ')}`
+      if (sig === prevSig) {
+        rafId = requestAnimationFrame(tick)
+        return
+      }
+      prevSig = sig
+
+      for (const [key, { ax, ay }] of seen) {
+        let c = circles.get(key)
+        if (!c) {
+          c = new Konva.Circle({ fill: '#1d1d1d', listening: false, perfectDrawEnabled: false })
+          layer.add(c)
+          circles.set(key, c)
+        }
+        c.position({ x: ax, y: ay })
+        c.radius(HINGE_RADIUS)
+        c.visible(true)
+      }
+
       for (const [key, c] of [...circles]) {
-        if (!seenKeys.has(key)) {
+        if (!seen.has(key)) {
           c.destroy()
           circles.delete(key)
         }

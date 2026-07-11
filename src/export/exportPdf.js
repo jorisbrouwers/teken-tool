@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import { hexToRgb, getPdfFontSize } from '../components/Canvas/pillStyle.js'
+import { withCulledVisible } from '../components/Canvas/viewportCulling.js'
 
 const GRID_SIZE  = 25     // must match useGrid.js
 const MARGIN     = 40     // whitespace around content, in stage-space units
@@ -44,14 +45,15 @@ export async function exportPdf(note, stage, showGrid, showPillsInPdf = false, p
   const canvasCropH = cropSH * zoom
   const pixelRatio  = outputW / canvasCropW
 
-  // Capture Konva layers into an offscreen canvas
-  const konvaCanvas = stage.toCanvas({
+  // Capture Konva layers into an offscreen canvas. Culled (off-screen) nodes
+  // must be temporarily visible: the PDF covers the full content area.
+  const konvaCanvas = withCulledVisible(mainLayer, () => stage.toCanvas({
     x: canvasCropX,
     y: canvasCropY,
     width: canvasCropW,
     height: canvasCropH,
     pixelRatio,
-  })
+  }))
 
   // Composite in correct layer order: white background → grid → Konva content.
   const finalCanvas = document.createElement('canvas')

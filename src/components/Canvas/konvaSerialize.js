@@ -5,18 +5,22 @@ export function serializeNodes(nodes) {
   return nodes.map(node => {
     const attrs = { ...node.attrs }
     if (node.getClassName() === 'Image') delete attrs.image
+    delete attrs.visible // runtime-only: viewport culling / inline text edit
     return { type: node.getClassName(), attrs }
   })
 }
 
 // Serialize all user content (including images) — used for persistence.
-// Transformer is always excluded.
+// Transformer and LineGizmo handle circles are excluded: de handles staan op
+// de mainLayer en bestaan zolang een lijn geselecteerd is — een save die dan
+// afgaat zou ze anders als content opslaan.
 export function serializeLayer(layer) {
   return layer.getChildren()
-    .filter(n => n.getClassName() !== 'Transformer')
+    .filter(n => n.getClassName() !== 'Transformer' && !n.name()?.startsWith('lineGizmoHandle'))
     .map(node => {
       const attrs = { ...node.attrs }
       if (node.getClassName() === 'Image') delete attrs.image // not serializable
+      delete attrs.visible // runtime-only: viewport culling / inline text edit
       return { type: node.getClassName(), attrs }
     })
 }
@@ -35,6 +39,8 @@ export function deserializeLayer(data, layer) {
   if (!data?.length) { layer.batchDraw(); return }
 
   data.forEach(({ type, attrs }) => {
+    // Oudere snapshots kunnen per abuis opgeslagen gizmo-handles bevatten.
+    if (attrs.name?.startsWith('lineGizmoHandle')) return
     if (type === 'Image') {
       const img = new Image()
       img.onload = () => {

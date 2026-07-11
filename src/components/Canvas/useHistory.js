@@ -7,7 +7,11 @@ const MAX_HISTORY = 50
 function takeSnapshot(layer) {
   return layer.getChildren()
     .filter(n => n.getClassName() !== 'Transformer' && n.getClassName() !== 'Image' && !n.name()?.startsWith('lineGizmoHandle'))
-    .map(n => ({ type: n.getClassName(), attrs: { ...n.attrs } }))
+    .map(n => {
+      const attrs = { ...n.attrs }
+      delete attrs.visible // runtime-only (viewport culling) — undo mag dit niet terugzetten
+      return { type: n.getClassName(), attrs }
+    })
 }
 
 // Restore snapshot while preserving current images and the Transformer.

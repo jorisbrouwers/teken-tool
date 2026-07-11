@@ -2,8 +2,11 @@ node_modules
 dist
 .DS_Store
 *.local
-CLAUDE.md
 BACKLOG.md
 tapermonkey.txt
 docs
 note.json
+PERFORMANCE_AUDIT.md
+PERFORMANCE_HYPOTHESES.md
+/performance/
+codebase_size.txt

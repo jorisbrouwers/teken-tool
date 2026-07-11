@@ -23,6 +23,7 @@ import { useHistory } from './useHistory.js'
 import { useGrid, GRID_SIZE } from './useGrid.js'
 import { evaluateExpression } from '../../math/mathEval.js'
 import { deserializeLayer, serializeNodes } from './konvaSerialize.js'
+import { applyViewportCulling } from './viewportCulling.js'
 import { liveSnapshotCache } from './usePersistence.js'
 import { getNote, updateNoteSettings } from '../../db/db.js'
 import CropOverlay from './CropOverlay.jsx'
@@ -117,7 +118,12 @@ const CanvasView = forwardRef(function CanvasView(
   const deferredDrawRef        = useRef(null)
   const animateNavRef = useRef(null)
   const centerToContentRef = useRef(null)
-  usePersistence(mainLayerRef, note.id, persistenceScheduleRef, persistenceFlushRef)
+  // performance.now() van de laatste pen/gum-activiteit. Achtergrondtaken die
+  // O(volledige notitie) zijn (persistence-save, minimap-render) wachten tot
+  // dit >1,5 s geleden is, zodat ze nooit midden in een streek de peninvoer
+  // blokkeren. Timestamp i.p.v. boolean: kan nooit "aan" blijven hangen.
+  const penActivityRef = useRef(0)
+  usePersistence(mainLayerRef, note.id, persistenceScheduleRef, persistenceFlushRef, penActivityRef)
 
   function scheduleSnapshot() {
     persistenceScheduleRef.current?.()
@@ -503,6 +509,9 @@ const CanvasView = forwardRef(function CanvasView(
         if (capturedShouldCenter) {
           centerToContentRef.current?.()
         } else {
+          // Cull off-screen content vóór de eerste draw; bij centreren doet
+          // endNav dit al met de definitieve viewport.
+          applyViewportCulling(stage, mainLayer)
           stage.batchDraw()
         }
         setMinimapVersion(v => v + 1)
@@ -544,9 +553,30 @@ const CanvasView = forwardRef(function CanvasView(
   // Dense grid sampling with getIntersection gives pixel-accurate hit testing:
   // freehand Path fills match the ink polygon exactly, stroked shapes only hit
   // their border (no fill on committed shapes), so hollow interiors are ignored.
+  // getIntersection werkt niet terwijl de layer niet luistert (pen-tool, zie
+  // Effect 4) — herbouw de hit-canvas dan eenmalig voor deze ene test.
+  function hitTestAt(mainLayer, pos) {
+    if (!mainLayer || !pos) return null
+    if (mainLayer.listening()) return mainLayer.getIntersection(pos)
+    mainLayer.listening(true)
+    mainLayer.drawHit()
+    const hit = mainLayer.getIntersection(pos)
+    mainLayer.listening(false)
+    return hit
+  }
+
   function eraseAtContainerPos(containerPos, mainLayer, transformer) {
     const R = 8  // eraser radius in container/screen pixels
     const STEP = 3
+    penActivityRef.current = performance.now()
+    // De pen-gomknop kan afgaan terwijl de pen-tool hit-detectie op de layer
+    // heeft uitgezet — zet hem aan en herbouw de hit-canvas vóór het samplen.
+    // Blijft aan tijdens de gum-gesture (elke destroy vereist een verse hit-
+    // canvas); pointerup van de pen-gom zet hem weer uit.
+    if (!mainLayer.listening()) {
+      mainLayer.listening(true)
+      mainLayer.drawHit()
+    }
     const toDestroy = new Set()
     for (let dy = -R; dy <= R; dy += STEP) {
       for (let dx = -R; dx <= R; dx += STEP) {
@@ -761,19 +791,10 @@ const CanvasView = forwardRef(function CanvasView(
       const targetX = viewW / 2 - cx * targetScale
       const targetY = viewH / 2 - cy * targetScale
 
-      const x0 = stage.x(), y0 = stage.y(), s0 = stage.scaleX()
-      const t0 = performance.now(), duration = 280
-      function ease(t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t }
-      function frame(now) {
-        const t = Math.min((now - t0) / duration, 1)
-        const e = ease(t)
-        stage.scale({ x: s0 + (targetScale - s0) * e, y: s0 + (targetScale - s0) * e })
-        stage.position({ x: x0 + (targetX - x0) * e, y: y0 + (targetY - y0) * e })
-        stage.batchDraw()
-        if (t < 1) requestAnimationFrame(frame)
-        else updateNoteSettings(note.id, { ...note.settings, zoom: targetScale, pan: { x: targetX, y: targetY } })
-      }
-      requestAnimationFrame(frame)
+      // Animeer via het frozen-canvas mechanisme (CSS-transform per frame in
+      // plaats van een volledige vector-redraw per frame); endNav doet daarna
+      // de culling en savePanZoom schrijft dezelfde settings weg.
+      animateNav(targetX, targetY, targetScale)
     }
     centerToContentRef.current = doCenterToContent
 
@@ -851,6 +872,15 @@ const CanvasView = forwardRef(function CanvasView(
       }
       if (layer) {
         delete layer.batchDraw          // restore Konva's normal batchDraw
+        // Cull off-screen content vóór de post-nav draw, zodat die (en elke
+        // volgende draw tot de volgende navigatie) alleen zichtbare nodes kost.
+        // Geselecteerde nodes en de gizmo-lijn blijven altijd zichtbaar.
+        const stageForCull = stageRef.current
+        if (stageForCull) {
+          const keep = new Set(transformerRef.current?.nodes() ?? [])
+          if (lineGizmoNodeRef.current) keep.add(lineGizmoNodeRef.current)
+          applyViewportCulling(stageForCull, layer, n => keep.has(n))
+        }
         layer.draw()                    // redraw at current stage state (synchronous)
         layer.getCanvas()._canvas.style.visibility = ''  // restore live canvas
         frozenCanvas.style.display = 'none'
@@ -1084,6 +1114,8 @@ const CanvasView = forwardRef(function CanvasView(
       // ── Pen eraser lift ────────────────────────────────────────────────
       if (e.pointerType === 'pen' && penEraserDirty) {
         penEraserDirty = false
+        // eraseAtContainerPos zette hit-detectie aan; in de pen-tool hoort die uit.
+        if (activeToolRef.current === 'pen') mainLayerRef.current?.listening(false)
         historyPushRef.current?.()
         persistenceScheduleRef.current?.()
         return
@@ -1156,7 +1188,7 @@ const CanvasView = forwardRef(function CanvasView(
                 const pos = getContainerPos(e.clientX, e.clientY)
                 const mainLayer = mainLayerRef.current
                 // Hit-test: check normal nodes, then locked images manually.
-                let hit = mainLayer?.getIntersection(pos)
+                let hit = hitTestAt(mainLayer, pos)
                 if (hit?.name()?.startsWith('lineGizmoHandle')) hit = null
                 if (!hit || hit.getClassName() === 'Transformer') {
                   const children = mainLayer?.getChildren() ?? []
@@ -1200,7 +1232,7 @@ const CanvasView = forwardRef(function CanvasView(
             const pos = getContainerPos(e.clientX, e.clientY)
             const mainLayer  = mainLayerRef.current
             const transformer = transformerRef.current
-            let hit = mainLayer?.getIntersection(pos)
+            let hit = hitTestAt(mainLayer, pos)
             if (hit?.name()?.startsWith('lineGizmoHandle')) hit = null
 
             if (!hit || hit.getClassName() === 'Transformer') {
@@ -1653,6 +1685,7 @@ const CanvasView = forwardRef(function CanvasView(
       }
 
       if (tool === 'pen') {
+        penActivityRef.current = performance.now()
         const raw = pressureSensitiveRef.current ? (e.evt.pressure ?? 0.5) : 0.5
         freehandPoints = [[pos.x, pos.y, Math.pow(raw, INPUT_CONFIG.pressureExponentDown)]]
         rawUpdateActive = false // reset so pointerrawupdate can re-engage this stroke
@@ -1757,6 +1790,7 @@ const CanvasView = forwardRef(function CanvasView(
       }
 
       if (tool === 'pen' && freehandPoints.length) {
+        penActivityRef.current = performance.now()
         // On Chromium (Surface/Windows), pointerrawupdate already collected these
         // points at native rate. Skip here to avoid duplicates.
         if (!rawUpdateActive) {
@@ -1945,6 +1979,10 @@ const CanvasView = forwardRef(function CanvasView(
                 const connNode = mainLayer.findOne(`#${conn.id}`)
                 if (connNode && !toSelect.has(connNode)) {
                   toSelect.add(connNode)
+                  // Verbonden segmenten kunnen buiten beeld geculed zijn; ze
+                  // worden nu onderdeel van de selectie en moeten meebewegen
+                  // én zichtbaar zijn.
+                  if (connNode._culled) { connNode.visible(true); connNode._culled = false }
                   expandNode(connNode)
                 }
               }
@@ -2084,7 +2122,13 @@ const CanvasView = forwardRef(function CanvasView(
 
     function onDblClick(e) {
       if (e.evt.pointerType === 'touch') return
-      const hit = e.target
+      let hit = e.target
+      // Tijdens de pen-tool staat hit-detectie op de layer uit en rapporteert
+      // Konva altijd de stage als target — test dan zelf zodat dubbelklikken
+      // op tekst blijft werken.
+      if (hit === stage && !mainLayer.listening()) {
+        hit = hitTestAt(mainLayer, stage.getPointerPosition()) ?? stage
+      }
       if (hit.getClassName() === 'Text') startTextEdit(hit)
     }
 
@@ -2256,9 +2300,18 @@ const CanvasView = forwardRef(function CanvasView(
       if (activeToolRef.current !== 'pen') return
       if (!freehandPoints.length) return // only during an active stroke
       rawUpdateActive = true
-      const p = clientToStage(e.clientX, e.clientY)
-      const raw = pressureSensitiveRef.current ? (e.pressure ?? 0.5) : 0.5
-      freehandPoints.push([p.x, p.y, Math.pow(raw, 2.5)])
+      penActivityRef.current = performance.now()
+      // Ook pointerrawupdate wordt door de browser gecoalesced zodra de main
+      // thread bezig is. Zonder getCoalescedEvents() gaan die tussenpunten
+      // verloren en worden snel geschreven rondingen hoekig — steeds erger
+      // naarmate de notitie voller (drukker) is.
+      const coalesced = e.getCoalescedEvents?.()
+      const events = coalesced?.length ? coalesced : [e]
+      for (const ce of events) {
+        const p = clientToStage(ce.clientX, ce.clientY)
+        const raw = pressureSensitiveRef.current ? (ce.pressure ?? 0.5) : 0.5
+        freehandPoints.push([p.x, p.y, Math.pow(raw, 2.5)])
+      }
       lastRawEvent = e
       scheduleRenderLiveStroke()
     }
@@ -2331,6 +2384,16 @@ const CanvasView = forwardRef(function CanvasView(
         node.draggable(canDrag)
       }
     })
+
+    // Hit-canvas tekenen verdubbelt de kosten van elke layer-draw. Tijdens de
+    // pen-tool gebruikt niets hit-detectie (geen selectie, geen klik-targets);
+    // consumers die hem tóch nodig hebben (pen-gomknop, dubbelklik op tekst,
+    // vinger-tap) herbouwen hem lazy via hitTestAt/eraseAtContainerPos.
+    const wantsHit = activeTool !== 'pen'
+    if (mainLayer.listening() !== wantsHit) {
+      mainLayer.listening(wantsHit)
+      if (wantsHit) mainLayer.drawHit() // hit-canvas is verouderd na een pen-sessie
+    }
   }, [activeTool])
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -2856,7 +2919,7 @@ const CanvasView = forwardRef(function CanvasView(
         />
       )}
 
-      <Minimap stageRef={stageRef} mainLayerRef={mainLayerRef} version={minimapVersion} />
+      <Minimap stageRef={stageRef} mainLayerRef={mainLayerRef} version={minimapVersion} activityRef={penActivityRef} />
 
       <HingeDecorations
         stageRef={stageRef}
