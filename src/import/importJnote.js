@@ -1,4 +1,6 @@
 import { unzipSync, strFromU8 } from 'fflate'
+import { wrapSnapshot } from '../components/Canvas/konvaSerialize.js'
+import { migrateWallAttrs } from '../components/Canvas/wallGraph.js'
 
 function isZip(buffer) {
   const b = new Uint8Array(buffer, 0, 4)
@@ -23,11 +25,19 @@ function parseJson(raw) {
     throw new Error('Ongeldig bestand: canvas-data ontbreekt.')
   }
 
+  // 2.0-bestanden dateren van vóór het muur-model met verbindings-lijsten:
+  // migreer de attrs bij import. Opslaan gebeurt altijd in snapshot-formaat 2
+  // (met versieveld), zodat het inlaadpad ze niet opnieuw hoeft te migreren.
+  let nodes = data.canvas.konva_snapshot
+  if (data.version === '2.0') {
+    nodes = nodes.map(({ type, attrs }) => ({ type, attrs: migrateWallAttrs(type, attrs) }))
+  }
+
   return {
     title: data.title ?? 'Geïmporteerde notitie',
     created_at: data.created ?? new Date().toISOString(),
     settings: data.settings ?? {},
-    snapshot: data.canvas.konva_snapshot,
+    snapshot: wrapSnapshot(nodes),
   }
 }
 

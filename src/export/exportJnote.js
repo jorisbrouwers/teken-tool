@@ -2,8 +2,10 @@ import { strToU8, zipSync } from 'fflate'
 import { serializeLayer } from '../components/Canvas/konvaSerialize.js'
 
 export function exportJnote(note, mainLayer) {
+  // 2.1 = muur-verbindingen als lijsten (_ep0conns/_ep1conns) + expliciete
+  // isWall-markering. 2.0-bestanden worden bij import gemigreerd (importJnote.js).
   const data = {
-    version: '2.0',
+    version: '2.1',
     title: note.title,
     created: note.created_at,
     modified: new Date().toISOString(),

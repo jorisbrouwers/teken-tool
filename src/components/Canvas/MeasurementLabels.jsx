@@ -31,6 +31,7 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
         const seenIds   = new Set()
 
         for (const node of layer.getChildren()) {
+          if (!node.attrs.isWall) continue  // alleen lijnsysteem-segmenten krijgen een pill
           const cls = node.getClassName()
           if ((cls !== 'Line' && cls !== 'Arrow') || node.points().length !== 4) continue
           const id = node.id()

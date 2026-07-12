@@ -14,6 +14,21 @@ function generateId() {
   })
 }
 
+// Zet de object-toolbar op (left, top) — left is het middelpunt (CSS translateX(-50%))
+// — en klem hem binnen het canvas-vlak zodat hij nooit off-screen staat. Past er
+// boven het anker niets, dan klapt hij naar fallbackTop (onder het anker).
+function placeToolbar(div, box, left, top, fallbackTop) {
+  div.style.display = 'flex'  // vóór het meten: offsetWidth/Height van display:none is 0
+  const m = 8
+  const w = div.offsetWidth
+  const h = div.offsetHeight
+  if (top < box.top + m) top = fallbackTop
+  left = Math.min(Math.max(left, box.left + w / 2 + m), box.right - w / 2 - m)
+  top  = Math.min(Math.max(top, box.top + m), box.bottom - h - m)
+  div.style.left = `${left}px`
+  div.style.top  = `${top}px`
+}
+
 
 import { getStroke } from 'perfect-freehand'
 import { getSvgPathFromStroke } from '../../math/svgPath.js'
@@ -22,7 +37,8 @@ import { usePersistence } from './usePersistence.js'
 import { useHistory } from './useHistory.js'
 import { useGrid, GRID_SIZE } from './useGrid.js'
 import { evaluateExpression } from '../../math/mathEval.js'
-import { deserializeLayer, serializeNodes } from './konvaSerialize.js'
+import { deserializeLayer, serializeNodes, normalizeSnapshot } from './konvaSerialize.js'
+import { getConns, connsAttr, addConn, removeConn, collectHierarchyVertices } from './wallGraph.js'
 import { applyViewportCulling } from './viewportCulling.js'
 import { liveSnapshotCache } from './usePersistence.js'
 import { getNote, updateNoteSettings } from '../../db/db.js'
@@ -101,6 +117,13 @@ const CanvasView = forwardRef(function CanvasView(
     return (cls === 'Line' || cls === 'Arrow') && node.points().length === 4
   }
 
+  // Muur = lijnsysteem-segment (gizmo, pills, scharnieren, verbindingen).
+  // Sinds snapshot-formaat 2 expliciet gemarkeerd; oud materiaal krijgt de
+  // markering bij het inladen (normalizeSnapshot).
+  function isWallSegment(node) {
+    return isSingleLinear(node) && !!node.attrs.isWall
+  }
+
   const showGrid = note.settings?.background === 'grid'
 
   const onSelectionChangeRef = useRef(onSelectionChange)
@@ -130,47 +153,6 @@ const CanvasView = forwardRef(function CanvasView(
     setMinimapVersion(v => v + 1)
   }
 
-  function propagateDelta(startNodeId, startEp, delta, layer, visited = new Set()) {
-    const key = `${startNodeId}_${startEp}`
-    if (visited.has(key)) return
-    visited.add(key)
-    const node = layer.findOne(`#${startNodeId}`)
-    if (!node) return
-    const conn = node.getAttr(startEp === 0 ? '_ep0conn' : '_ep1conn')
-    if (!conn) return
-    const connKey = `${conn.id}_${conn.ep}`
-    if (visited.has(connKey)) return
-    visited.add(connKey)
-    const connNode = layer.findOne(`#${conn.id}`)
-    if (!connNode) return
-    connNode.x(connNode.x() + delta.x)
-    connNode.y(connNode.y() + delta.y)
-    propagateDelta(conn.id, 1 - conn.ep, delta, layer, visited)
-  }
-
-  // Walk the connected hierarchy from startNode, return all endpoint absolute positions
-  // except those in excludeList [{id, ep}].
-  function collectBodyHierarchyVertices(startNode, layer, excludeList) {
-    const visited = new Set()
-    const verts = []
-    function walk(n) {
-      const id = n.id()
-      if (visited.has(id)) return
-      visited.add(id)
-      const pts = n.points()
-      if (pts.length !== 4) return
-      for (let ep = 0; ep < 2; ep++) {
-        if (!excludeList.some(e => e.id === id && e.ep === ep)) {
-          verts.push({ x: n.x() + pts[ep * 2], y: n.y() + pts[ep * 2 + 1] })
-        }
-        const conn = n.getAttr(ep === 0 ? '_ep0conn' : '_ep1conn')
-        if (conn) { const cn = layer.findOne(`#${conn.id}`); if (cn) walk(cn) }
-      }
-    }
-    walk(startNode)
-    return verts
-  }
-
   // Breaks connections on adjacent nodes then destroys each node.
   // Returns true if the active gizmo node was deleted or had a connection cleared
   // (caller must then either call hideToolbar() or setLineGizmoVersion()).
@@ -178,13 +160,13 @@ const CanvasView = forwardRef(function CanvasView(
     const gizmoNode = lineGizmoNodeRef.current
     let gizmoAffected = false
     for (const node of nodesToDelete) {
-      for (const attr of ['_ep0conn', '_ep1conn']) {
-        const conn = node.getAttr(attr)
-        if (!conn) continue
-        const peer = layer.findOne(`#${conn.id}`)
-        if (!peer) continue
-        peer.setAttr(conn.ep === 0 ? '_ep0conn' : '_ep1conn', undefined)
-        if (peer === gizmoNode) gizmoAffected = true
+      for (let ep = 0; ep < 2; ep++) {
+        for (const conn of getConns(node, ep)) {
+          const peer = layer.findOne(`#${conn.id}`)
+          if (!peer) continue
+          removeConn(peer, conn.ep, node.id(), ep)
+          if (peer === gizmoNode) gizmoAffected = true
+        }
       }
       if (node === gizmoNode) gizmoAffected = true
       node.destroy()
@@ -207,12 +189,11 @@ const CanvasView = forwardRef(function CanvasView(
       points: [0, 0, Math.cos(directionAngleRad) * len, Math.sin(directionAngleRad) * len],
       stroke: node.stroke(), strokeWidth: node.strokeWidth(), opacity: node.opacity(),
       hitStrokeWidth: node.hitStrokeWidth(), listening: true, draggable: true,
-      perfectDrawEnabled: false, shadowForStrokeEnabled: false,
+      perfectDrawEnabled: false, shadowForStrokeEnabled: false, isWall: true,
       ...(node.dash()?.length ? { dash: node.dash(), lineCap: 'round', lineJoin: 'round' } : {}),
       ...(cls === 'Arrow' ? { fill: node.fill(), pointerLength: node.pointerLength(), pointerWidth: node.pointerWidth() } : {}),
     })
-    node.setAttr(endpointIndex === 0 ? '_ep0conn' : '_ep1conn', { id: newNode.id(), ep: 0 })
-    newNode.setAttr('_ep0conn', { id: node.id(), ep: endpointIndex })
+    addConn(node, endpointIndex, newNode, 0)
     layer.add(newNode)
     transformerRef.current?.moveToTop()
     layer.batchDraw()
@@ -226,17 +207,19 @@ const CanvasView = forwardRef(function CanvasView(
     if (!layer) return
     const node = layer.findOne(`#${nodeId}`)
     if (!node) return
-    // Only pull the directly connected endpoint — no chain propagation.
+    // Only pull the directly connected endpoints — no chain propagation.
     // Body drag (dragmove on the line itself) handles full-chain propagation.
-    const conn = node.getAttr(endpointIndex === 0 ? '_ep0conn' : '_ep1conn')
-    if (!conn) return
-    const connNode = layer.findOne(`#${conn.id}`)
-    if (!connNode) return
-    const pts = connNode.points().slice()
-    pts[conn.ep * 2]     = absX - connNode.x()
-    pts[conn.ep * 2 + 1] = absY - connNode.y()
-    connNode.points(pts)
-    layer.batchDraw()
+    let moved = false
+    for (const conn of getConns(node, endpointIndex)) {
+      const connNode = layer.findOne(`#${conn.id}`)
+      if (!connNode) continue
+      const pts = connNode.points().slice()
+      pts[conn.ep * 2]     = absX - connNode.x()
+      pts[conn.ep * 2 + 1] = absY - connNode.y()
+      connNode.points(pts)
+      moved = true
+    }
+    if (moved) layer.batchDraw()
   }
 
   function handleLineEndpointDragEnd() {
@@ -253,18 +236,16 @@ const CanvasView = forwardRef(function CanvasView(
     const newLen = meters * GRID_SIZE
     const newPts = [pts[0], pts[1], pts[0] + Math.cos(angle) * newLen, pts[1] + Math.sin(angle) * newLen]
     node.points(newPts)
-    // Stretch the adjacent segment's endpoint at ep1 to follow the new position —
-    // same as endpoint drag does. Using propagateDelta (body shift) breaks closed
-    // loops because it moves the node connected back to ep0 away from its anchor.
-    const conn1 = node.getAttr('_ep1conn')
-    if (conn1) {
-      const connNode = layer.findOne(`#${conn1.id}`)
-      if (connNode) {
-        const connPts = connNode.points().slice()
-        connPts[conn1.ep * 2]     = (node.x() + newPts[2]) - connNode.x()
-        connPts[conn1.ep * 2 + 1] = (node.y() + newPts[3]) - connNode.y()
-        connNode.points(connPts)
-      }
+    // Stretch the adjacent segments' endpoints at ep1 to follow the new position —
+    // same as endpoint drag does. A whole-body shift of the neighbours would break
+    // closed loops (it moves the node connected back to ep0 away from its anchor).
+    for (const conn of getConns(node, 1)) {
+      const connNode = layer.findOne(`#${conn.id}`)
+      if (!connNode) continue
+      const connPts = connNode.points().slice()
+      connPts[conn.ep * 2]     = (node.x() + newPts[2]) - connNode.x()
+      connPts[conn.ep * 2 + 1] = (node.y() + newPts[3]) - connNode.y()
+      connNode.points(connPts)
     }
     layer.batchDraw()
     historyPushRef.current?.()
@@ -275,56 +256,39 @@ const CanvasView = forwardRef(function CanvasView(
     const layer = mainLayerRef.current
     if (!layer) return
     const node = layer.findOne(`#${sourceNodeId}`)
-    if (!node) return
-
-    // Save original connections BEFORE any breaking — needed for zero-length rewiring below.
-    const origDraggedConn = node.getAttr(draggedEp === 0 ? '_ep0conn' : '_ep1conn')
-    const origOtherConn   = node.getAttr((1 - draggedEp) === 0 ? '_ep0conn' : '_ep1conn')
-
-    // Break any existing connection at node's draggedEp
-    if (origDraggedConn) {
-      const exNode = layer.findOne(`#${origDraggedConn.id}`)
-      if (exNode) exNode.setAttr(origDraggedConn.ep === 0 ? '_ep0conn' : '_ep1conn', undefined)
-      node.setAttr(draggedEp === 0 ? '_ep0conn' : '_ep1conn', undefined)
-    }
-
-    // Break any existing connection at target's targetEp
     const targetNode = layer.findOne(`#${targetNodeId}`)
-    if (!targetNode) return
-    const targetExisting = targetNode.getAttr(targetEp === 0 ? '_ep0conn' : '_ep1conn')
-    if (targetExisting) {
-      const txNode = layer.findOne(`#${targetExisting.id}`)
-      if (txNode) txNode.setAttr(targetExisting.ep === 0 ? '_ep0conn' : '_ep1conn', undefined)
-      targetNode.setAttr(targetEp === 0 ? '_ep0conn' : '_ep1conn', undefined)
-    }
+    if (!node || !targetNode) return
 
-    // Create bidirectional connection
-    node.setAttr(draggedEp === 0 ? '_ep0conn' : '_ep1conn', { id: targetNodeId, ep: targetEp })
-    targetNode.setAttr(targetEp === 0 ? '_ep0conn' : '_ep1conn', { id: node.id(), ep: draggedEp })
-
-    // If the node collapsed to zero length, remove it and wire its two former peers together.
+    // If the node collapsed to zero length, remove it and weld all its former
+    // peers (plus the snap target) pairwise together so the chain stays intact.
     const pts = node.points()
     if (Math.hypot(pts[2] - pts[0], pts[3] - pts[1]) < 0.5) {
-      // Undo the temporary connection we just made to targetNode.
-      targetNode.setAttr(targetEp === 0 ? '_ep0conn' : '_ep1conn', undefined)
-
-      // Wire origDraggedConn's peer (e.g. B) directly to origOtherConn's peer (e.g. D).
-      if (origDraggedConn && origOtherConn) {
-        const fromNode = layer.findOne(`#${origDraggedConn.id}`)
-        const toNode   = layer.findOne(`#${origOtherConn.id}`)
-        if (fromNode && toNode && fromNode !== toNode) {
-          fromNode.setAttr(origDraggedConn.ep === 0 ? '_ep0conn' : '_ep1conn', { id: toNode.id(),   ep: origOtherConn.ep })
-          toNode.setAttr(origOtherConn.ep   === 0 ? '_ep0conn' : '_ep1conn', { id: fromNode.id(), ep: origDraggedConn.ep })
+      const sideDragged = [...getConns(node, draggedEp), { id: targetNodeId, ep: targetEp }]
+      const sideOther   = getConns(node, 1 - draggedEp)
+      for (let ep = 0; ep < 2; ep++) {
+        for (const conn of getConns(node, ep)) {
+          const peer = layer.findOne(`#${conn.id}`)
+          if (peer) removeConn(peer, conn.ep, node.id(), ep)
         }
       }
-      // If only one or neither peer exists they're already free from the breaking steps above.
-
-      node.setAttr('_ep0conn', undefined)
-      node.setAttr('_ep1conn', undefined)
+      for (const a of sideDragged) {
+        for (const b of sideOther) {
+          if (a.id === b.id) continue
+          const an = layer.findOne(`#${a.id}`)
+          const bn = layer.findOne(`#${b.id}`)
+          if (an && bn) addConn(an, a.ep, bn, b.ep)
+        }
+      }
       node.destroy()
       hideToolbar()
       layer.batchDraw()
+      return
     }
+
+    // Normal weld: the connection is added alongside any existing ones.
+    // Verbindings-lijsten maken graad-N-hoekpunten mogelijk, dus een las hoeft
+    // geen bestaande verbinding meer te verbreken ("stelen") zoals voorheen.
+    addConn(node, draggedEp, targetNode, targetEp)
   }
 
   // Survives Effect 3 re-runs (which reset local closure vars) so onClick doesn't
@@ -353,9 +317,8 @@ const CanvasView = forwardRef(function CanvasView(
     setImageLocked(!!node.attrs.isLocked)
     setShowColorPicker(false)
     setSelectedColor(!isImage && node.getClassName() !== 'Text' ? getNodeColor(node) : null)
-    // Lines/arrows get a custom gizmo instead of the transformer.
-    const isLinear = isSingleLinear(node)
-    if (isLinear) {
+    // Walls get a custom gizmo instead of the transformer.
+    if (isWallSegment(node)) {
       tr?.nodes([])
       setGizmoNode(node)
     } else {
@@ -364,31 +327,14 @@ const CanvasView = forwardRef(function CanvasView(
     // Images get their own rotate buttons — hide the transformer rotation handle.
     if (tr) tr.rotateEnabled(!isImage)
     // getClientRect() is container-relative; position:fixed needs viewport coords.
+    // Anker = het geselecteerde object zelf (voor muren dus het segment, niet de
+    // hele hiërarchie — die staat ingezoomd al snel buiten beeld).
     const box = stage.container().getBoundingClientRect()
-    if (isLinear) {
-      // Position above the full connected hierarchy, not just the selected segment.
-      const visited = new Set()
-      let minX = Infinity, minY = Infinity, maxX = -Infinity
-      function walkHier(n) {
-        if (visited.has(n.id())) return
-        visited.add(n.id())
-        const r = n.getClientRect()
-        minX = Math.min(minX, r.x); minY = Math.min(minY, r.y)
-        maxX = Math.max(maxX, r.x + r.width)
-        for (const attr of ['_ep0conn', '_ep1conn']) {
-          const conn = n.getAttr(attr)
-          if (conn) { const cn = mainLayerRef.current?.findOne(`#${conn.id}`); if (cn) walkHier(cn) }
-        }
-      }
-      walkHier(node)
-      div.style.left = `${box.left + (minX + maxX) / 2}px`
-      div.style.top  = `${box.top + minY - 48}px`
-    } else {
-      const r = node.getClientRect()
-      div.style.left = `${box.left + r.x + r.width / 2}px`
-      div.style.top  = `${box.top + r.y - 48}px`
-    }
-    div.style.display = 'flex'
+    const r = node.getClientRect()
+    placeToolbar(div, box,
+      box.left + r.x + r.width / 2,
+      box.top + r.y - 48,
+      box.top + r.y + r.height + 8)
   }, [])
 
   const hideToolbar = useCallback(() => {
@@ -419,9 +365,10 @@ const CanvasView = forwardRef(function CanvasView(
     tr.rotateEnabled(true) // multi-selection keeps the rotation handle
     const r = tr.getClientRect()
     const box = stage.container().getBoundingClientRect()
-    div.style.left = `${box.left + r.x + r.width / 2}px`
-    div.style.top  = `${box.top + r.y - 48}px`
-    div.style.display = 'flex'
+    placeToolbar(div, box,
+      box.left + r.x + r.width / 2,
+      box.top + r.y - 48,
+      box.top + r.y + r.height + 8)
   }, [])
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -521,13 +468,15 @@ const CanvasView = forwardRef(function CanvasView(
     let cancelled = false
     const cached = liveSnapshotCache.get(note.id)
     if (cached) {
-      deserializeLayer(cached, mainLayer)
+      deserializeLayer(normalizeSnapshot(cached), mainLayer)
       afterLoad()
     } else {
       getNote(note.id).then(fresh => {
         if (cancelled) return
         if (fresh?.snapshot) {
-          deserializeLayer(fresh.snapshot, mainLayer)
+          // normalizeSnapshot migreert records van vóór het versieveld
+          // (muur-markering + verbindings-lijsten) — zie konvaSerialize.js.
+          deserializeLayer(normalizeSnapshot(fresh.snapshot), mainLayer)
           afterLoad()
         } else {
           history.reset()
@@ -922,7 +871,7 @@ const CanvasView = forwardRef(function CanvasView(
           if (stage) {
             const box = stage.container().getBoundingClientRect()
             const hitNode = stage.getIntersection({ x: e.clientX - box.left, y: e.clientY - box.top })
-            if (isSingleLinear(hitNode) && hitNode !== lineGizmoNodeRef.current) {
+            if (isWallSegment(hitNode) && hitNode !== lineGizmoNodeRef.current) {
               hitNode.draggable(false)
               window.addEventListener('pointerup', function restore() {
                 if (activeToolRef.current === 'select') hitNode.draggable(true)
@@ -1677,6 +1626,9 @@ const CanvasView = forwardRef(function CanvasView(
       scheduleSnapshot()
       // After drawing any shape, auto-select it and switch to the select tool.
       if (isSingleLinear(clone)) {
+        // Tot de aparte muur-tool (Fase 2) is elke getekende lijn/pijl een muur —
+        // zelfde gedrag als vóór de isWall-markering.
+        clone.setAttr('isWall', true)
         // A click without drag produces a near-zero-length line. Give it a
         // default horizontal length so it's visible and usable.
         const pts = clone.points()
@@ -1997,17 +1949,17 @@ const CanvasView = forwardRef(function CanvasView(
           if (linearSelected.length >= 2) {
             const toSelect = new Set(selected)
             const expandNode = node => {
-              for (const attr of ['_ep0conn', '_ep1conn']) {
-                const conn = node.getAttr(attr)
-                if (!conn) continue
-                const connNode = mainLayer.findOne(`#${conn.id}`)
-                if (connNode && !toSelect.has(connNode)) {
-                  toSelect.add(connNode)
-                  // Verbonden segmenten kunnen buiten beeld geculed zijn; ze
-                  // worden nu onderdeel van de selectie en moeten meebewegen
-                  // én zichtbaar zijn.
-                  if (connNode._culled) { connNode.visible(true); connNode._culled = false }
-                  expandNode(connNode)
+              for (let ep = 0; ep < 2; ep++) {
+                for (const conn of getConns(node, ep)) {
+                  const connNode = mainLayer.findOne(`#${conn.id}`)
+                  if (connNode && !toSelect.has(connNode)) {
+                    toSelect.add(connNode)
+                    // Verbonden segmenten kunnen buiten beeld geculed zijn; ze
+                    // worden nu onderdeel van de selectie en moeten meebewegen
+                    // én zichtbaar zijn.
+                    if (connNode._culled) { connNode.visible(true); connNode._culled = false }
+                    expandNode(connNode)
+                  }
                 }
               }
             }
@@ -2218,7 +2170,7 @@ const CanvasView = forwardRef(function CanvasView(
     })
     mainLayer.on('dragmove', ev => {
       const target = ev.target
-      if (!isSingleLinear(target) || !lastDragPos) return
+      if (!isWallSegment(target) || !lastDragPos) return
       const layer = mainLayerRef.current
       const stage = stageRef.current
       if (!layer || !stage) return
@@ -2226,12 +2178,11 @@ const CanvasView = forwardRef(function CanvasView(
       // ── Vertex alignment snapping ───────────────────────────────────────
       const pts = target.points()
       const alignDist = BODY_ALIGN_SNAP_PX / (stage.scaleX() ?? 1)
-      const conn0 = target.getAttr('_ep0conn')
-      const conn1 = target.getAttr('_ep1conn')
-      const excludeList = [{ id: target.id(), ep: 0 }, { id: target.id(), ep: 1 }]
-      if (conn0) excludeList.push({ id: conn0.id, ep: conn0.ep })
-      if (conn1) excludeList.push({ id: conn1.id, ep: conn1.ep })
-      const verts = collectBodyHierarchyVertices(target, layer, excludeList)
+      const excludeList = [
+        { id: target.id(), ep: 0 }, { id: target.id(), ep: 1 },
+        ...getConns(target, 0), ...getConns(target, 1),
+      ]
+      const verts = collectHierarchyVertices(target, layer, excludeList)
 
       const ep0x = target.x() + pts[0], ep0y = target.y() + pts[1]
       const ep1x = target.x() + pts[2], ep1y = target.y() + pts[3]
@@ -2292,16 +2243,16 @@ const CanvasView = forwardRef(function CanvasView(
         // hierarchy; adjacent walls deform to follow rather than all moving.
         const updatedPts = target.points()
         for (let i = 0; i < 2; i++) {
-          const conn = target.getAttr(i === 0 ? '_ep0conn' : '_ep1conn')
-          if (!conn) continue
-          const connNode = layer.findOne(`#${conn.id}`)
-          if (!connNode) continue
           const newAbsX = target.x() + updatedPts[i * 2]
           const newAbsY = target.y() + updatedPts[i * 2 + 1]
-          const connPts = connNode.points().slice()
-          connPts[conn.ep * 2]     = newAbsX - connNode.x()
-          connPts[conn.ep * 2 + 1] = newAbsY - connNode.y()
-          connNode.points(connPts)
+          for (const conn of getConns(target, i)) {
+            const connNode = layer.findOne(`#${conn.id}`)
+            if (!connNode) continue
+            const connPts = connNode.points().slice()
+            connPts[conn.ep * 2]     = newAbsX - connNode.x()
+            connPts[conn.ep * 2 + 1] = newAbsY - connNode.y()
+            connNode.points(connPts)
+          }
         }
         layer.batchDraw()
         lastDragPos = { x: target.x(), y: target.y() }
@@ -2725,9 +2676,11 @@ const CanvasView = forwardRef(function CanvasView(
         if (vis.has(node.id())) return
         vis.add(node.id())
         toSerializeSet.add(node)
-        for (const attr of ['_ep0conn', '_ep1conn']) {
-          const conn = node.getAttr(attr)
-          if (conn) { const cn = mainLayer.findOne(`#${conn.id}`); if (cn) walkH(cn) }
+        for (let ep = 0; ep < 2; ep++) {
+          for (const conn of getConns(node, ep)) {
+            const cn = mainLayer.findOne(`#${conn.id}`)
+            if (cn) walkH(cn)
+          }
         }
       }
       walkH(n)
@@ -2753,9 +2706,11 @@ const CanvasView = forwardRef(function CanvasView(
         if (vis.has(node.id())) return
         vis.add(node.id())
         toCloneSet.add(node)
-        for (const attr of ['_ep0conn', '_ep1conn']) {
-          const conn = node.getAttr(attr)
-          if (conn) { const cn = mainLayer.findOne(`#${conn.id}`); if (cn) walkH(cn) }
+        for (let ep = 0; ep < 2; ep++) {
+          for (const conn of getConns(node, ep)) {
+            const cn = mainLayer.findOne(`#${conn.id}`)
+            if (cn) walkH(cn)
+          }
         }
       }
       walkH(n)
@@ -2775,11 +2730,12 @@ const CanvasView = forwardRef(function CanvasView(
       clone.y(n.y() + offset)
       if (isSingleLinear(n)) {
         clone.id(idMap.get(n.id()))
-        for (const attr of ['_ep0conn', '_ep1conn']) {
-          const conn = n.getAttr(attr)
-          if (!conn) continue
-          // Remap to new ID if the peer is also being cloned; otherwise sever the link.
-          clone.setAttr(attr, idMap.has(conn.id) ? { id: idMap.get(conn.id), ep: conn.ep } : undefined)
+        for (let ep = 0; ep < 2; ep++) {
+          // Remap to new IDs; entries whose peer isn't being cloned are severed.
+          const remapped = getConns(n, ep)
+            .filter(c => idMap.has(c.id))
+            .map(c => ({ id: idMap.get(c.id), ep: c.ep }))
+          clone.setAttr(connsAttr(ep), remapped.length ? remapped : undefined)
         }
       }
       if (clone.attrs.isImage) {
@@ -2880,17 +2836,22 @@ const CanvasView = forwardRef(function CanvasView(
       // hierarchy connection attrs reference the new IDs instead of the originals.
       const idMap = new Map()
       data.forEach(({ attrs }) => { if (attrs.id) idMap.set(attrs.id, generateId()) })
-      const remapConn = conn => (conn && idMap.has(conn.id)) ? { id: idMap.get(conn.id), ep: conn.ep } : undefined
+      const remapConns = conns => {
+        const remapped = (conns ?? [])
+          .filter(c => idMap.has(c.id))
+          .map(c => ({ id: idMap.get(c.id), ep: c.ep }))
+        return remapped.length ? remapped : undefined
+      }
 
       const newNodes = []
       data.forEach(({ type, attrs }) => {
         const newAttrs = {
           ...attrs,
-          id:       idMap.get(attrs.id) ?? generateId(),
-          x:        (attrs.x ?? 0) + dx,
-          y:        (attrs.y ?? 0) + dy,
-          _ep0conn: remapConn(attrs._ep0conn),
-          _ep1conn: remapConn(attrs._ep1conn),
+          id:        idMap.get(attrs.id) ?? generateId(),
+          x:         (attrs.x ?? 0) + dx,
+          y:         (attrs.y ?? 0) + dy,
+          _ep0conns: remapConns(attrs._ep0conns),
+          _ep1conns: remapConns(attrs._ep1conns),
         }
         if (type === 'Image') {
           const img = new Image()

@@ -116,6 +116,7 @@ function drawMeasurementPills(ctx, nodes, cropSX, cropSY, targetScale, pillStyle
   ctx.textBaseline = 'middle'
 
   for (const node of nodes) {
+    if (!node.attrs.isWall) continue  // alleen lijnsysteem-segmenten krijgen een pill
     const cls = node.getClassName()
     if ((cls !== 'Line' && cls !== 'Arrow') || node.points().length !== 4) continue
     const id = node.id()

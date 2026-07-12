@@ -55,6 +55,7 @@ export default function HingeDecorations({ stageRef, mainLayerRef, editModeActiv
       const transform = stage.getAbsoluteTransform()
 
       for (const node of ml.getChildren()) {
+        if (!node.attrs.isWall) continue  // alleen lijnsysteem-segmenten krijgen scharnieren
         const cls = node.getClassName()
         if (cls !== 'Line' && cls !== 'Arrow') continue
         if (!node.id()) continue

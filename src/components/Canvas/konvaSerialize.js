@@ -1,4 +1,27 @@
 import Konva from 'konva'
+import { migrateWallAttrs } from './wallGraph.js'
+
+// Persistence-snapshotformaat. Formaat 2 = { format: 2, nodes: [{type, attrs}] }
+// met muur-verbindingen als lijsten (_ep0conns/_ep1conns) en expliciete isWall.
+// Een kale array (zonder wrapper) is het oude formaat van vóór het versieveld:
+// daarin gedroeg elk 2-punts Line/Arrow-object zich als muur en waren
+// verbindingen enkelvoudig (_ep0conn/_ep1conn) — normalizeSnapshot migreert dat
+// bij het inladen. Nieuwe saves schrijven altijd formaat 2.
+export const SNAPSHOT_FORMAT = 2
+
+export function wrapSnapshot(nodes) {
+  return { format: SNAPSHOT_FORMAT, nodes }
+}
+
+// Accepteert zowel het oude formaat (kale array) als het nieuwe ({format, nodes})
+// en geeft altijd een genormaliseerde platte array van {type, attrs} terug.
+export function normalizeSnapshot(snapshot) {
+  if (!snapshot) return []
+  if (Array.isArray(snapshot)) {
+    return snapshot.map(({ type, attrs }) => ({ type, attrs: migrateWallAttrs(type, attrs) }))
+  }
+  return snapshot.nodes ?? []
+}
 
 // Serialize a specific set of nodes (for copy/paste).
 export function serializeNodes(nodes) {

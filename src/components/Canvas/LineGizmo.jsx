@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import { GRID_SIZE } from './useGrid.js'
 import { getPillCssStyle } from './pillStyle.js'
+import { getConns, hasConns, walkHierarchy, collectHierarchyVertices } from './wallGraph.js'
 
 const FAN_RADIUS = 56
 const FAN_OFFSETS = [-Math.PI / 2, 0, Math.PI / 2]
@@ -10,49 +11,6 @@ const SNAP_RAD = 3 * Math.PI / 180
 
 const EP_SNAP_SCREEN_PX    = 30  // screen pixels within which endpoint-to-endpoint snapping kicks in
 const ALIGN_SNAP_SCREEN_PX = 20  // screen pixels within which vertex alignment snapping kicks in
-
-// Collect all Konva nodes in the connected hierarchy starting from startNode.
-function getAllHierarchyNodes(startNode, layer) {
-  const visited = new Set()
-  const nodes = []
-  function walk(n) {
-    if (!n || visited.has(n.id())) return
-    visited.add(n.id())
-    nodes.push(n)
-    for (const attr of ['_ep0conn', '_ep1conn']) {
-      const conn = n.getAttr(attr)
-      if (conn) walk(layer.findOne(`#${conn.id}`))
-    }
-  }
-  walk(startNode)
-  return nodes
-}
-
-// Walk the connected hierarchy from startNode and collect all endpoint absolute positions
-// except those in excludeList [{id, ep}] (the moving endpoints).
-function collectHierarchyVertices(startNode, layer, excludeList) {
-  const visited = new Set()
-  const vertices = []
-  function walk(n) {
-    const id = n.id()
-    if (visited.has(id)) return
-    visited.add(id)
-    const pts = n.points()
-    if (pts.length !== 4) return
-    for (let ep = 0; ep < 2; ep++) {
-      if (!excludeList.some(e => e.id === id && e.ep === ep)) {
-        vertices.push({ x: n.x() + pts[ep * 2], y: n.y() + pts[ep * 2 + 1] })
-      }
-      const conn = n.getAttr(ep === 0 ? '_ep0conn' : '_ep1conn')
-      if (conn) {
-        const connNode = layer.findOne(`#${conn.id}`)
-        if (connNode) walk(connNode)
-      }
-    }
-  }
-  walk(startNode)
-  return vertices
-}
 
 // eslint-disable-next-line no-unused-vars
 export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onExtrude, onMeasureConfirm, snapEnabledRef, version, autoEditRef, showPills = true, pillStyle }) {
@@ -118,7 +76,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
       const stage = stageRef.current
       const layer = mainLayerRef.current
       if (!stage || !node || !layer) return
-      const hNodes = getAllHierarchyNodes(node, layer)
+      const hNodes = walkHierarchy(node, layer)
       const nodesKey = hNodes.map(n => {
         const pts = n.points()
         return `${n.id()}:${n.x()},${n.y()},${pts.join(',')}`
@@ -181,16 +139,16 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
         // ── 1. Endpoint-to-endpoint snapping ─────────────────────────────────
         const stage = stageRef.current
         const epSnapDist = EP_SNAP_SCREEN_PX / (stage?.scaleX() ?? 1)
-        const currentConn = targetNode.getAttr(i === 0 ? '_ep0conn' : '_ep1conn')
+        const currentConns = getConns(targetNode, i)
         let epSnap = null
         for (const other of layer.getChildren()) {
-          if (other === targetNode || other.name()?.startsWith('lineGizmoHandle')) continue
+          if (other === targetNode || !other.getAttr('isWall')) continue
           const cls = other.getClassName()
           if (cls !== 'Line' && cls !== 'Arrow') continue
           const otherPts = other.points()
           if (otherPts.length !== 4) continue
           for (let j = 0; j < 2; j++) {
-            if (currentConn && other.id() === currentConn.id && j === currentConn.ep) continue
+            if (currentConns.some(c => c.id === other.id() && c.ep === j)) continue
             const ex = other.x() + otherPts[j * 2]
             const ey = other.y() + otherPts[j * 2 + 1]
             if (Math.hypot(ex - anchorAbsX, ey - anchorAbsY) < epSnapDist) continue
@@ -216,8 +174,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
 
           // ── 2. Vertex alignment snapping (pink guides) ────────────────────
           const alignSnapDist = ALIGN_SNAP_SCREEN_PX / (stage?.scaleX() ?? 1)
-          const excludeList = [{ id: targetNode.id(), ep: i }]
-          if (currentConn) excludeList.push({ id: currentConn.id, ep: currentConn.ep })
+          const excludeList = [{ id: targetNode.id(), ep: i }, ...currentConns]
           const vertices = collectHierarchyVertices(targetNode, layer, excludeList)
 
           let snapX = null, snapY = null
@@ -375,7 +332,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
       return { targetNode, ep: i, circle }
     }
 
-    const hierarchyNodes = getAllHierarchyNodes(node, layer)
+    const hierarchyNodes = walkHierarchy(node, layer)
     const circleEntries = hierarchyNodes.flatMap(n => [0, 1].map(i => createCircle(n, i)))
     circlesRef.current = circleEntries
     layer.batchDraw()
@@ -438,8 +395,8 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
   const ep0Dir = lineAngle + Math.PI
   const ep1Dir = lineAngle
 
-  const ep0Connected = !!node.getAttr('_ep0conn')
-  const ep1Connected = !!node.getAttr('_ep1conn')
+  const ep0Connected = hasConns(node, 0)
+  const ep1Connected = hasConns(node, 1)
 
   const lengthM = Math.hypot(pts[2] - pts[0], pts[3] - pts[1]) / GRID_SIZE
   const midScreen = toScreen(nx + (pts[0] + pts[2]) / 2, ny + (pts[1] + pts[3]) / 2)
@@ -482,17 +439,17 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
   const layer = mainLayerRef.current
   const hierarchyFans = []
   if (layer) {
-    const hierarchyNodes = getAllHierarchyNodes(node, layer)
+    const hierarchyNodes = walkHierarchy(node, layer)
     for (const hn of hierarchyNodes) {
       if (hn === node) continue
       const hpts = hn.points()
       if (!hpts || hpts.length < 4) continue
       const hnx = hn.x(), hny = hn.y()
       const hAngle = Math.atan2(hpts[3] - hpts[1], hpts[2] - hpts[0])
-      if (!hn.getAttr('_ep0conn')) {
+      if (!hasConns(hn, 0)) {
         hierarchyFans.push({ hn, ep: 0, epScreen: toScreen(hnx + hpts[0], hny + hpts[1]), baseAngle: hAngle + Math.PI })
       }
-      if (!hn.getAttr('_ep1conn')) {
+      if (!hasConns(hn, 1)) {
         hierarchyFans.push({ hn, ep: 1, epScreen: toScreen(hnx + hpts[2], hny + hpts[3]), baseAngle: hAngle })
       }
     }

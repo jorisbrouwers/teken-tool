@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { updateNoteSnapshot } from '../../db/db.js'
-import { serializeLayer } from './konvaSerialize.js'
+import { serializeLayer, wrapSnapshot } from './konvaSerialize.js'
 
 export const liveSnapshotCache = new Map()
 
@@ -30,8 +30,8 @@ export function usePersistence(mainLayerRef, noteId, scheduleRef, flushRef, acti
         console.warn('[persist] doSerializeAndSave skipped — missing layer or noteId')
         return
       }
-      const data = serializeLayer(layer)
-      console.log('[persist] serialized, nodes:', data?.children?.length ?? '?')
+      const data = wrapSnapshot(serializeLayer(layer))
+      console.log('[persist] serialized, nodes:', data.nodes.length)
       liveSnapshotCache.set(noteId, data)
       updateNoteSnapshot(noteId, data)
         .then(() => console.log('[persist] DB write done for', noteId))
