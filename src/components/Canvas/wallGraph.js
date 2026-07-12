@@ -89,6 +89,66 @@ export function collectHierarchyVertices(startNode, layer, excludeList) {
   return vertices
 }
 
+// Dichtstbijzijnde muur-eindpunt binnen maxDist (stage-eenheden), voor lassen/
+// kettingen tijdens het tekenen. Scant alle muren op de layer, ongeacht
+// hiërarchie — dit is de las-snap en die is per definitie pointer-lokaal (de
+// gebruiker wijst er met de pen op), dus geen viewport-beperking nodig.
+export function findWallEndpointNear(layer, absX, absY, maxDist) {
+  let best = null, bestD = maxDist
+  for (const node of layer.getChildren()) {
+    if (!node.attrs.isWall) continue
+    const pts = node.points()
+    if (!pts || pts.length !== 4) continue
+    for (let ep = 0; ep < 2; ep++) {
+      const ex = node.x() + pts[ep * 2], ey = node.y() + pts[ep * 2 + 1]
+      const d = Math.hypot(ex - absX, ey - absY)
+      if (d < bestD) { bestD = d; best = { node, ep, x: ex, y: ey } }
+    }
+  }
+  return best
+}
+
+// Uitlijn-snap-kandidaten (5.1): de eigen hiërarchie (ownHierarchyStartNode)
+// doet altijd mee, ook off-screen — nodig om een grote plattegrond ingezoomd
+// te kunnen sluiten op een ver hoekpunt. Andere hiërarchieën doen alleen mee
+// met hun on-screen hoekpunten, zodat bijvoorbeeld een op dezelfde plek
+// getekende verdieping niet constant meesnapt.
+export function collectSnapVertices(layer, stage, ownHierarchyStartNode, excludeList = []) {
+  const vertices = []
+  const ownIds = new Set()
+  if (ownHierarchyStartNode) {
+    vertices.push(...collectHierarchyVertices(ownHierarchyStartNode, layer, excludeList))
+    for (const n of walkHierarchy(ownHierarchyStartNode, layer)) ownIds.add(n.id())
+  }
+  if (!stage) return vertices
+  const w = stage.width(), h = stage.height()
+  const transform = stage.getAbsoluteTransform()
+  for (const node of layer.getChildren()) {
+    if (!node.attrs.isWall || ownIds.has(node.id()) || node._culled) continue
+    const pts = node.points()
+    if (!pts || pts.length !== 4) continue
+    for (let ep = 0; ep < 2; ep++) {
+      const ax = node.x() + pts[ep * 2], ay = node.y() + pts[ep * 2 + 1]
+      const sp = transform.point({ x: ax, y: ay })
+      if (sp.x < 0 || sp.x > w || sp.y < 0 || sp.y > h) continue
+      vertices.push({ x: ax, y: ay })
+    }
+  }
+  return vertices
+}
+
+// Dichtstbijzijnde punt op het lijnstuk [a,b] bij p, geklemd tussen de
+// eindpunten (t in [0,1]). Gebruikt om een pen-down-positie op de body van een
+// bestaande muur te projecteren voor mid-segment-aftakking (5.2).
+export function closestPointOnSegment(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay
+  const lenSq = dx * dx + dy * dy
+  if (lenSq < 1e-9) return { x: ax, y: ay, t: 0 }
+  let t = ((px - ax) * dx + (py - ay) * dy) / lenSq
+  t = Math.max(0, Math.min(1, t))
+  return { x: ax + dx * t, y: ay + dy * t, t }
+}
+
 // Migratie van attrs uit het oude opslagformaat (vóór het versieveld):
 // elk 2-punts Line/Arrow-object gedroeg zich toen als muur, dus alles wordt
 // gemarkeerd met isWall; enkelvoudige _ep0conn/_ep1conn worden lijsten.

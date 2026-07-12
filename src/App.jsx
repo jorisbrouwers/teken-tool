@@ -40,7 +40,7 @@ export default function App() {
   const [showHinges, setShowHinges] = useState(true)
   const [pillColor, setPillColor] = useState('#1971c2')
   const [pillOpacity, setPillOpacity] = useState(100)
-  const [pillFontSize, setPillFontSize] = useState(8)
+  const [pillFontSize, setPillFontSize] = useState(10)
   const [pillTextColor, setPillTextColor] = useState('#ffffff')
   const settingsLoadedRef = useRef(false)
 
@@ -208,7 +208,11 @@ export default function App() {
           y: cy - h / 2,
           width: w,
           height: h,
-          draggable: true,
+          // draggable blijft false — CanvasView verplaatst afbeeldingen altijd
+          // via zijn eigen gizmo-bbox-systeem (computeDraggable), nooit via
+          // Konva-native draggable, zodat niets gesleept kan worden zonder
+          // het eerst te selecteren.
+          draggable: false,
           isImage: true,
         })
         addImage(konvaImg)
@@ -368,7 +372,7 @@ export default function App() {
             setShowHinges(true)
             setPillColor('#1971c2')
             setPillOpacity(100)
-            setPillFontSize(8)
+            setPillFontSize(10)
             setPillTextColor('#ffffff')
           }}
         />

@@ -15,6 +15,14 @@ const Icons = {
       <path d="M13.5 3.5a2.121 2.121 0 0 1 3 3L6 17l-4 1 1-4L13.5 3.5z" />
     </svg>
   ),
+  wall: (
+    <svg {...ICON}>
+      <rect x="2" y="3" width="16" height="14" rx="1.5" />
+      <line x1="2" y1="10" x2="18" y2="10" />
+      <line x1="10" y1="3" x2="10" y2="10" />
+      <line x1="6" y1="10" x2="6" y2="17" />
+    </svg>
+  ),
   eraser: (
     <svg {...ICON}>
       <path d="M3 14.5l5.5-9a1 1 0 0 1 1.5-.2l5.7 5.7a1 1 0 0 1-.2 1.5L9 17H17" />
@@ -102,6 +110,7 @@ const Icons = {
 const DRAW_TOOLS = [
   { id: 'select', icon: Icons.select, title: 'Selecteren' },
   { id: 'pen',    icon: Icons.pen,    title: 'Tekenen' },
+  { id: 'wall',   icon: Icons.wall,   title: 'Muur' },
   { id: 'eraser', icon: Icons.eraser, title: 'Gum' },
   { id: 'text',   icon: Icons.text,   title: 'Tekst' },
 ]

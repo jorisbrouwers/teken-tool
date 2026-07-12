@@ -149,30 +149,6 @@
   border-width: 2.5px;
 }
 
-/* ── Line gizmo fan buttons ───────────────────────────────────────────────── */
-.line-gizmo-fan-btn {
-  position: fixed;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: #fff;
-  border: 1.5px solid #1971c2;
-  color: #1971c2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  z-index: 101;
-  touch-action: none;
-  padding: 0;
-  cursor: pointer;
-  transform: translate(-50%, -50%);
-}
-
-.line-gizmo-fan-btn:active {
-  background: #e8f4ff;
-}
-
 .measurement-label-global {
   position: fixed;
   background: #1971c2;

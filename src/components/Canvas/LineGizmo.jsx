@@ -2,18 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import { GRID_SIZE } from './useGrid.js'
 import { getPillCssStyle } from './pillStyle.js'
-import { getConns, hasConns, walkHierarchy, collectHierarchyVertices } from './wallGraph.js'
-
-const FAN_RADIUS = 56
-const FAN_OFFSETS = [-Math.PI / 2, 0, Math.PI / 2]
+import { getConns, walkHierarchy, collectSnapVertices } from './wallGraph.js'
 
 const SNAP_RAD = 3 * Math.PI / 180
 
-const EP_SNAP_SCREEN_PX    = 30  // screen pixels within which endpoint-to-endpoint snapping kicks in
-const ALIGN_SNAP_SCREEN_PX = 20  // screen pixels within which vertex alignment snapping kicks in
+const EP_SNAP_SCREEN_PX    = 20  // screen pixels within which endpoint-to-endpoint snapping kicks in
+const ALIGN_SNAP_SCREEN_PX = 10  // screen pixels within which vertex alignment snapping kicks in
 
 // eslint-disable-next-line no-unused-vars
-export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onExtrude, onMeasureConfirm, snapEnabledRef, version, autoEditRef, showPills = true, pillStyle }) {
+export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onMeasureConfirm, onMeasureDelete, snapEnabledRef, version, autoEditRef, showPills = true, pillStyle }) {
   const [, setVersion] = useState(0)
   const [editing, setEditing] = useState(false)
   const [inputValue, setInputValue] = useState('')
@@ -52,7 +49,10 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
         const v = parseFloat(inputValueRef.current)
         // Pass nodeRef.current explicitly — lineGizmoNodeRef in CanvasView is already
         // cleared synchronously by setGizmoNode(null) before this cleanup runs.
-        if (!isNaN(v) && v > 0.01) onMeasureConfirm?.(v, nodeRef.current)
+        if (!isNaN(v)) {
+          if (v > 0.01) onMeasureConfirm?.(v, nodeRef.current)
+          else onMeasureDelete?.(nodeRef.current)
+        }
       }
     }
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
@@ -173,9 +173,12 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
           snapTargetRef.current = null
 
           // ── 2. Vertex alignment snapping (pink guides) ────────────────────
+          // Eigen hiërarchie altijd (ook off-screen), andere hiërarchieën alleen
+          // hun on-screen hoekpunten (5.1) — voorkomt dat bijv. een andere
+          // verdieping op dezelfde plek constant meesnapt.
           const alignSnapDist = ALIGN_SNAP_SCREEN_PX / (stage?.scaleX() ?? 1)
           const excludeList = [{ id: targetNode.id(), ep: i }, ...currentConns]
-          const vertices = collectHierarchyVertices(targetNode, layer, excludeList)
+          const vertices = collectSnapVertices(layer, stage, targetNode, excludeList)
 
           let snapX = null, snapY = null
           for (const v of vertices) {
@@ -316,6 +319,23 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
           removeSnapIndicator(layer)
           removeAlignIndicators(layer)
           layer.batchDraw()
+
+          // Tik (geen sleep) op het ankerpunt terwijl de maatinvoer open staat:
+          // wissel het anker i.p.v. het endpoint te verslepen (5.2). Alleen
+          // relevant voor de handles van het geselecteerde segment zelf.
+          const totalMove = lastAbsPos && startCirclePt
+            ? Math.hypot(lastAbsPos.x - startCirclePt.x, lastAbsPos.y - startCirclePt.y)
+            : 0
+          if (totalMove < 1 && editingRef.current && targetNode === node) {
+            const anchorEp = node._measureAnchorEp ?? 0
+            if (i === anchorEp) {
+              node._measureAnchorEp = 1 - anchorEp
+              setVersion(v => v + 1)
+            }
+            startStagePt = null; startCirclePt = null; lastAbsPos = null
+            return
+          }
+
           const snap = snapTargetRef.current
           snapTargetRef.current = null
           if (snap) onEndpointSnap?.(targetNode.id(), i, snap.nodeId, snap.ep)
@@ -335,6 +355,10 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
     const hierarchyNodes = walkHierarchy(node, layer)
     const circleEntries = hierarchyNodes.flatMap(n => [0, 1].map(i => createCircle(n, i)))
     circlesRef.current = circleEntries
+    // Op een T-punt vallen tot drie handles exact samen (bijv. na een split);
+    // breng de handles van het geselecteerde segment altijd naar voren zodat
+    // zijn blauwe/oranje (anker-)styling nooit achter een buur-handle verdwijnt.
+    circleEntries.forEach(({ targetNode, circle }) => { if (targetNode === node) circle.moveToTop() })
     layer.batchDraw()
 
     return () => {
@@ -351,15 +375,28 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
     }
   }, [node])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync circle posities na elke render (vangt body drag en hierarchy-bewegingen op).
+  // Sync circle posities + anker-highlight na elke render (vangt body drag,
+  // hierarchy-bewegingen en het openen/wisselen van de maatinvoer op).
   useEffect(() => {
     let dirty = false
     const active = activeDragRef.current
+    const anchorEp = node?._measureAnchorEp ?? 0
+    const moveEp = 1 - anchorEp
     for (const { targetNode, ep, circle } of circlesRef.current) {
       if (active?.nodeId === targetNode.id() && active?.ep === ep) continue
       const pts = targetNode.points()
       if (!pts || pts.length < 4) continue
       circle.position({ x: targetNode.x() + pts[ep * 2], y: targetNode.y() + pts[ep * 2 + 1] })
+      // Tijdens maatbewerking licht het endpoint op dat gaat bewegen (5.2) —
+      // tikken op het andere (het anker) wisselt dit, zie onUp hierboven.
+      if (editing && targetNode === node && ep === moveEp) {
+        circle.stroke('#e8590c')
+        circle.strokeWidth(2.5)
+      } else {
+        const isSelectedNode = targetNode === node
+        circle.stroke(isSelectedNode ? '#1971c2' : '#868e96')
+        circle.strokeWidth(isSelectedNode ? 2 : 1.5)
+      }
       dirty = true
     }
     if (dirty) mainLayerRef.current?.batchDraw()
@@ -368,7 +405,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
   // Schaal circle radius mee met zoom
   useEffect(() => {
     const zoom = stageRef.current?.scaleX() ?? 1
-    const r = Math.max(6, Math.min(12, 10 / zoom))
+    const r = Math.max(4, Math.min(12, 10 / zoom))
     circlesRef.current.forEach(({ circle }) => circle?.radius(r))
   })
 
@@ -387,16 +424,6 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
   if (pts.length < 4) return null
 
   const nx = node.x(), ny = node.y()
-  const ep0Screen = toScreen(nx + pts[0], ny + pts[1])
-  const ep1Screen = toScreen(nx + pts[2], ny + pts[3])
-  const lineAngle = Math.atan2(pts[3] - pts[1], pts[2] - pts[0])
-
-  // Fan opent weg van de lijn: ep0 kijkt terug, ep1 kijkt vooruit
-  const ep0Dir = lineAngle + Math.PI
-  const ep1Dir = lineAngle
-
-  const ep0Connected = hasConns(node, 0)
-  const ep1Connected = hasConns(node, 1)
 
   const lengthM = Math.hypot(pts[2] - pts[0], pts[3] - pts[1]) / GRID_SIZE
   const midScreen = toScreen(nx + (pts[0] + pts[2]) / 2, ny + (pts[1] + pts[3]) / 2)
@@ -404,65 +431,18 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
 
   function confirmMeasure(raw) {
     const v = parseFloat(raw)
-    if (!isNaN(v) && v > 0.01) onMeasureConfirm?.(v, nodeRef.current)
-    setEditing(false)
-  }
-
-  function renderFan(epScreen, baseAngle, endpointIndex, sourceNode = node, keyPrefix = '') {
-    return FAN_OFFSETS.map((offset, j) => {
-      const angle = baseAngle + offset
-      return (
-        <button
-          key={`${keyPrefix}${j}`}
-          className="line-gizmo-fan-btn"
-          style={{
-            left: epScreen.x + Math.cos(angle) * FAN_RADIUS,
-            top:  epScreen.y + Math.sin(angle) * FAN_RADIUS,
-          }}
-          onPointerDown={e => {
-            e.stopPropagation()
-            onExtrude(endpointIndex, angle, sourceNode)
-          }}
-        >
-          <svg viewBox="0 0 16 16" width="14" height="14"
-               style={{ transform: `rotate(${angle * 180 / Math.PI}deg)` }}>
-            <line x1="2" y1="8" x2="12" y2="8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <polyline points="8,4 13,8 8,12" fill="none" stroke="currentColor"
-                      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-      )
-    })
-  }
-
-  // Open uiteinden van de rest van de hiërarchie voor fan knoppen in edit mode
-  const layer = mainLayerRef.current
-  const hierarchyFans = []
-  if (layer) {
-    const hierarchyNodes = walkHierarchy(node, layer)
-    for (const hn of hierarchyNodes) {
-      if (hn === node) continue
-      const hpts = hn.points()
-      if (!hpts || hpts.length < 4) continue
-      const hnx = hn.x(), hny = hn.y()
-      const hAngle = Math.atan2(hpts[3] - hpts[1], hpts[2] - hpts[0])
-      if (!hasConns(hn, 0)) {
-        hierarchyFans.push({ hn, ep: 0, epScreen: toScreen(hnx + hpts[0], hny + hpts[1]), baseAngle: hAngle + Math.PI })
-      }
-      if (!hasConns(hn, 1)) {
-        hierarchyFans.push({ hn, ep: 1, epScreen: toScreen(hnx + hpts[2], hny + hpts[3]), baseAngle: hAngle })
-      }
+    if (!isNaN(v)) {
+      // Een waarde van (vrijwel) 0 betekent "verwijder dit segment" — anders
+      // eindig je met een onzichtbare/verborgen nul-lengte muur die alleen nog
+      // via de scharnier-stip zichtbaar is.
+      if (v > 0.01) onMeasureConfirm?.(v, nodeRef.current)
+      else onMeasureDelete?.(nodeRef.current)
     }
+    setEditing(false)
   }
 
   return (
     <>
-      {!ep0Connected && renderFan(ep0Screen, ep0Dir, 0)}
-      {!ep1Connected && renderFan(ep1Screen, ep1Dir, 1)}
-      {hierarchyFans.flatMap(({ hn, ep, epScreen, baseAngle }) =>
-        renderFan(epScreen, baseAngle, ep, hn, `h_${hn.id()}_${ep}_`)
-      )}
-
       {showPills && !editing && (
         <button
           className="line-gizmo-measure-label"

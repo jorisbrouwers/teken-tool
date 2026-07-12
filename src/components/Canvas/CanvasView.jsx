@@ -5,6 +5,19 @@ import Konva from 'konva'
 // Larger = easier to tap thin lines; smaller = more precise eraser.
 const HIT_MARGIN = 8
 
+// Muur-tool: schermpixels waarbinnen tekenen bij een bestaand eindpunt begint
+// (ketting) of eindigt (las) — zelfde waarde als LineGizmo's endpoint-snap.
+const WALL_EP_SNAP_SCREEN_PX = 30
+// Muur-tool: schermpixels waarbinnen vertex-uitlijning kikt — zelfde als LineGizmo.
+const WALL_ALIGN_SNAP_SCREEN_PX = 20
+// Muur-tool: hoek-snap-tolerantie (45°-veelvouden), zelfde als lijn/pijl-tool.
+const SNAP_RAD_WALL = 3 * Math.PI / 180
+// Muur-tool: wereld-afstand (stage-eenheden, zoom-onafhankelijk) die overschreden
+// moet worden voordat pointerdown→pointerup als "tekenen" geldt i.p.v. een tik
+// (selecteren/deselecteren). 0,5 m voorkomt dat pen-jitter bij een tik per ongeluk
+// een kort muursegment tekent.
+const WALL_DRAW_THRESHOLD_STAGE = 0.5 * GRID_SIZE
+
 // crypto.randomUUID() requires a secure context (https/localhost).
 // This fallback works over plain http (e.g. local network IP).
 function generateId() {
@@ -15,14 +28,15 @@ function generateId() {
 }
 
 // Zet de object-toolbar op (left, top) — left is het middelpunt (CSS translateX(-50%))
-// — en klem hem binnen het canvas-vlak zodat hij nooit off-screen staat. Past er
-// boven het anker niets, dan klapt hij naar fallbackTop (onder het anker).
-function placeToolbar(div, box, left, top, fallbackTop) {
+// — en klem hem binnen het canvas-vlak zodat hij nooit off-screen staat. `top`
+// is altijd de positie ONDER de selectie; is daar niet genoeg ruimte voor, dan
+// klemt hij simpelweg tegen de onderrand van het canvas (blijft dus onder de
+// selectie "plakken" i.p.v. naar boven te springen — dat zou de gizmo's blokkeren).
+function placeToolbar(div, box, left, top) {
   div.style.display = 'flex'  // vóór het meten: offsetWidth/Height van display:none is 0
   const m = 8
   const w = div.offsetWidth
   const h = div.offsetHeight
-  if (top < box.top + m) top = fallbackTop
   left = Math.min(Math.max(left, box.left + w / 2 + m), box.right - w / 2 - m)
   top  = Math.min(Math.max(top, box.top + m), box.bottom - h - m)
   div.style.left = `${left}px`
@@ -38,7 +52,8 @@ import { useHistory } from './useHistory.js'
 import { useGrid, GRID_SIZE } from './useGrid.js'
 import { evaluateExpression } from '../../math/mathEval.js'
 import { deserializeLayer, serializeNodes, normalizeSnapshot } from './konvaSerialize.js'
-import { getConns, connsAttr, addConn, removeConn, collectHierarchyVertices } from './wallGraph.js'
+import { getConns, connsAttr, addConn, removeConn, collectHierarchyVertices, collectSnapVertices, findWallEndpointNear, closestPointOnSegment } from './wallGraph.js'
+import { getPillCssStyle } from './pillStyle.js'
 import { applyViewportCulling } from './viewportCulling.js'
 import { liveSnapshotCache } from './usePersistence.js'
 import { getNote, updateNoteSettings } from '../../db/db.js'
@@ -124,12 +139,32 @@ const CanvasView = forwardRef(function CanvasView(
     return isSingleLinear(node) && !!node.attrs.isWall
   }
 
+  // Centrale plek voor "mag Konva deze node native slepen?" — gebruikt overal
+  // waar draggable-state (her)berekend wordt (Effect 4, nav-restore, touch-
+  // restore, ...) zodat het niet op vijf plekken los kan raken. Antwoord is
+  // vrijwel altijd nee: afbeeldingen/vormen/streken bewegen uitsluitend via
+  // ons eigen gizmo-bbox-systeem (dragNodeOrigins), nooit via Konva-native
+  // dragging — zo kan niets versleept worden zonder het eerst te selecteren.
+  // Muren zijn de uitzondering (mainLayer's dragmove-handler doet daar de
+  // buur-rek-logica via een echte Konva-drag), maar ook dan alléén het
+  // segment dat al geselecteerd is via de gizmo.
+  function computeDraggable(node, tool) {
+    if (node.getClassName() === 'Transformer') return false
+    if (node.attrs.isLocked) return false
+    if (isWallSegment(node)) {
+      return (tool === 'select' || tool === 'wall') && node === lineGizmoNodeRef.current
+    }
+    return false
+  }
+
   const showGrid = note.settings?.background === 'grid'
 
   const onSelectionChangeRef = useRef(onSelectionChange)
   onSelectionChangeRef.current = onSelectionChange
   const snapEnabledRef = useRef(snapEnabled)
   snapEnabledRef.current = snapEnabled
+  const pillStyleRef = useRef(pillStyle)
+  pillStyleRef.current = pillStyle
   useEffect(() => { onSelectionChangeRef.current?.(selectedType !== null) }, [selectedType])
 
   // ─── History + persistence ──────────────────────────────────────────────────
@@ -174,32 +209,52 @@ const CanvasView = forwardRef(function CanvasView(
     return gizmoAffected
   }
 
-  function handleExtrude(endpointIndex, directionAngleRad, sourceNode) {
-    const node = sourceNode || lineGizmoNodeRef.current
-    const layer = mainLayerRef.current
-    if (!node || !layer) return
-    const pts = node.points()
-    const ex = node.x() + pts[endpointIndex * 2]
-    const ey = node.y() + pts[endpointIndex * 2 + 1]
-    const len = 4 * GRID_SIZE
-    const cls = node.getClassName()
-    const newNode = new Konva[cls]({
-      id: generateId(),
-      x: ex, y: ey,
-      points: [0, 0, Math.cos(directionAngleRad) * len, Math.sin(directionAngleRad) * len],
-      stroke: node.stroke(), strokeWidth: node.strokeWidth(), opacity: node.opacity(),
-      hitStrokeWidth: node.hitStrokeWidth(), listening: true, draggable: true,
+  // Splitst host op (splitX, splitY) in twee nieuwe muren die samen de oorspronkelijke
+  // geometrie en stijl behouden; externe verbindingen van host worden herbedraad naar
+  // de juiste helft, en de helften worden onderling verbonden (het nieuwe T-punt).
+  // Host wordt vernietigd. Gebruikt voor mid-segment-aftakking (5.2) — vereist de
+  // graad-N-verbindingslijsten uit Fase 1, want het T-punt heeft straks drie muren.
+  function splitWallAt(host, splitX, splitY, layer) {
+    const pts = host.points()
+    const hx = host.x(), hy = host.y()
+    const ep0Abs = { x: hx + pts[0], y: hy + pts[1] }
+    const ep1Abs = { x: hx + pts[2], y: hy + pts[3] }
+    const cls = host.getClassName()
+    const shared = {
+      stroke: host.stroke(), strokeWidth: host.strokeWidth(), opacity: host.opacity(),
+      hitStrokeWidth: host.hitStrokeWidth(), listening: true, draggable: false,
       perfectDrawEnabled: false, shadowForStrokeEnabled: false, isWall: true,
-      ...(node.dash()?.length ? { dash: node.dash(), lineCap: 'round', lineJoin: 'round' } : {}),
-      ...(cls === 'Arrow' ? { fill: node.fill(), pointerLength: node.pointerLength(), pointerWidth: node.pointerWidth() } : {}),
-    })
-    addConn(node, endpointIndex, newNode, 0)
-    layer.add(newNode)
-    transformerRef.current?.moveToTop()
-    layer.batchDraw()
-    positionAndShowToolbar(newNode)
-    historyPushRef.current?.()
-    scheduleSnapshot()
+      lineCap: host.lineCap(), lineJoin: host.lineJoin(),
+      ...(host.dash()?.length ? { dash: host.dash() } : {}),
+      ...(cls === 'Arrow' ? { fill: host.fill(), pointerLength: host.pointerLength(), pointerWidth: host.pointerWidth() } : {}),
+    }
+    // Buitenhoek (ep0Abs) blijft bij maatbewerking het anker; T-punt (ep1) beweegt —
+    // dat is voor halfA toevallig al de bestaande default (ep0 vast).
+    const halfA = new Konva[cls]({ id: generateId(), x: ep0Abs.x, y: ep0Abs.y, points: [0, 0, splitX - ep0Abs.x, splitY - ep0Abs.y], ...shared })
+    // Voor halfB is het net andersom: ep0 is hier het T-punt, ep1 de buitenhoek —
+    // de default moet dus omgekeerd worden zodat de buitenhoek ook hier vast blijft.
+    const halfB = new Konva[cls]({ id: generateId(), x: splitX, y: splitY, points: [0, 0, ep1Abs.x - splitX, ep1Abs.y - splitY], ...shared })
+    halfB._measureAnchorEp = 1
+
+    layer.add(halfA)
+    layer.add(halfB)
+
+    for (const conn of getConns(host, 0)) {
+      const peer = layer.findOne(`#${conn.id}`)
+      if (!peer) continue
+      removeConn(peer, conn.ep, host.id(), 0)
+      addConn(peer, conn.ep, halfA, 0)
+    }
+    for (const conn of getConns(host, 1)) {
+      const peer = layer.findOne(`#${conn.id}`)
+      if (!peer) continue
+      removeConn(peer, conn.ep, host.id(), 1)
+      addConn(peer, conn.ep, halfB, 1)
+    }
+    addConn(halfA, 1, halfB, 0)
+
+    host.destroy()
+    return { halfA, halfB }
   }
 
   function handleLineEndpointDragMove(nodeId, endpointIndex, absX, absY) {
@@ -231,24 +286,51 @@ const CanvasView = forwardRef(function CanvasView(
     const node = nodeOverride ?? lineGizmoNodeRef.current
     const layer = mainLayerRef.current
     if (!node || !layer || meters <= 0) return
+    // Ankerpunt (5.2): welk eindpunt vast blijft staan en welk verschuift. Standaard
+    // ep0 (zoals altijd); een vers gesplitste helft waarvan het T-punt op ep0 zit
+    // krijgt _measureAnchorEp=1 (buitenhoek als anker) — zie splitWallAt. Tikken op
+    // het andere endpoint tijdens bewerken wisselt dit (LineGizmo).
+    const anchorEp = node._measureAnchorEp ?? 0
+    const moveEp = 1 - anchorEp
+    const anchorIdx = anchorEp * 2, moveIdx = moveEp * 2
     const pts = node.points()
-    const angle = Math.atan2(pts[3] - pts[1], pts[2] - pts[0])
+    const angle = Math.atan2(pts[moveIdx + 1] - pts[anchorIdx + 1], pts[moveIdx] - pts[anchorIdx])
     const newLen = meters * GRID_SIZE
-    const newPts = [pts[0], pts[1], pts[0] + Math.cos(angle) * newLen, pts[1] + Math.sin(angle) * newLen]
+    const newPts = pts.slice()
+    newPts[moveIdx]     = pts[anchorIdx] + Math.cos(angle) * newLen
+    newPts[moveIdx + 1] = pts[anchorIdx + 1] + Math.sin(angle) * newLen
     node.points(newPts)
-    // Stretch the adjacent segments' endpoints at ep1 to follow the new position —
-    // same as endpoint drag does. A whole-body shift of the neighbours would break
-    // closed loops (it moves the node connected back to ep0 away from its anchor).
-    for (const conn of getConns(node, 1)) {
+    // Stretch the adjacent segment's endpoint at the moving side to follow the new
+    // position — same as endpoint drag does. A whole-body shift of the neighbour
+    // would break closed loops (it moves the node connected back to the anchor away
+    // from its own anchor).
+    for (const conn of getConns(node, moveEp)) {
       const connNode = layer.findOne(`#${conn.id}`)
       if (!connNode) continue
       const connPts = connNode.points().slice()
-      connPts[conn.ep * 2]     = (node.x() + newPts[2]) - connNode.x()
-      connPts[conn.ep * 2 + 1] = (node.y() + newPts[3]) - connNode.y()
+      connPts[conn.ep * 2]     = (node.x() + newPts[moveIdx])     - connNode.x()
+      connPts[conn.ep * 2 + 1] = (node.y() + newPts[moveIdx + 1]) - connNode.y()
       connNode.points(connPts)
     }
     layer.batchDraw()
     historyPushRef.current?.()
+    scheduleSnapshot()
+    // In de muur-tool is het primaire doel doortekenen; na een maatinvoer
+    // (vaak vlak na het tekenen van het segment zelf) direct deselecteren zodat
+    // de volgende pen-down meteen weer tekent, zonder eerst te moeten aftikken.
+    if (activeToolRef.current === 'wall' && lineGizmoNodeRef.current === node) hideToolbar()
+  }
+
+  // Een pill die op (vrijwel) 0 gezet wordt, betekent "verwijder dit segment" —
+  // anders blijft er een onzichtbare nul-lengte muur over (LineGizmo.confirmMeasure).
+  function handleMeasureDelete(nodeOverride) {
+    const node = nodeOverride ?? lineGizmoNodeRef.current
+    const layer = mainLayerRef.current
+    if (!node || !layer) return
+    disconnectAndDestroy([node], layer)
+    layer.batchDraw()
+    hideToolbar()
+    history.pushState()
     scheduleSnapshot()
   }
 
@@ -296,11 +378,13 @@ const CanvasView = forwardRef(function CanvasView(
   const justRubberBandedRef      = useRef(false)
   const justHandledTapRef        = useRef(false)
   const justCommittedLinearRef   = useRef(false)
+  const justDraggedNodeRef       = useRef(false)
 
   function handlePillClick(nodeId) {
     const node = mainLayerRef.current?.findOne(`#${nodeId}`)
     if (!node) return
-    onToolSelect?.('select')
+    // In de muur-tool blijft de tool actief (niet hoeven wisselen om te bewerken).
+    if (activeToolRef.current !== 'wall') onToolSelect?.('select')
     gizmoAutoEditRef.current = true
     positionAndShowToolbar(node)
   }
@@ -328,12 +412,15 @@ const CanvasView = forwardRef(function CanvasView(
     if (tr) tr.rotateEnabled(!isImage)
     // getClientRect() is container-relative; position:fixed needs viewport coords.
     // Anker = het geselecteerde object zelf (voor muren dus het segment, niet de
-    // hele hiërarchie — die staat ingezoomd al snel buiten beeld).
+    // hele hiërarchie — die staat ingezoomd al snel buiten beeld). Voor een
+    // niet-muur node mét actieve Transformer gebruiken we diens volledige
+    // clientRect (incl. padding/anchors/rotatiegreep) zodat de toolbar er onder
+    // altijd echt vrij van blijft — dezelfde aanpak als bij multi-selectie.
     const box = stage.container().getBoundingClientRect()
-    const r = node.getClientRect()
+    const useTransformerRect = tr && !isWallSegment(node) && !node.attrs.isLocked && tr.nodes().includes(node)
+    const r = useTransformerRect ? tr.getClientRect() : node.getClientRect()
     placeToolbar(div, box,
       box.left + r.x + r.width / 2,
-      box.top + r.y - 48,
       box.top + r.y + r.height + 8)
   }, [])
 
@@ -367,7 +454,6 @@ const CanvasView = forwardRef(function CanvasView(
     const box = stage.container().getBoundingClientRect()
     placeToolbar(div, box,
       box.left + r.x + r.width / 2,
-      box.top + r.y - 48,
       box.top + r.y + r.height + 8)
   }, [])
 
@@ -573,6 +659,12 @@ const CanvasView = forwardRef(function CanvasView(
     let lastMousePos = { x: 0, y: 0 }
     let wheelRestoreTimer = null
     let penEraserDirty = false  // true after pen-eraser-button erase, until pointerup
+    // true tussen pen-pointerdown en -up. Sommige Windows-digitizer/browser-
+    // combinaties sturen voor dezelfde streek NAAST pointerdown/move/up ook nog
+    // compat-touchstart/touchmove/touchend-events — stopNativeTouch (hieronder)
+    // mag die dan niet blokkeren, anders mist Konva's eigen Transformer-anchor-
+    // afhandeling (scale/rotate) events die alleen via de touch-familie binnenkomen.
+    let penGestureActive = false
     let navActive = false        // true while any navigation gesture is in progress
     let savedSelection = []     // transformer nodes saved at nav start, restored at nav end
     let dragRaf       = null   // RAF token for image-drag redraws
@@ -612,10 +704,12 @@ const CanvasView = forwardRef(function CanvasView(
     let lastTapTime   = 0
     let lastTapClient = null   // { x, y } of the previous tap
 
-    // 1-finger touch image drag state
-    let touchDragNode = null      // selected image being dragged with 1 finger
+    // 1-finger touch content drag state — moves the current selection (any
+    // node type, single or multi) the same way the mouse/pen path does via
+    // dragNodeOrigins (Effect 3), since that state lives in a different
+    // effect's closure and can't be shared directly.
+    let touchDragNodes = null     // [{ node, x, y }] snapshot at drag start, or null
     let touchDragStageStart = null
-    let touchDragNodeOrigin = null
     let touchDragMoved = false
     let twoFingerActive = false   // true once 2 fingers were active; blocks leftover-finger pan
     let touchDraggableFrozen = false  // true when we've pre-emptively set draggable(false) on nodes
@@ -812,12 +906,8 @@ const CanvasView = forwardRef(function CanvasView(
       lastDrawScale = null
       // Restore correct draggable state based on current tool.
       if (layer) {
-        const canDrag = activeToolRef.current === 'select'
-        layer.getChildren().forEach(n => {
-          if (n.getClassName() === 'Transformer') return
-          if (n.attrs.isImage) n.draggable(!n.attrs.isLocked && canDrag)
-          else n.draggable(canDrag)
-        })
+        const tool = activeToolRef.current
+        layer.getChildren().forEach(n => n.draggable(computeDraggable(n, tool)))
       }
       if (layer) {
         delete layer.batchDraw          // restore Konva's normal batchDraw
@@ -852,6 +942,8 @@ const CanvasView = forwardRef(function CanvasView(
     }
 
     function onPointerDown(e) {
+      if (e.pointerType === 'pen') penGestureActive = true
+
       // ── Pen eraser button ──────────────────────────────────────────────
       if (e.pointerType === 'pen' && (e.button === 5 || (e.buttons & 32))) {
         notifyInputType('pen-eraser')
@@ -864,21 +956,9 @@ const CanvasView = forwardRef(function CanvasView(
       // ── Pen tip ────────────────────────────────────────────────────────
       if (e.pointerType === 'pen') {
         notifyInputType('pen')
-        // Lijn-segmenten mogen buiten edit mode niet verschoven worden met de pen.
-        // Dit zetten we hier — vóór Konva drag-tracking start — via draggable(false).
-        if (activeToolRef.current === 'select') {
-          const stage = stageRef.current
-          if (stage) {
-            const box = stage.container().getBoundingClientRect()
-            const hitNode = stage.getIntersection({ x: e.clientX - box.left, y: e.clientY - box.top })
-            if (isWallSegment(hitNode) && hitNode !== lineGizmoNodeRef.current) {
-              hitNode.draggable(false)
-              window.addEventListener('pointerup', function restore() {
-                if (activeToolRef.current === 'select') hitNode.draggable(true)
-              }, { once: true })
-            }
-          }
-        }
+        // Niet-geselecteerde lijn-segmenten hebben draggable:false (zie
+        // computeDraggable) en kunnen dus sowieso niet per ongeluk verschoven
+        // worden met de pen — geen aparte hack hier meer nodig.
         return // Let Konva handle pen-tip events (Effect 3)
       }
 
@@ -908,36 +988,40 @@ const CanvasView = forwardRef(function CanvasView(
           e.stopImmediatePropagation()
           // Reset gesture state for a fresh 1-finger interaction.
           twoFingerActive = false
-          touchDragNode = null
+          touchDragNodes = null
           touchDragMoved = false
-          // If in select mode, check whether the finger lands on a currently-selected,
-          // non-locked image. If so, dragging moves the image instead of panning.
-          if (activeToolRef.current === 'select') {
-            const tr = transformerRef.current
-            const selected = tr?.nodes() ?? []
-            if (selected.length > 0) {
-              const pos = getContainerPos(e.clientX, e.clientY)
-              for (const node of selected) {
-                if (!node.attrs.isImage || node.attrs.isLocked) continue
-                const r = node.getClientRect()
-                if (pos.x >= r.x && pos.x <= r.x + r.width &&
-                    pos.y >= r.y && pos.y <= r.y + r.height) {
-                  touchDragNode = node
-                  touchDragStageStart = clientToStageCoord(e.clientX, e.clientY)
-                  touchDragNodeOrigin = { x: node.x(), y: node.y() }
-                  break
-                }
-              }
+          // Check whether the finger lands on the current selection's bounding
+          // box. If so, dragging moves the selected content instead of panning —
+          // the one exception to "vinger = alleen navigeren". Geen
+          // activeToolRef-check hier: notifyInputType('touch') hierboven heeft
+          // de tool al naar 'select' gezet, maar die React-state-update is nog
+          // niet in de ref doorgesijpeld op het allereerste contactmoment na een
+          // andere tool — aanraking IMPLICEERT hier altijd select-gedrag, dus
+          // checken op de (mogelijk nog stale) ref zou die eerste aanraking net
+          // kunnen missen.
+          // Muursegmenten worden hier bewust uitgesloten — die bewegen via hun
+          // eigen gizmo (LineGizmo endpoint-drag), niet via dit generieke
+          // selectie-sleepsysteem.
+          const tr = transformerRef.current
+          const selected = (tr?.nodes() ?? []).filter(n => !n.attrs.isLocked && !isWallSegment(n))
+          if (selected.length > 0) {
+            const pos = getContainerPos(e.clientX, e.clientY)
+            const box = tr.getClientRect()
+            if (pos.x >= box.x && pos.x <= box.x + box.width &&
+                pos.y >= box.y && pos.y <= box.y + box.height) {
+              touchDragNodes = selected.map(n => ({ node: n, x: n.x(), y: n.y() }))
+              touchDragStageStart = clientToStageCoord(e.clientX, e.clientY)
             }
           }
-          // Disable Konva drag on all non-image nodes immediately so that if this
-          // finger moves, Konva never starts dragging content. Images are excluded
-          // here because touchDragNode handles their movement manually. Draggable
-          // state is restored in endNav() (pan/zoom case) or onPointerUp (tap case).
-          if (!touchDragNode) {
+          // Disable Konva drag on all non-selected nodes immediately so that if
+          // this finger moves, Konva never starts dragging content on its own.
+          // Selected nodes being dragged are excluded here because touchDragNodes
+          // handles their movement manually. Draggable state is restored in
+          // endNav() (pan/zoom case) or onPointerUp (tap case).
+          if (!touchDragNodes) {
             touchDraggableFrozen = true
             mainLayerRef.current?.getChildren().forEach(n => {
-              if (n.getClassName() !== 'Transformer' && !n.attrs.isImage) n.draggable(false)
+              if (n.getClassName() !== 'Transformer') n.draggable(false)
             })
           }
         } else if (touchPointers.size === 2) {
@@ -946,12 +1030,13 @@ const CanvasView = forwardRef(function CanvasView(
           e.stopImmediatePropagation()
           touchResizePointerId = null // cancel any ongoing single-finger resize
           twoFingerActive = true
-          if (touchDragNode && touchDragMoved) {
-            positionAndShowToolbar(touchDragNode)
+          if (touchDragNodes && touchDragMoved) {
+            if (touchDragNodes.length === 1) positionAndShowToolbar(touchDragNodes[0].node)
+            else positionToolbarAtTransformer()
             historyPushRef.current?.()
             persistenceScheduleRef.current?.()
           }
-          touchDragNode = null
+          touchDragNodes = null
           touchDragMoved = false
           startNav()
           const info = getTwoFingerInfo()
@@ -998,13 +1083,12 @@ const CanvasView = forwardRef(function CanvasView(
         if (!stage) return
 
         if (touchPointers.size === 1 && !twoFingerActive) {
-          if (touchDragNode) {
-            // Move the selected image with 1 finger — no pan.
+          if (touchDragNodes) {
+            // Move the selected content with 1 finger — no pan.
             const sc = clientToStageCoord(e.clientX, e.clientY)
-            touchDragNode.position({
-              x: touchDragNodeOrigin.x + sc.x - touchDragStageStart.x,
-              y: touchDragNodeOrigin.y + sc.y - touchDragStageStart.y,
-            })
+            const dx = sc.x - touchDragStageStart.x
+            const dy = sc.y - touchDragStageStart.y
+            touchDragNodes.forEach(({ node, x, y }) => node.position({ x: x + dx, y: y + dy }))
             touchDragMoved = true
             if (toolbarDivRef.current) toolbarDivRef.current.style.display = 'none'
             scheduleImageDragDraw()
@@ -1060,6 +1144,8 @@ const CanvasView = forwardRef(function CanvasView(
     }
 
     function onPointerUp(e) {
+      if (e.pointerType === 'pen') penGestureActive = false
+
       // ── Pen eraser lift ────────────────────────────────────────────────
       if (e.pointerType === 'pen' && penEraserDirty) {
         penEraserDirty = false
@@ -1088,21 +1174,20 @@ const CanvasView = forwardRef(function CanvasView(
         lastPinchMid  = null
 
         if (ptr && touchPointers.size === 0) {
-          // Commit image drag if the image actually moved.
-          if (touchDragNode && touchDragMoved) {
-            const tr = transformerRef.current
-            tr?.nodes([touchDragNode])
+          // Commit content drag if the selection actually moved.
+          if (touchDragNodes && touchDragMoved) {
             mainLayerRef.current?.batchDraw()
-            positionAndShowToolbar(touchDragNode)
+            if (touchDragNodes.length === 1) positionAndShowToolbar(touchDragNodes[0].node)
+            else positionToolbarAtTransformer()
             historyPushRef.current?.()
             persistenceScheduleRef.current?.()
-            touchDragNode = null
+            touchDragNodes = null
             touchDragMoved = false
             twoFingerActive = false
             savePanZoom()
             return
           }
-          touchDragNode = null
+          touchDragNodes = null
           touchDragMoved = false
           twoFingerActive = false
 
@@ -1112,10 +1197,8 @@ const CanvasView = forwardRef(function CanvasView(
           if (touchDraggableFrozen) {
             touchDraggableFrozen = false
             const layer = mainLayerRef.current
-            const canDrag = activeToolRef.current === 'select'
-            layer?.getChildren().forEach(n => {
-              if (n.getClassName() !== 'Transformer' && !n.attrs.isImage) n.draggable(canDrag)
-            })
+            const tool = activeToolRef.current
+            layer?.getChildren().forEach(n => n.draggable(computeDraggable(n, tool)))
           }
           const moved = Math.hypot(e.clientX - ptr.startX, e.clientY - ptr.startY)
           // Skip tap detection after a multi-finger gesture (twoFingerActive was just cleared
@@ -1267,7 +1350,17 @@ const CanvasView = forwardRef(function CanvasView(
     // gesture. Stop these native events here, before they reach Konva's
     // listener (bound to a descendant of `container`), the same way the
     // pointer events above are already intercepted.
-    function stopNativeTouch(e) { e.stopImmediatePropagation() }
+    // Uitzondering: tijdens een actieve pen-streek NIET onderdrukken. Sommige
+    // Windows-digitizer/browsercombinaties sturen voor pen-input naast
+    // pointerdown/move/up óók compat-touchstart/move/end-events — Konva's
+    // Transformer (scale/rotate-anchors) bleek daarvan afhankelijk te zijn op
+    // die hardware, waardoor rescale/rotate met de pen faalde zodra deze
+    // blanket-onderdrukking werd toegevoegd (echte losse vingertouch-gestures
+    // blijven hierdoor onaangetast, want penGestureActive is dan altijd false).
+    function stopNativeTouch(e) {
+      if (penGestureActive) return
+      e.stopImmediatePropagation()
+    }
     container.addEventListener('touchstart',  stopNativeTouch, { capture: true })
     container.addEventListener('touchmove',   stopNativeTouch, { capture: true })
     container.addEventListener('touchend',    stopNativeTouch, { capture: true })
@@ -1341,12 +1434,156 @@ const CanvasView = forwardRef(function CanvasView(
     let lastRawEvent        = null  // most recent pointerrawupdate event (for getPredictedEvents)
     let rawUpdateActive     = false // true once pointerrawupdate fires → skip pointermove collection
     let draggingNodes       = false // manual drag of selected nodes via bounding-box click
+    let dragMoved           = false // pas true zodra de sleepafstand de tik-drempel overschrijdt
     let dragOriginPos       = { x: 0, y: 0 }
     let dragNodeOrigins     = []    // [{ node, x, y }] snapshot at drag start
     let dragSavedNodes      = []    // full transformer selection, restored after drag
     const justRubberBanded  = justRubberBandedRef  // ref — survives Effect 3 re-runs
     const justHandledTap    = justHandledTapRef
     const justCommittedLinear = justCommittedLinearRef
+    const justDraggedNode   = justDraggedNodeRef
+
+    // ── Muur-tool tekenstate (Fase 2) ───────────────────────────────────────
+    // Tik-vs-sleep wordt pas beslist zodra de sleepafstand WALL_DRAW_THRESHOLD_STAGE
+    // overschrijdt (wereld-eenheden, zoom-onafhankelijk) — pas dan verschijnen
+    // preview-lijn en live pill; zo blijft een korte tik zonder visuele flits.
+    // Preview + gidslijnen leven op drawingLayer/DOM en worden nooit aan mainLayer
+    // toegevoegd — ze mogen dus nooit in een save terechtkomen.
+    let wallDraw = null        // { startPt, startConn, endPt, endConn, previewLine, pillEl, hitNodeAtDown, moved }
+    let wallAlignX = null      // pink vertical guide (drawingLayer)
+    let wallAlignY = null      // pink horizontal guide (drawingLayer)
+    let wallSnapIndicator = null // blue 45°-snap guide (drawingLayer)
+
+    function createWallPillEl() {
+      const el = document.createElement('div')
+      el.className = 'line-gizmo-measure-label wall-draw-pill'
+      el.style.pointerEvents = 'none'
+      const ps = getPillCssStyle(pillStyleRef.current)
+      el.style.background = ps.background
+      el.style.color      = ps.color
+      el.style.fontSize   = ps.fontSize
+      if (ps.boxShadow !== undefined) el.style.boxShadow = ps.boxShadow
+      wrapperRef.current?.appendChild(el)
+      return el
+    }
+
+    function updateWallPillEl(el, midX, midY, lengthM) {
+      const box = stage.container().getBoundingClientRect()
+      const sp = stage.getAbsoluteTransform().point({ x: midX, y: midY })
+      el.style.left = `${box.left + sp.x}px`
+      el.style.top  = `${box.top + sp.y}px`
+      el.textContent = lengthM.toFixed(2)
+    }
+
+    function removeWallGuides() {
+      if (wallAlignX) { wallAlignX.destroy(); wallAlignX = null }
+      if (wallAlignY) { wallAlignY.destroy(); wallAlignY = null }
+      if (wallSnapIndicator) { wallSnapIndicator.destroy(); wallSnapIndicator = null }
+    }
+
+    // Zelfde snap-cascade als LineGizmo's endpoint-drag (las > uitlijning > hoek),
+    // nu ook voor het tekenen van een geheel nieuwe muur: las- en hoek-snap werken
+    // al vanaf de allereerste lijn; uitlijning scoped per 5.1 (eigen hiërarchie
+    // altijd, andere hiërarchieën alleen on-screen — hier is dat sowieso leeg
+    // zolang er geen ketting-startpunt is, want een verse losse muur heeft nog
+    // geen "eigen hiërarchie" om off-screen in mee te nemen).
+    function computeWallEndpoint(candX, candY, wd) {
+      const anchorX = wd.startPt.x, anchorY = wd.startPt.y
+      let cx = candX, cy = candY
+
+      // 1. Las-snap (eindpunt-op-eindpunt) — gaat voor alles.
+      const epSnapDist = WALL_EP_SNAP_SCREEN_PX / stage.scaleX()
+      const weld = findWallEndpointNear(mainLayer, cx, cy, epSnapDist)
+      if (weld) {
+        removeWallGuides()
+        drawingLayer.batchDraw()
+        return { x: weld.x, y: weld.y, weldConn: { id: weld.node.id(), ep: weld.ep } }
+      }
+
+      // 2. Uitlijn-snap (roze gidslijnen), onafhankelijk per as.
+      const alignDist = WALL_ALIGN_SNAP_SCREEN_PX / stage.scaleX()
+      const ownStartNode = wd.startConn ? mainLayer.findOne(`#${wd.startConn.id}`) : null
+      const vertices = collectSnapVertices(mainLayer, stage, ownStartNode, [])
+      let snapX = null, snapY = null
+      for (const v of vertices) {
+        if (snapX === null && Math.abs(cx - v.x) < alignDist) snapX = v.x
+        if (snapY === null && Math.abs(cy - v.y) < alignDist) snapY = v.y
+        if (snapX !== null && snapY !== null) break
+      }
+      if (snapX !== null) cx = snapX
+      if (snapY !== null) cy = snapY
+
+      const sc = stage.scaleX()
+      const left   = (-stage.x()) / sc, right  = (stage.width()  - stage.x()) / sc
+      const top    = (-stage.y()) / sc, bottom = (stage.height() - stage.y()) / sc
+
+      if (snapX !== null) {
+        if (!wallAlignX) {
+          wallAlignX = new Konva.Line({ stroke: '#e64980', strokeWidth: 1, strokeScaleEnabled: false, dash: [6, 5], opacity: 0.65, listening: false, perfectDrawEnabled: false })
+          drawingLayer.add(wallAlignX)
+        }
+        wallAlignX.points([snapX, top, snapX, bottom])
+      } else if (wallAlignX) { wallAlignX.destroy(); wallAlignX = null }
+      if (snapY !== null) {
+        if (!wallAlignY) {
+          wallAlignY = new Konva.Line({ stroke: '#e64980', strokeWidth: 1, strokeScaleEnabled: false, dash: [6, 5], opacity: 0.65, listening: false, perfectDrawEnabled: false })
+          drawingLayer.add(wallAlignY)
+        }
+        wallAlignY.points([left, snapY, right, snapY])
+      } else if (wallAlignY) { wallAlignY.destroy(); wallAlignY = null }
+
+      // 3. Hoek-snap (45°), gecombineerd met een eventueel al vastgelegde as.
+      let isAngleSnapping = false, snappedAngle = 0
+      const bothAxesLocked = snapX !== null && snapY !== null
+      if (!bothAxesLocked && snapEnabledRef.current) {
+        const dx = cx - anchorX, dy = cy - anchorY
+        const angle = Math.atan2(dy, dx)
+        snappedAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4)
+        if (Math.abs(angle - snappedAngle) < SNAP_RAD_WALL) {
+          isAngleSnapping = true
+          const cosA = Math.cos(snappedAngle), sinA = Math.sin(snappedAngle)
+          if (snapY !== null) {
+            if (Math.abs(sinA) > 1e-9) { const len = (cy - anchorY) / sinA; cx = anchorX + cosA * len }
+          } else if (snapX !== null) {
+            if (Math.abs(cosA) > 1e-9) { const len = (cx - anchorX) / cosA; cy = anchorY + sinA * len }
+          } else {
+            const len = Math.hypot(dx, dy)
+            cx = anchorX + cosA * len
+            cy = anchorY + sinA * len
+          }
+        }
+      }
+
+      if (isAngleSnapping) {
+        const sc2 = Math.cos(snappedAngle), ss2 = Math.sin(snappedAngle)
+        const ts = []
+        if (Math.abs(sc2) > 1e-9) { ts.push((left  - anchorX) / sc2); ts.push((right - anchorX) / sc2) }
+        if (Math.abs(ss2) > 1e-9) { ts.push((top   - anchorY) / ss2); ts.push((bottom - anchorY) / ss2) }
+        const tMin = Math.min(...ts), tMax = Math.max(...ts)
+        if (!wallSnapIndicator) {
+          wallSnapIndicator = new Konva.Line({ stroke: '#1971c2', strokeWidth: 1, strokeScaleEnabled: false, dash: [6, 5], opacity: 0.55, listening: false, perfectDrawEnabled: false })
+          drawingLayer.add(wallSnapIndicator)
+        }
+        wallSnapIndicator.points([
+          anchorX + tMin * sc2, anchorY + tMin * ss2,
+          anchorX + tMax * sc2, anchorY + tMax * ss2,
+        ])
+      } else if (wallSnapIndicator) {
+        wallSnapIndicator.destroy(); wallSnapIndicator = null
+      }
+
+      drawingLayer.batchDraw()
+      return { x: cx, y: cy, weldConn: null }
+    }
+
+    function cancelWallDraw() {
+      if (!wallDraw) return
+      wallDraw.previewLine?.destroy()
+      wallDraw.pillEl?.remove()
+      removeWallGuides()
+      drawingLayer.batchDraw()
+      wallDraw = null
+    }
 
     let batchRicId = null
     let batchToId  = null
@@ -1625,20 +1862,19 @@ const CanvasView = forwardRef(function CanvasView(
       history.pushState()
       scheduleSnapshot()
       // After drawing any shape, auto-select it and switch to the select tool.
+      // Sinds de muur-tool (Fase 2) is een met lijn/pijl getekend segment géén
+      // muur meer — dat is nu een bewuste keuze via de muur-tool — dus dit
+      // gedraagt zich verder als elke andere vorm (transformer, geen gizmo).
       if (isSingleLinear(clone)) {
-        // Tot de aparte muur-tool (Fase 2) is elke getekende lijn/pijl een muur —
-        // zelfde gedrag als vóór de isWall-markering.
-        clone.setAttr('isWall', true)
         // A click without drag produces a near-zero-length line. Give it a
         // default horizontal length so it's visible and usable.
         const pts = clone.points()
         if (Math.hypot(pts[2] - pts[0], pts[3] - pts[1]) < 2) {
           clone.points([pts[0], pts[1], pts[0] + 2 * GRID_SIZE, pts[1]])
         }
-      } else {
-        transformer.nodes([clone])
-        mainLayer.batchDraw()
       }
+      transformer.nodes([clone])
+      mainLayer.batchDraw()
       justCommittedLinearRef.current = true
       onToolSelect?.('select')
       positionAndShowToolbar(clone)
@@ -1694,6 +1930,51 @@ const CanvasView = forwardRef(function CanvasView(
         return
       }
 
+      if (tool === 'wall') {
+        const hit = e.target
+        // Al geselecteerd (gizmo open) en de pen raakt precies dát segment:
+        // laat Konva's eigen draggable (Effect 4) het body-slepen afhandelen.
+        if (isWallSegment(hit) && hit === lineGizmoNodeRef.current) return
+        if (hit?.name?.()?.startsWith('lineGizmoHandle')) return
+
+        const epSnapDist = WALL_EP_SNAP_SCREEN_PX / stage.scaleX()
+        const startCandidate = findWallEndpointNear(mainLayer, pos.x, pos.y, epSnapDist)
+        let startPt = startCandidate ? { x: startCandidate.x, y: startCandidate.y } : pos
+
+        // Mid-segment-aftakking (5.2): pen-down op de body van een ANDERE muur
+        // (niet bij een bestaand hoekpunt — die snap heeft voorrang, zie hierboven)
+        // splitst die muur straks bij commit op het geprojecteerde punt. Vereist
+        // een echte sleep (moved); een tik selecteert gewoon de host (hitNodeAtDown).
+        let splitHost = null
+        if (!startCandidate && isWallSegment(hit) && hit !== lineGizmoNodeRef.current) {
+          const hpts = hit.points()
+          const hhx = hit.x(), hhy = hit.y()
+          const ep0x = hhx + hpts[0], ep0y = hhy + hpts[1]
+          const ep1x = hhx + hpts[2], ep1y = hhy + hpts[3]
+          const proj = closestPointOnSegment(pos.x, pos.y, ep0x, ep0y, ep1x, ep1y)
+          const distToEp0 = Math.hypot(proj.x - ep0x, proj.y - ep0y)
+          const distToEp1 = Math.hypot(proj.x - ep1x, proj.y - ep1y)
+          if (distToEp0 > epSnapDist && distToEp1 > epSnapDist) {
+            splitHost = hit
+            startPt = { x: proj.x, y: proj.y }
+          }
+        }
+
+        // Preview-lijn/pill worden pas aangemaakt zodra de sleepafstand de
+        // teken-drempel overschrijdt (zie onPointerMove) — zo geeft een tik geen
+        // visuele flits van een kort lijntje.
+        wallDraw = {
+          startPt,
+          startConn: startCandidate ? { id: startCandidate.node.id(), ep: startCandidate.ep } : null,
+          splitHost,
+          endPt: startPt, endConn: null,
+          previewLine: null, pillEl: null,
+          hitNodeAtDown: isWallSegment(hit) ? hit : null,
+          moved: false,
+        }
+        return
+      }
+
       if (tool === 'select') {
         // If a locked image toolbar is showing, dismiss it immediately so the user
         // can start rubber-band or click freely without a dedicated deselect step.
@@ -1705,9 +1986,14 @@ const CanvasView = forwardRef(function CanvasView(
         const trNodes = transformer.nodes()
 
         // Click inside the transformer bounding box → drag all selected nodes.
-        // Also triggers when clicking directly on a selected node in a multi-selection
-        // (otherwise Konva's built-in drag moves only that one node).
-        const targetInSelection = trNodes.length > 1 && trNodes.includes(e.target)
+        // Ook bij een klik direct op een geselecteerde node — zowel bij multi-
+        // selectie als bij een enkele node. We routeren dit altijd door ONS EIGEN
+        // handmatige drag-systeem (dragNodeOrigins) i.p.v. Konva's ingebouwde
+        // node-drag: die laatste blijkt niet betrouwbaar te reageren op pen-input
+        // (bevestigd: pen-down op de inkt/afbeelding zelf deed niets, terwijl
+        // pen-down op leeg canvas binnen de gizmo-bbox — dat liep al via dit
+        // handmatige systeem — wél werkte).
+        const targetInSelection = trNodes.length > 0 && trNodes.includes(e.target)
         if (trNodes.length > 0 && (e.target === stage || targetInSelection)) {
           const cp  = stage.getPointerPosition() // container-relative, matches getClientRect()
           const box = transformer.getClientRect()
@@ -1715,6 +2001,7 @@ const CanvasView = forwardRef(function CanvasView(
                     cp.y >= box.y && cp.y <= box.y + box.height) {
             dragSavedNodes  = [...trNodes]
             draggingNodes   = true
+            dragMoved       = false
             dragOriginPos   = pos // stage-space
             dragNodeOrigins = trNodes
               .filter(n => !n.attrs.isLocked)
@@ -1748,6 +2035,11 @@ const CanvasView = forwardRef(function CanvasView(
       if (draggingNodes) {
         const dx = pos.x - dragOriginPos.x
         const dy = pos.y - dragOriginPos.y
+        // Tik-drempel: pas verplaatsen zodra de sleepafstand >3 stage-eenheden is
+        // (zelfde conventie als de rubber-band hieronder) — anders schuift een
+        // simpele tik-om-te-selecteren de node al een fractie op door pen-jitter.
+        if (!dragMoved && Math.hypot(dx, dy) <= 3) return
+        dragMoved = true
         dragNodeOrigins.forEach(({ node, x, y }) => node.position({ x: x + dx, y: y + dy }))
         mainLayer.batchDraw()
         // Toolbar repositioning is deferred to pointerup — calling it here
@@ -1762,6 +2054,36 @@ const CanvasView = forwardRef(function CanvasView(
         for (const ce of events) {
           doEraseAtContainerPos({ x: ce.clientX - box.left, y: ce.clientY - box.top })
         }
+        return
+      }
+
+      if (wallDraw) {
+        const wd = wallDraw
+        if (!wd.moved) {
+          const dist = Math.hypot(pos.x - wd.startPt.x, pos.y - wd.startPt.y)
+          if (dist > WALL_DRAW_THRESHOLD_STAGE) {
+            wd.moved = true
+            wd.previewLine = new Konva.Line({
+              points: [wd.startPt.x, wd.startPt.y, wd.startPt.x, wd.startPt.y],
+              stroke: penColorRef.current, strokeWidth: penSizeRef.current * 2,
+              opacity: opacityRef.current / 100, lineCap: 'round',
+              listening: false, perfectDrawEnabled: false,
+            })
+            drawingLayer.add(wd.previewLine)
+            wd.pillEl = createWallPillEl()
+          } else {
+            return // nog onder de teken-drempel: behandel als (mogelijke) tik, niets tekenen
+          }
+        }
+
+        const { x: endX, y: endY, weldConn } = computeWallEndpoint(pos.x, pos.y, wd)
+        wd.endPt = { x: endX, y: endY }
+        wd.endConn = weldConn
+        wd.previewLine.points([wd.startPt.x, wd.startPt.y, endX, endY])
+        drawingLayer.batchDraw()
+
+        const lengthM = Math.hypot(endX - wd.startPt.x, endY - wd.startPt.y) / GRID_SIZE
+        updateWallPillEl(wd.pillEl, (wd.startPt.x + endX) / 2, (wd.startPt.y + endY) / 2, lengthM)
         return
       }
 
@@ -1880,17 +2202,27 @@ const CanvasView = forwardRef(function CanvasView(
       if (draggingNodes) {
         draggingNodes = false
         transformer.nodes(dragSavedNodes)
-        // Restore draggable — may have been disabled to block Konva's built-in drag.
-        const canDrag = activeToolRef.current === 'select'
-        dragSavedNodes.forEach(n => {
-          if (n.getClassName() === 'Transformer') return
-          n.draggable(n.attrs.isImage ? (!n.attrs.isLocked && canDrag) : canDrag)
-        })
+        // Deze nodes bewegen altijd via ons eigen gizmo-bbox-systeem, nooit via
+        // Konva-native draggable (zie computeDraggable) — blijft dus false.
+        const tool = activeToolRef.current
+        dragSavedNodes.forEach(n => n.draggable(computeDraggable(n, tool)))
         mainLayer.batchDraw()
         const target = toolbarTargetRef.current
         if (target) positionAndShowToolbar(target)
-        history.pushState()
-        scheduleSnapshot()
+        // Onder de tik-drempel is er geometrisch niets veranderd (zie
+        // onPointerMove) — dan geen overbodige history-entry/save, en laat de
+        // trailing click gewoon zijn normale (tik-)gedrag doen, bijv. de
+        // bestaande "tik op al-geselecteerde afbeelding = deselecteren".
+        if (dragMoved) {
+          history.pushState()
+          scheduleSnapshot()
+          // De onderliggende native mousedown/mouseup zaten op hetzelfde canvas-
+          // element, dus de browser vuurt hierna alsnog een 'click' op de
+          // (verplaatste) node — zonder deze guard zou onClick's "tik op een
+          // al-geselecteerde afbeelding = deselecteren"-toggle de zojuist
+          // versleepte afbeelding meteen weer deselecteren.
+          justDraggedNode.current = true
+        }
         return
       }
 
@@ -1900,6 +2232,64 @@ const CanvasView = forwardRef(function CanvasView(
         scheduleSnapshot()
         return
       }
+
+      if (wallDraw) {
+        const wd = wallDraw
+        wallDraw = null
+        wd.previewLine?.destroy()
+        wd.pillEl?.remove()
+        removeWallGuides()
+        drawingLayer.batchDraw()
+
+        if (!wd.moved) {
+          // Tik zonder sleep: selecteert de muur waarop de tik begon (edit-toestand);
+          // een tik op leeg canvas of een andere muur legt de selectie elders/leeg.
+          if (wd.hitNodeAtDown) positionAndShowToolbar(wd.hitNodeAtDown)
+          else if (lineGizmoNodeRef.current) hideToolbar()
+          return
+        }
+
+        let endPt = wd.endPt
+        let len = Math.hypot(endPt.x - wd.startPt.x, endPt.y - wd.startPt.y)
+        if (len < 2) { endPt = { x: wd.startPt.x + 2 * GRID_SIZE, y: wd.startPt.y }; len = 2 * GRID_SIZE }
+
+        const sw = penSizeRef.current
+        const newNode = new Konva.Line({
+          id: generateId(),
+          points: [wd.startPt.x, wd.startPt.y, endPt.x, endPt.y],
+          stroke: penColorRef.current, strokeWidth: sw * 2,
+          hitStrokeWidth: Math.max(sw * 4, HIT_MARGIN),
+          opacity: opacityRef.current / 100, lineCap: 'round',
+          listening: true, draggable: false, perfectDrawEnabled: false,
+          shadowForStrokeEnabled: false, isWall: true,
+        })
+        mainLayer.add(newNode)
+        transformer.moveToTop()
+        if (wd.splitHost && wd.splitHost.getLayer()) {
+          // Mid-segment-aftakking: host wordt vervangen door twee helften die samen
+          // de oorspronkelijke geometrie behouden; het T-punt verbindt beide helften
+          // én de nieuwe muur (graad-3, mogelijk sinds de verbindings-lijsten uit Fase 1).
+          const { halfA, halfB } = splitWallAt(wd.splitHost, wd.startPt.x, wd.startPt.y, mainLayer)
+          addConn(halfA, 1, newNode, 0)
+          addConn(halfB, 0, newNode, 0)
+        } else if (wd.startConn) {
+          const startNode = mainLayer.findOne(`#${wd.startConn.id}`)
+          if (startNode) addConn(startNode, wd.startConn.ep, newNode, 0)
+        }
+        if (wd.endConn) {
+          const endNode = mainLayer.findOne(`#${wd.endConn.id}`)
+          if (endNode) addConn(endNode, wd.endConn.ep, newNode, 1)
+        }
+        mainLayer.batchDraw()
+        history.pushState()
+        scheduleSnapshot()
+        // Terug naar "niets geselecteerd": de volgende pen-down bij dit eindpunt
+        // tekent meteen de volgende schakel (kettingen), zonder tool te wisselen.
+        transformer.nodes([])
+        hideToolbar()
+        return
+      }
+
       if (tool === 'pen' && freehandPoints.length)    { commitFreehand(); return }
       if (['rect','circle','line','arrow','lshape','triangle'].includes(tool)) { commitShape(); return }
 
@@ -2043,6 +2433,9 @@ const CanvasView = forwardRef(function CanvasView(
         if (justRubberBanded.current) { justRubberBanded.current = false; return }
         // Skip if we just finished drawing a line/arrow (auto-selected in commitShape).
         if (justCommittedLinear.current) { justCommittedLinear.current = false; return }
+        // Skip if we just finished a gizmo-bbox body-drag (the trailing native
+        // click would otherwise toggle an already-selected image back off).
+        if (justDraggedNode.current) { justDraggedNode.current = false; return }
         if (hit === stage) {
           // A locked image has listening:false so Konva reports stage as the hit target.
           // Manually check if a locked image sits under the pointer before clearing.
@@ -2320,6 +2713,7 @@ const CanvasView = forwardRef(function CanvasView(
       selRect.destroy()
       clearLiveCanvas()
       shapePreview?.destroy()
+      cancelWallDraw()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note.id, positionAndShowToolbar, hideToolbar, positionToolbarAtTransformer])
@@ -2347,18 +2741,10 @@ const CanvasView = forwardRef(function CanvasView(
     if (!stage || !mainLayer) return
 
     const dotCursor = "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12'><circle cx='6' cy='6' r='3.5' fill='black' stroke='white' stroke-width='1.5'/></svg>\") 6 6, crosshair"
-    const cursors = { select: 'default', pen: dotCursor, eraser: 'cell', text: 'text', rect: 'crosshair', circle: 'crosshair', line: 'crosshair', arrow: 'crosshair', lshape: 'crosshair' }
+    const cursors = { select: 'default', pen: dotCursor, wall: dotCursor, eraser: 'cell', text: 'text', rect: 'crosshair', circle: 'crosshair', line: 'crosshair', arrow: 'crosshair', lshape: 'crosshair' }
     stage.container().style.cursor = cursors[activeTool] ?? 'default'
 
-    const canDrag = activeTool === 'select'
-    mainLayer.getChildren().forEach(node => {
-      if (node.getClassName() === 'Transformer') return
-      if (node.attrs.isImage) {
-        node.draggable(!node.attrs.isLocked && canDrag)
-      } else {
-        node.draggable(canDrag)
-      }
-    })
+    mainLayer.getChildren().forEach(node => node.draggable(computeDraggable(node, activeTool)))
 
     // Hit-canvas tekenen verdubbelt de kosten van elke layer-draw. Tijdens de
     // pen-tool gebruikt niets hit-detectie (geen selectie, geen klik-targets);
@@ -2369,7 +2755,7 @@ const CanvasView = forwardRef(function CanvasView(
       mainLayer.listening(wantsHit)
       if (wantsHit) mainLayer.drawHit() // hit-canvas is verouderd na een pen-sessie
     }
-  }, [activeTool])
+  }, [activeTool, lineGizmoNode])
 
   // ───────────────────────────────────────────────────────────────────────────
   // EFFECT 5 — Keyboard shortcuts
@@ -2414,8 +2800,10 @@ const CanvasView = forwardRef(function CanvasView(
     const transformer = transformerRef.current
     if (!node || !mainLayer) return
     if (node.attrs.isLocked) {
-      // Unlock: restore listening so Konva can select/drag it again.
-      node.setAttrs({ isLocked: false, draggable: activeToolRef.current === 'select', listening: true })
+      // Unlock: restore listening zodat Konva 'm weer kan hit-testen/selecteren.
+      // draggable blijft false — verplaatsen loopt via ons eigen gizmo-bbox-
+      // systeem (computeDraggable), niet via Konva-native draggable.
+      node.setAttrs({ isLocked: false, draggable: false, listening: true })
       transformer?.nodes([node])
     } else {
       // Lock: disable listening so the image is fully transparent to pointer events.
@@ -2739,12 +3127,15 @@ const CanvasView = forwardRef(function CanvasView(
         }
       }
       if (clone.attrs.isImage) {
-        clone.setAttrs({ isLocked: false, listening: true, draggable: true })
+        // draggable blijft false — verplaatsen loopt via ons eigen gizmo-bbox-
+        // systeem (computeDraggable); Effect 4 corrigeert eventuele muur-
+        // uitzondering vanzelf zodra setGizmoNode hieronder de selectie zet.
+        clone.setAttrs({ isLocked: false, listening: true, draggable: false })
         mainLayer.add(clone)
         clone.moveToBottom()
         transformer?.moveToTop()
       } else {
-        clone.draggable(true)
+        clone.draggable(false)
         mainLayer.add(clone)
       }
       return clone
@@ -2856,7 +3247,7 @@ const CanvasView = forwardRef(function CanvasView(
         if (type === 'Image') {
           const img = new Image()
           img.onload = () => {
-            const node = new Konva.Image({ ...newAttrs, image: img, isLocked: false, listening: true, draggable: true })
+            const node = new Konva.Image({ ...newAttrs, image: img, isLocked: false, listening: true, draggable: false })
             mainLayer.add(node)
             node.moveToBottom()
             transformer?.moveToTop()
@@ -2931,8 +3322,8 @@ const CanvasView = forwardRef(function CanvasView(
           onEndpointDragMove={handleLineEndpointDragMove}
           onEndpointDragEnd={handleLineEndpointDragEnd}
           onEndpointSnap={handleLineEndpointSnap}
-          onExtrude={handleExtrude}
           onMeasureConfirm={handleMeasureConfirm}
+          onMeasureDelete={handleMeasureDelete}
           snapEnabledRef={snapEnabledRef}
           version={lineGizmoVersion}
           autoEditRef={gizmoAutoEditRef}
