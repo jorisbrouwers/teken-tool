@@ -3522,14 +3522,14 @@ const CanvasView = forwardRef(function CanvasView(
             </button>
             <button className="object-toolbar-btn" title="Bijsnijden" onClick={handleStartCrop}>
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 2v13h13" />
-                <path d="M15 18V5H2" />
+                <path d="M5.5 1.5v13h13" />
+                <path d="M14.5 18.5V5.5H1.5" />
               </svg>
             </button>
             <button className="object-toolbar-btn" title="Schaal kalibreren" onClick={handleStartCalibrate}>
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2.5" y="6" width="15" height="8" rx="1.2" transform="rotate(-30 10 10)" />
-                <path d="M5.9 8.8 L7.1 7.6 M8.3 10.2 L9.5 9 M10.7 11.6 L11.9 10.4" transform="rotate(-30 10 10)" />
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 17 L4 4 L17 17 Z" />
+                <path d="M8.29 8.29 L7.16 9.42 M10.5 10.5 L9.37 11.63 M12.58 12.58 L11.45 13.71" />
               </svg>
             </button>
           </>
