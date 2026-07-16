@@ -17,6 +17,10 @@ const SNAP_RAD_WALL = 3 * Math.PI / 180
 // (selecteren/deselecteren). 0,5 m voorkomt dat pen-jitter bij een tik per ongeluk
 // een kort muursegment tekent.
 const WALL_DRAW_THRESHOLD_STAGE = 0.5 * GRID_SIZE
+// Kalibratie-tool: ondergrens voor de getekende lijnlengte (stage-eenheden,
+// zoom-onafhankelijk) — voorkomt een absurde schaalfactor bij een bijna-nul-
+// lengte lijn (bv. een trilling van de pen zonder echte sleep).
+const MIN_CALIBRATION_LINE_STAGE = 0.15 * GRID_SIZE
 
 // crypto.randomUUID() requires a secure context (https/localhost).
 // This fallback works over plain http (e.g. local network IP).
@@ -43,6 +47,21 @@ function placeToolbar(div, box, left, top) {
   div.style.top  = `${top}px`
 }
 
+// Snapt de hoek van een lijn naar horizontaal/verticaal/45°-veelvouden (3°
+// tolerantie). Gedeeld door de lijn/pijl-tool en de kalibratielijn — de
+// kalibratielijn mag NIET aan muur-eindpunten/uitlijning snappen (dat is een
+// aparte, muur-specifieke snap in wallGraph.js), alleen aan deze hoeken.
+function snapLineAngle(startPos, pos, enabled) {
+  const dx = pos.x - startPos.x, dy = pos.y - startPos.y
+  const angle = Math.atan2(dy, dx)
+  const snappedAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4)
+  const SNAP_RAD = 3 * Math.PI / 180
+  const isSnapping = enabled && Math.abs(angle - snappedAngle) < SNAP_RAD
+  if (!isSnapping) return { x: pos.x, y: pos.y, isSnapping: false, snappedAngle }
+  const len = Math.hypot(dx, dy)
+  return { x: startPos.x + Math.cos(snappedAngle) * len, y: startPos.y + Math.sin(snappedAngle) * len, isSnapping: true, snappedAngle }
+}
+
 
 import { getStroke } from 'perfect-freehand'
 import { getSvgPathFromStroke } from '../../math/svgPath.js'
@@ -58,6 +77,7 @@ import { applyViewportCulling } from './viewportCulling.js'
 import { liveSnapshotCache } from './usePersistence.js'
 import { getNote, updateNoteSettings } from '../../db/db.js'
 import CropOverlay from './CropOverlay.jsx'
+import CalibrateDialog from '../common/CalibrateDialog.jsx'
 import Minimap from '../Minimap/Minimap.jsx'
 import LineGizmo from './LineGizmo.jsx'
 import MeasurementLabels from './MeasurementLabels.jsx'
@@ -111,6 +131,16 @@ const CanvasView = forwardRef(function CanvasView(
   const cropSavedFlipRef = useRef({ x: 1, y: 1 })
   const [cropImageRect, setCropImageRect] = useState({ x: 0, y: 0, w: 0, h: 0 })
   const [cropRect, setCropRect] = useState({ left: 0, top: 0, right: 0, bottom: 0 })
+
+  // ─── Kalibratie-tool state (schaal afbeelding op basis van werkelijke afstand) ──
+  // null = uit, 'drawing' = wacht op de kalibratielijn, 'value' = modal open.
+  const [calibratePhase, setCalibratePhase] = useState(null)
+  const calibratePhaseRef = useRef(null)
+  calibratePhaseRef.current = calibratePhase
+  const calibrateNodeRef = useRef(null)
+  // { startPt, endPt, previewLine } — gedeeld tussen Effect 2 (nav-annulering)
+  // en Effect 3 (tekenen), vandaar een ref i.p.v. een lokale closure-variabele.
+  const calibDrawRef = useRef(null)
 
   // ─── Line gizmo state ───────────────────────────────────────────────────────
   const [lineGizmoNode, setLineGizmoNode] = useState(null)
@@ -851,6 +881,18 @@ const CanvasView = forwardRef(function CanvasView(
     function startNav() {
       if (navActive) return
       navActive = true
+      // Een echte pan/zoom-gesture (niet een tik) annuleert een lopende
+      // kalibratie-lijntekening — zo kan de gebruiker altijd terug zonder
+      // fysiek toetsenbord (geen Escape op tablet).
+      if (calibratePhaseRef.current === 'drawing') {
+        // toolbarTargetRef blijft ongewijzigd (handleStartCalibrate verbergt
+        // alleen de div) — endNav() hieronder herstelt 'm op de normale manier.
+        calibDrawRef.current?.previewLine?.destroy()
+        drawingLayerRef.current?.batchDraw()
+        calibDrawRef.current = null
+        calibrateNodeRef.current = null
+        setCalibratePhase(null)
+      }
       const stage = stageRef.current
       const tr = transformerRef.current
       if (tr) {
@@ -1890,6 +1932,11 @@ const CanvasView = forwardRef(function CanvasView(
       // the resize/rotate — do not start drawing.
       if (e.target !== stage && e.target.getParent?.() === transformer) return
 
+      if (calibratePhaseRef.current === 'drawing') {
+        calibDrawRef.current = { startPt: pos, endPt: pos, previewLine: null }
+        return
+      }
+
       if (tool === 'eraser') {
         erasing = true
         doEraseAtContainerPos(stage.getPointerPosition())
@@ -2057,6 +2104,29 @@ const CanvasView = forwardRef(function CanvasView(
         return
       }
 
+      if (calibDrawRef.current) {
+        const cd = calibDrawRef.current
+        // Alleen horizontaal/verticaal/45°-snap (via snapLineAngle) — bewust GEEN
+        // muur-endpoint/uitlijn-snap (findWallEndpointNear/collectSnapVertices):
+        // de kalibratielijn hoort losstaand te zijn van het lijnsysteem.
+        const snapped = snapLineAngle(cd.startPt, pos, snapEnabledRef.current)
+        cd.endPt = { x: snapped.x, y: snapped.y }
+        if (!cd.previewLine) {
+          cd.previewLine = new Konva.Line({
+            points: [cd.startPt.x, cd.startPt.y, snapped.x, snapped.y],
+            stroke: '#e8590c', strokeWidth: 2, dash: [8, 6],
+            listening: false, perfectDrawEnabled: false,
+          })
+          drawingLayer.add(cd.previewLine)
+        } else {
+          cd.previewLine.points([cd.startPt.x, cd.startPt.y, snapped.x, snapped.y])
+        }
+        // Bewust geen lengte-label: de lijn staat nog niet op schaal, een
+        // getal ernaast zou de gebruiker alleen maar in verwarring brengen.
+        drawingLayer.batchDraw()
+        return
+      }
+
       if (wallDraw) {
         const wd = wallDraw
         if (!wd.moved) {
@@ -2121,17 +2191,8 @@ const CanvasView = forwardRef(function CanvasView(
             radiusY: Math.abs(dy) / 2,
           })
         } else if (tool === 'line' || tool === 'arrow') {
-          let endX = pos.x, endY = pos.y
-          const rdx = pos.x - shapeStart.x, rdy = pos.y - shapeStart.y
-          const angle = Math.atan2(rdy, rdx)
-          const snappedAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4)
-          const SNAP_RAD = 3 * Math.PI / 180
-          const isSnapping = snapEnabledRef.current && Math.abs(angle - snappedAngle) < SNAP_RAD
-          if (isSnapping) {
-            const len = Math.hypot(rdx, rdy)
-            endX = shapeStart.x + Math.cos(snappedAngle) * len
-            endY = shapeStart.y + Math.sin(snappedAngle) * len
-          }
+          const snapped = snapLineAngle(shapeStart, pos, snapEnabledRef.current)
+          const { x: endX, y: endY, isSnapping, snappedAngle } = snapped
           shapePreview.points([shapeStart.x, shapeStart.y, endX, endY])
           if (isSnapping) {
             // Extend indicator to full canvas edges in the snapped direction
@@ -2230,6 +2291,21 @@ const CanvasView = forwardRef(function CanvasView(
         erasing = false
         history.pushState()
         scheduleSnapshot()
+        return
+      }
+
+      if (calibDrawRef.current) {
+        const cd = calibDrawRef.current
+        cd.previewLine?.destroy()
+        drawingLayer.batchDraw()
+        const len = Math.hypot(cd.endPt.x - cd.startPt.x, cd.endPt.y - cd.startPt.y)
+        if (len < MIN_CALIBRATION_LINE_STAGE) {
+          // Te kort om betrouwbaar te zijn — blijf in tekenmodus, laat opnieuw proberen.
+          calibDrawRef.current = null
+          return
+        }
+        calibDrawRef.current = { startPt: cd.startPt, endPt: cd.endPt, previewLine: null }
+        setCalibratePhase('value')
         return
       }
 
@@ -2714,6 +2790,7 @@ const CanvasView = forwardRef(function CanvasView(
       clearLiveCanvas()
       shapePreview?.destroy()
       cancelWallDraw()
+      calibDrawRef.current?.previewLine?.destroy()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note.id, positionAndShowToolbar, hideToolbar, positionToolbarAtTransformer])
@@ -2741,8 +2818,9 @@ const CanvasView = forwardRef(function CanvasView(
     if (!stage || !mainLayer) return
 
     const dotCursor = "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12'><circle cx='6' cy='6' r='3.5' fill='black' stroke='white' stroke-width='1.5'/></svg>\") 6 6, crosshair"
+    const calibrateCursor = "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><line x1='10' y1='2' x2='10' y2='18' stroke='%23e8590c' stroke-width='2'/><line x1='2' y1='10' x2='18' y2='10' stroke='%23e8590c' stroke-width='2'/><circle cx='10' cy='10' r='3' fill='none' stroke='white' stroke-width='1.5'/></svg>\") 10 10, crosshair"
     const cursors = { select: 'default', pen: dotCursor, wall: dotCursor, eraser: 'cell', text: 'text', rect: 'crosshair', circle: 'crosshair', line: 'crosshair', arrow: 'crosshair', lshape: 'crosshair' }
-    stage.container().style.cursor = cursors[activeTool] ?? 'default'
+    stage.container().style.cursor = calibratePhase === 'drawing' ? calibrateCursor : (cursors[activeTool] ?? 'default')
 
     mainLayer.getChildren().forEach(node => node.draggable(computeDraggable(node, activeTool)))
 
@@ -2755,7 +2833,7 @@ const CanvasView = forwardRef(function CanvasView(
       mainLayer.listening(wantsHit)
       if (wantsHit) mainLayer.drawHit() // hit-canvas is verouderd na een pen-sessie
     }
-  }, [activeTool, lineGizmoNode])
+  }, [activeTool, lineGizmoNode, calibratePhase])
 
   // ───────────────────────────────────────────────────────────────────────────
   // EFFECT 5 — Keyboard shortcuts
@@ -3008,6 +3086,59 @@ const CanvasView = forwardRef(function CanvasView(
     cropSavedFlipRef.current = { x: 1, y: 1 }
     setCropMode(false)
     cropNodeRef.current = null
+  }
+
+  // Start de kalibratie-tool: cursor wisselt meteen, geen modal totdat de lijn
+  // getekend is (Effect 3/onPointerUp zet calibratePhase pas op 'value').
+  function handleStartCalibrate() {
+    const node = toolbarTargetRef.current
+    if (!node) return
+    calibrateNodeRef.current = node
+    calibDrawRef.current = null
+    if (toolbarDivRef.current) toolbarDivRef.current.style.display = 'none'
+    setCalibratePhase('drawing')
+  }
+
+  function cancelCalibration() {
+    calibDrawRef.current?.previewLine?.destroy()
+    drawingLayerRef.current?.batchDraw()
+    const node = calibrateNodeRef.current
+    calibDrawRef.current = null
+    calibrateNodeRef.current = null
+    setCalibratePhase(null)
+    if (node?.getStage()) positionAndShowToolbar(node)
+  }
+
+  // Schaalt de gekalibreerde afbeelding zodat de getekende lijn `meters` lang
+  // is, om het visuele centrum (zelfde center-wiskunde als handleRotate).
+  function applyCalibration(meters) {
+    const node = calibrateNodeRef.current
+    const mainLayer = mainLayerRef.current
+    const draw = calibDrawRef.current
+    if (!node || !mainLayer || !draw) { cancelCalibration(); return }
+    const lengthPx = Math.hypot(draw.endPt.x - draw.startPt.x, draw.endPt.y - draw.startPt.y)
+    const factor = (meters * GRID_SIZE) / lengthPx
+
+    const sx = node.scaleX(), sy = node.scaleY()
+    const w  = node.width() * sx, h = node.height() * sy
+    const θ  = node.rotation() * Math.PI / 180
+    const cx = node.x() + (w * Math.cos(θ) - h * Math.sin(θ)) / 2
+    const cy = node.y() + (w * Math.sin(θ) + h * Math.cos(θ)) / 2
+    const newW = w * factor, newH = h * factor
+
+    node.scaleX(sx * factor)
+    node.scaleY(sy * factor)
+    node.x(cx - (newW * Math.cos(θ) - newH * Math.sin(θ)) / 2)
+    node.y(cy - (newW * Math.sin(θ) + newH * Math.cos(θ)) / 2)
+
+    mainLayer.batchDraw()
+    positionAndShowToolbar(node)
+    history.pushState()
+    scheduleSnapshot()
+
+    calibDrawRef.current = null
+    calibrateNodeRef.current = null
+    setCalibratePhase(null)
   }
 
   function handleDeletePointerDown(e) {
@@ -3295,6 +3426,10 @@ const CanvasView = forwardRef(function CanvasView(
         />
       )}
 
+      {calibratePhase === 'value' && (
+        <CalibrateDialog onConfirm={applyCalibration} onCancel={cancelCalibration} />
+      )}
+
       <Minimap stageRef={stageRef} mainLayerRef={mainLayerRef} version={minimapVersion} activityRef={penActivityRef} />
 
       <HingeDecorations
@@ -3389,6 +3524,12 @@ const CanvasView = forwardRef(function CanvasView(
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 2v13h13" />
                 <path d="M15 18V5H2" />
+              </svg>
+            </button>
+            <button className="object-toolbar-btn" title="Schaal kalibreren" onClick={handleStartCalibrate}>
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2.5" y="6" width="15" height="8" rx="1.2" transform="rotate(-30 10 10)" />
+                <path d="M5.9 8.8 L7.1 7.6 M8.3 10.2 L9.5 9 M10.7 11.6 L11.9 10.4" transform="rotate(-30 10 10)" />
               </svg>
             </button>
           </>

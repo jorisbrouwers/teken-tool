@@ -28,6 +28,17 @@
   justify-content: flex-end;
 }
 
+.dialog-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  margin-bottom: 20px;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: var(--radius);
+}
+
 .btn {
   padding: 8px 16px;
   border-radius: var(--radius);
