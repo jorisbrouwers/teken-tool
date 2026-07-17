@@ -105,6 +105,12 @@ const Icons = {
       <polyline points="5 8 10 13 15 8" />
     </svg>
   ),
+  pillTag: (
+    <svg {...ICON}>
+      <path d="M3 6a1 1 0 0 1 1-1h6l7 7-7 7-7-7V6z" />
+      <circle cx="7" cy="8.5" r="1.2" fill={S} stroke="none" />
+    </svg>
+  ),
 }
 
 const DRAW_TOOLS = [
@@ -128,10 +134,10 @@ export default function AppToolbar({
   note,
   activeTool,
   setActiveTool,
-  showGrid,
-  onToggleGrid,
   snapEnabled,
   onToggleSnap,
+  showPills,
+  onTogglePills,
   onRename,
   onImportImage,
   onUndo,
@@ -342,58 +348,6 @@ export default function AppToolbar({
 
       <div className="toolbar-sep" />
 
-      {/* Tekentools */}
-      {DRAW_TOOLS.map((tool) => (
-        <button
-          key={tool.id}
-          className={`toolbar-btn${activeTool === tool.id ? ' active' : ''}`}
-          title={tool.title}
-          onClick={() => setActiveTool(tool.id)}
-        >
-          {tool.icon}
-        </button>
-      ))}
-
-      <div className="toolbar-sep" />
-
-      {/* Vormen */}
-      {SHAPE_TOOLS.map((tool) => (
-        <button
-          key={tool.id}
-          className={`toolbar-btn${activeTool === tool.id ? ' active' : ''}`}
-          title={tool.title}
-          onClick={() => setActiveTool(tool.id)}
-        >
-          {tool.icon}
-        </button>
-      ))}
-
-      <div className="toolbar-sep" />
-
-      {/* Grid toggle */}
-      <button
-        className={`toolbar-btn${showGrid ? ' active' : ''}`}
-        title="Rasterachtergrond aan/uit"
-        onClick={onToggleGrid}
-      >
-        {Icons.grid}
-      </button>
-
-      {/* Snap toggle */}
-      <button
-        className={`toolbar-btn${snapEnabled ? ' active' : ''}`}
-        title={snapEnabled ? 'Snappen aan/uit (nu aan)' : 'Snappen aan/uit (nu uit)'}
-        onClick={onToggleSnap}
-      >
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M5 15V8a5 5 0 0 1 10 0v7" />
-          <line x1="2.5" y1="15" x2="7.5" y2="15" />
-          <line x1="12.5" y1="15" x2="17.5" y2="15" />
-        </svg>
-      </button>
-
-      <div className="toolbar-sep" />
-
       {/* Afbeelding importeren */}
       <button className="toolbar-btn" title="Afbeelding importeren" onClick={() => importImageRef.current?.click()}>
         {Icons.image}
@@ -415,6 +369,59 @@ export default function AppToolbar({
         {Icons.camera}
       </button>
 
+      <div className="toolbar-sep" />
+
+      {/* Vormen */}
+      {SHAPE_TOOLS.map((tool) => (
+        <button
+          key={tool.id}
+          className={`toolbar-btn${activeTool === tool.id ? ' active' : ''}`}
+          title={tool.title}
+          onClick={() => setActiveTool(tool.id)}
+        >
+          {tool.icon}
+        </button>
+      ))}
+
+      <div className="toolbar-sep" />
+
+      {/* Tekentools */}
+      {DRAW_TOOLS.map((tool) => (
+        <button
+          key={tool.id}
+          className={`toolbar-btn${activeTool === tool.id ? ' active' : ''}`}
+          title={tool.title}
+          onClick={() => setActiveTool(tool.id)}
+        >
+          {tool.icon}
+        </button>
+      ))}
+
+      <div className="toolbar-sep" />
+
+      {/* Snap toggle */}
+      <button
+        className={`toolbar-btn${snapEnabled ? ' active' : ''}`}
+        title={snapEnabled ? 'Snappen aan/uit (nu aan)' : 'Snappen aan/uit (nu uit)'}
+        onClick={onToggleSnap}
+      >
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 11V7a5 4 0 0 1 10 0v4" />
+          <path d="M5 11v4a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-4" />
+          <path d="M11 11v4a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-4" />
+          <line x1="5" y1="13.4" x2="8" y2="13.4" />
+          <line x1="12" y1="13.4" x2="15" y2="13.4" />
+        </svg>
+      </button>
+
+      {/* Maat-pills zichtbaarheid */}
+      <button
+        className={`toolbar-btn${showPills ? ' active' : ''}`}
+        title={showPills ? 'Maat-pills op canvas (nu aan)' : 'Maat-pills op canvas (nu uit)'}
+        onClick={onTogglePills}
+      >
+        {Icons.pillTag}
+      </button>
 
       {/* Camera modal */}
       {showCamera && (

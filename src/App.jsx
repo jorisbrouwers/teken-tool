@@ -246,10 +246,10 @@ export default function App() {
               note={activeNote}
               activeTool={activeTool}
               setActiveTool={handleToolSelect}
-              showGrid={showGrid}
-              onToggleGrid={handleToggleGrid}
               snapEnabled={snapEnabled}
               onToggleSnap={() => setSnapEnabled(v => !v)}
+              showPills={showPills}
+              onTogglePills={() => setShowPills(v => !v)}
               onRename={renameNote}
               onImportImage={handleImportImage}
               onUndo={() => canvasViewRef.current?.undo()}
@@ -351,8 +351,8 @@ export default function App() {
 
       {settingsOpen && (
         <SettingsPanel
-          showPills={showPills}
-          onTogglePills={() => setShowPills(v => !v)}
+          showGrid={showGrid}
+          onToggleGrid={handleToggleGrid}
           showPillsInPdf={showPillsInPdf}
           onTogglePillsInPdf={() => setShowPillsInPdf(v => !v)}
           pillColor={pillColor}
@@ -374,6 +374,7 @@ export default function App() {
             setPillOpacity(100)
             setPillFontSize(10)
             setPillTextColor('#ffffff')
+            if (!showGrid) handleToggleGrid()
           }}
         />
       )}

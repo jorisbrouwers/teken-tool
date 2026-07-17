@@ -2,7 +2,7 @@ import { getPillCssStyle } from '../Canvas/pillStyle.js'
 import './SettingsPanel.css'
 
 export default function SettingsPanel({
-  showPills, onTogglePills,
+  showGrid, onToggleGrid,
   showPillsInPdf, onTogglePillsInPdf,
   showHinges, onToggleHinges,
   pillColor, onPillColorChange,
@@ -23,19 +23,21 @@ export default function SettingsPanel({
         </div>
 
         <div className="settings-body">
-          <div className="settings-section-label">Maataanduidingen</div>
+          <div className="settings-section-label">Canvas</div>
 
           <div className="settings-row">
             <div className="settings-row-text">
-              <span className="settings-row-label">Toon op canvas</span>
-              <span className="settings-row-desc">Maat-pills zichtbaar bij lijnen en pijlen</span>
+              <span className="settings-row-label">Rasterachtergrond</span>
+              <span className="settings-row-desc">Raster tonen op het canvas</span>
             </div>
             <button
-              className={`settings-toggle${showPills ? ' on' : ''}`}
-              onClick={onTogglePills}
-              aria-label={showPills ? 'Uitschakelen' : 'Inschakelen'}
+              className={`settings-toggle${showGrid ? ' on' : ''}`}
+              onClick={onToggleGrid}
+              aria-label={showGrid ? 'Uitschakelen' : 'Inschakelen'}
             />
           </div>
+
+          <div className="settings-section-label" style={{ marginTop: 4 }}>Maataanduidingen</div>
 
           <div className="settings-row">
             <div className="settings-row-text">

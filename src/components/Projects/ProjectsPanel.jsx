@@ -67,6 +67,7 @@ export default function ProjectsPanel({
   onClose,
 }) {
   const [tab, setTab] = useState('Notities')
+  const [search, setSearch] = useState('')
   const [renamingNoteId, setRenamingNoteId] = useState(null)
   const [selectedTemplateId, setSelectedTemplateId] = useState(
     () => localStorage.getItem('jnote-new-note-template') || null
@@ -78,6 +79,11 @@ export default function ProjectsPanel({
 
   // Validate stored template — fall back to blank if it no longer exists
   const validTemplateId = templateNotes.find(t => t.id === selectedTemplateId)?.id ?? null
+
+  const query = search.trim().toLowerCase()
+  const filteredNotes = query ? notes.filter(n => n.title.toLowerCase().includes(query)) : notes
+  const filteredTemplateNotes = query ? templateNotes.filter(n => n.title.toLowerCase().includes(query)) : templateNotes
+  const filteredTrashNotes = query ? trashNotes.filter(n => n.title.toLowerCase().includes(query)) : trashNotes
 
   useEffect(() => {
     if (!showTemplateDropdown) return
@@ -144,6 +150,24 @@ export default function ProjectsPanel({
               {t}
             </button>
           ))}
+          <div className="projects-search-wrapper">
+            <input
+              className={`projects-search${query ? ' filtering' : ''}`}
+              type="text"
+              placeholder="Zoeken…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {query && (
+              <button
+                className="projects-search-clear"
+                title="Zoekopdracht wissen"
+                onClick={() => setSearch('')}
+              >
+                ✕
+              </button>
+            )}
+          </div>
         </div>
 
         {tab === 'Notities' && (
@@ -233,16 +257,18 @@ export default function ProjectsPanel({
         <div className="projects-body">
           {tab === 'Notities' && (
             <>
-              {notes.length === 0 ? (
-                <div className="projects-empty">Geen notities. Maak er een aan.</div>
+              {filteredNotes.length === 0 ? (
+                <div className="projects-empty">
+                  {query ? 'Geen notities gevonden.' : 'Geen notities. Maak er een aan.'}
+                </div>
               ) : (
-                notes.map((note, idx) => (
+                filteredNotes.map((note) => (
                   <ProjectItem
                     key={note.id}
                     note={note}
                     isActive={note.id === activeNoteId}
-                    isFirst={idx === 0}
-                    isLast={idx === notes.length - 1}
+                    isFirst={notes[0]?.id === note.id}
+                    isLast={notes[notes.length - 1]?.id === note.id}
                     isTemplate={false}
                     onSelect={() => { onSelect(note.id); onClose() }}
                     onRename={onRename}
@@ -259,16 +285,18 @@ export default function ProjectsPanel({
 
           {tab === 'Templates' && (
             <>
-              {templateNotes.length === 0 ? (
-                <div className="projects-empty">Geen templates. Sla een notitie op als template via het menu.</div>
+              {filteredTemplateNotes.length === 0 ? (
+                <div className="projects-empty">
+                  {query ? 'Geen templates gevonden.' : 'Geen templates. Sla een notitie op als template via het menu.'}
+                </div>
               ) : (
-                templateNotes.map((note, idx) => (
+                filteredTemplateNotes.map((note) => (
                   <ProjectItem
                     key={note.id}
                     note={note}
                     isActive={note.id === activeNoteId}
-                    isFirst={idx === 0}
-                    isLast={idx === templateNotes.length - 1}
+                    isFirst={templateNotes[0]?.id === note.id}
+                    isLast={templateNotes[templateNotes.length - 1]?.id === note.id}
                     isTemplate={true}
                     onSelect={() => { onSelect(note.id); onClose() }}
                     onRename={onRename}
@@ -285,10 +313,12 @@ export default function ProjectsPanel({
 
           {tab === 'Prullenbak' && (
             <>
-              {trashNotes.length === 0 ? (
-                <div className="projects-empty">De prullenbak is leeg.</div>
+              {filteredTrashNotes.length === 0 ? (
+                <div className="projects-empty">
+                  {query ? 'Niets gevonden.' : 'De prullenbak is leeg.'}
+                </div>
               ) : (
-                trashNotes.map(note => (
+                filteredTrashNotes.map(note => (
                   <TrashItem
                     key={note.id}
                     note={note}
