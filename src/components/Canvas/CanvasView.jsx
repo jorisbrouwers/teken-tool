@@ -93,7 +93,7 @@ import { COLORS } from '../StylePanel/StylePanel.jsx'
 import './Canvas.css'
 
 const CanvasView = forwardRef(function CanvasView(
-  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, onCanvasPointerDown, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true, showZones = false, patchNoteSettings },
+  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, onCanvasPointerDown, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true, showZones = false, showMinimap = true, patchNoteSettings },
   ref
 ) {
   // ─── DOM + Konva refs ───────────────────────────────────────────────────────
@@ -3622,7 +3622,9 @@ const CanvasView = forwardRef(function CanvasView(
         <CalibrateDialog onConfirm={applyCalibration} onCancel={cancelCalibration} />
       )}
 
-      <Minimap stageRef={stageRef} mainLayerRef={mainLayerRef} version={minimapVersion} activityRef={penActivityRef} />
+      {showMinimap && (
+        <Minimap stageRef={stageRef} mainLayerRef={mainLayerRef} version={minimapVersion} activityRef={penActivityRef} />
+      )}
 
       <HingeDecorations
         stageRef={stageRef}

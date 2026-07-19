@@ -15,6 +15,7 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
   width: 380px;
   max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -52,6 +53,8 @@
 
 .settings-body {
   padding: 8px 0;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .settings-row {
@@ -120,7 +123,8 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--color-text-muted);
-  padding: 10px 16px 2px;
+  padding: 10px 16px 6px;
+  border-bottom: 1px solid var(--color-sidebar-border);
 }
 
 .settings-row-col {
@@ -194,7 +198,7 @@
 .settings-reset-row {
   padding: 8px 16px 16px;
   border-top: 1px solid var(--color-sidebar-border);
-  margin-top: 4px;
+  flex-shrink: 0;
 }
 
 .settings-reset-btn {

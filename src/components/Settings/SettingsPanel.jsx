@@ -6,6 +6,7 @@ export default function SettingsPanel({
   showPillsInPdf, onTogglePillsInPdf,
   showZonesInPdf, onToggleZonesInPdf,
   showHinges, onToggleHinges,
+  showMinimap, onToggleMinimap,
   pillColor, onPillColorChange,
   pillOpacity, onPillOpacityChange,
   pillFontSize, onPillFontSizeChange,
@@ -38,32 +39,6 @@ export default function SettingsPanel({
             />
           </div>
 
-          <div className="settings-section-label" style={{ marginTop: 4 }}>Maataanduidingen</div>
-
-          <div className="settings-row">
-            <div className="settings-row-text">
-              <span className="settings-row-label">Maat-pills in PDF</span>
-              <span className="settings-row-desc">Maat-pills meenemen bij PDF-export</span>
-            </div>
-            <button
-              className={`settings-toggle${showPillsInPdf ? ' on' : ''}`}
-              onClick={onTogglePillsInPdf}
-              aria-label={showPillsInPdf ? 'Uitschakelen' : 'Inschakelen'}
-            />
-          </div>
-
-          <div className="settings-row">
-            <div className="settings-row-text">
-              <span className="settings-row-label">Zones in PDF</span>
-              <span className="settings-row-desc">Klimatiseringszones inkleuren bij PDF-export</span>
-            </div>
-            <button
-              className={`settings-toggle${showZonesInPdf ? ' on' : ''}`}
-              onClick={onToggleZonesInPdf}
-              aria-label={showZonesInPdf ? 'Uitschakelen' : 'Inschakelen'}
-            />
-          </div>
-
           <div className="settings-row">
             <div className="settings-row-text">
               <span className="settings-row-label">Scharnieren</span>
@@ -73,6 +48,18 @@ export default function SettingsPanel({
               className={`settings-toggle${showHinges ? ' on' : ''}`}
               onClick={onToggleHinges}
               aria-label={showHinges ? 'Uitschakelen' : 'Inschakelen'}
+            />
+          </div>
+
+          <div className="settings-row">
+            <div className="settings-row-text">
+              <span className="settings-row-label">Minimap</span>
+              <span className="settings-row-desc">Navigatie-minimap tonen op canvas</span>
+            </div>
+            <button
+              className={`settings-toggle${showMinimap ? ' on' : ''}`}
+              onClick={onToggleMinimap}
+              aria-label={showMinimap ? 'Uitschakelen' : 'Inschakelen'}
             />
           </div>
 
@@ -141,11 +128,37 @@ export default function SettingsPanel({
             </span>
           </div>
 
-          <div className="settings-reset-row">
-            <button className="settings-reset-btn" onClick={onReset}>
-              Herstel standaardinstellingen
-            </button>
+          <div className="settings-section-label" style={{ marginTop: 4 }}>Export</div>
+
+          <div className="settings-row">
+            <div className="settings-row-text">
+              <span className="settings-row-label">Maat-pills in PDF</span>
+              <span className="settings-row-desc">Maat-pills meenemen bij PDF-export</span>
+            </div>
+            <button
+              className={`settings-toggle${showPillsInPdf ? ' on' : ''}`}
+              onClick={onTogglePillsInPdf}
+              aria-label={showPillsInPdf ? 'Uitschakelen' : 'Inschakelen'}
+            />
           </div>
+
+          <div className="settings-row">
+            <div className="settings-row-text">
+              <span className="settings-row-label">Zones in PDF</span>
+              <span className="settings-row-desc">Klimatiseringszones inkleuren bij PDF-export</span>
+            </div>
+            <button
+              className={`settings-toggle${showZonesInPdf ? ' on' : ''}`}
+              onClick={onToggleZonesInPdf}
+              aria-label={showZonesInPdf ? 'Uitschakelen' : 'Inschakelen'}
+            />
+          </div>
+        </div>
+
+        <div className="settings-reset-row">
+          <button className="settings-reset-btn" onClick={onReset}>
+            Herstel standaardinstellingen
+          </button>
         </div>
       </div>
     </div>

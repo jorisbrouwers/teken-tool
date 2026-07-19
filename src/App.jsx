@@ -45,6 +45,7 @@ export default function App() {
   const [showPillsInPdf, setShowPillsInPdf] = useState(false)
   const [showZonesInPdf, setShowZonesInPdf] = useState(false)
   const [showHinges, setShowHinges] = useState(true)
+  const [showMinimap, setShowMinimap] = useState(true)
   const [pillColor, setPillColor] = useState('#1971c2')
   const [pillOpacity, setPillOpacity] = useState(100)
   const [pillFontSize, setPillFontSize] = useState(10)
@@ -57,6 +58,7 @@ export default function App() {
       if (s.showPillsInPdf !== undefined) setShowPillsInPdf(s.showPillsInPdf)
       if (s.showZonesInPdf !== undefined) setShowZonesInPdf(s.showZonesInPdf)
       if (s.showHinges !== undefined) setShowHinges(s.showHinges)
+      if (s.showMinimap !== undefined) setShowMinimap(s.showMinimap)
       if (s.pillColor !== undefined) setPillColor(s.pillColor)
       if (s.pillOpacity !== undefined) setPillOpacity(s.pillOpacity)
       if (s.pillFontSize !== undefined) setPillFontSize(s.pillFontSize)
@@ -67,8 +69,8 @@ export default function App() {
 
   useEffect(() => {
     if (!settingsLoadedRef.current) return
-    saveAppSettings({ showPills, showPillsInPdf, showZonesInPdf, showHinges, pillColor, pillOpacity, pillFontSize, pillTextColor })
-  }, [showPills, showPillsInPdf, showZonesInPdf, showHinges, pillColor, pillOpacity, pillFontSize, pillTextColor])
+    saveAppSettings({ showPills, showPillsInPdf, showZonesInPdf, showHinges, showMinimap, pillColor, pillOpacity, pillFontSize, pillTextColor })
+  }, [showPills, showPillsInPdf, showZonesInPdf, showHinges, showMinimap, pillColor, pillOpacity, pillFontSize, pillTextColor])
 
   const pillStyle = { pillColor, pillOpacity, pillFontSize, pillTextColor }
   const [clipboardData, setClipboardData] = useState(null)
@@ -338,6 +340,7 @@ export default function App() {
               pillStyle={pillStyle}
               showHinges={showHinges}
               showZones={showZones}
+              showMinimap={showMinimap}
             />
             <StylePanel
               activeTool={activeTool}
@@ -450,12 +453,15 @@ export default function App() {
           onPillTextColorChange={setPillTextColor}
           showHinges={showHinges}
           onToggleHinges={() => setShowHinges(v => !v)}
+          showMinimap={showMinimap}
+          onToggleMinimap={() => setShowMinimap(v => !v)}
           onClose={() => setSettingsOpen(false)}
           onReset={() => {
             setShowPills(false)
             setShowPillsInPdf(false)
             setShowZonesInPdf(false)
             setShowHinges(true)
+            setShowMinimap(true)
             setPillColor('#1971c2')
             setPillOpacity(100)
             setPillFontSize(10)
