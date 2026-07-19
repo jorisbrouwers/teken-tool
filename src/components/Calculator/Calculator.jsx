@@ -30,13 +30,25 @@ function btnClass(label) {
 }
 
 export default function Calculator({ onClose }) {
-  const [expr, setExpr]     = useState('')
-  const [result, setResult] = useState('')
+  const [expr, setExpr]               = useState('')
+  const [result, setResult]           = useState('')
+  const [justEvaluated, setJustEvaluated] = useState(false)
 
   function handleButton(label) {
-    if (label === 'C')  { setExpr(''); setResult(''); return }
-    if (label === '⌫')  { setExpr(e => e.slice(0, -1)); setResult(''); return }
-    if (label === '=')  { setResult(calcEval(expr)); return }
+    if (label === 'C') { setExpr(''); setResult(''); setJustEvaluated(false); return }
+    if (label === '⌫') {
+      if (justEvaluated) { setExpr(''); setResult(''); setJustEvaluated(false); return }
+      setExpr(e => e.slice(0, -1)); setResult(''); return
+    }
+    if (label === '=') { setResult(calcEval(expr)); setJustEvaluated(true); return }
+
+    if (justEvaluated) {
+      const isOperator = ['+', '-', '*', '/'].includes(label)
+      setExpr(isOperator && result !== 'Fout' ? result + label : label)
+      setResult('')
+      setJustEvaluated(false)
+      return
+    }
     setExpr(e => e + label)
     setResult('')
   }
