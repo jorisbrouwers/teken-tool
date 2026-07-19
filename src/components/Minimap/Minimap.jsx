@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { withCulledVisible } from '../Canvas/viewportCulling.js'
+import { withCulledVisible, applyViewportCulling } from '../Canvas/viewportCulling.js'
 import './Minimap.css'
 
 const MINIMAP_SIZE = 160
@@ -18,11 +18,12 @@ function computeLayout(cb) {
 
 export default function Minimap({ stageRef, mainLayerRef, version, activityRef }) {
   const [thumbnail, setThumbnail] = useState(null)
-  const contentBoxRef = useRef(null)
-  const panelRef      = useRef(null)
-  const draggingRef   = useRef(false)
-  const timerRef      = useRef(null)
-  const idleRef       = useRef(null)
+  const contentBoxRef  = useRef(null)
+  const panelRef       = useRef(null)
+  const draggingRef    = useRef(false)
+  const timerRef       = useRef(null)
+  const idleRef        = useRef(null)
+  const savedSelectionRef = useRef(null)  // Transformer nodes detached for the duration of the drag
 
   // Regenerate thumbnail whenever canvas content changes.
   useEffect(() => {
@@ -151,6 +152,18 @@ export default function Minimap({ stageRef, mainLayerRef, version, activityRef }
     e.preventDefault()
     draggingRef.current = true
     panelRef.current.setPointerCapture(e.pointerId)
+    // Detach the transformer for the duration of the drag: every stage.position()
+    // call below fires 'absoluteTransformChange' on attached nodes, and the
+    // transformer responds with an O(N)-per-event update() — O(N²) over a drag
+    // gesture with many pointermoves (same freeze risk as CanvasView's startNav).
+    const stage = stageRef.current
+    const transformer = stage?.findOne('Transformer')
+    if (transformer && transformer.nodes().length) {
+      savedSelectionRef.current = transformer.nodes()
+      transformer.nodes([])
+    } else {
+      savedSelectionRef.current = null
+    }
     panToPoint(e.clientX, e.clientY)
   }
 
@@ -162,6 +175,22 @@ export default function Minimap({ stageRef, mainLayerRef, version, activityRef }
   function handlePointerUp(e) {
     draggingRef.current = false
     panelRef.current?.releasePointerCapture(e.pointerId)
+    const stage     = stageRef.current
+    const mainLayer = mainLayerRef.current
+    const transformer = stage?.findOne('Transformer')
+    if (transformer && savedSelectionRef.current) {
+      transformer.nodes(savedSelectionRef.current)
+    }
+    savedSelectionRef.current = null
+    // De minimap navigeert buiten startNav()/endNav() om, dus applyViewportCulling
+    // wordt normaal nooit aangeroepen na een minimap-sleep — content die vóór de
+    // sprong off-screen geculd was bleef daardoor onzichtbaar. Hier alsnog culling
+    // toepassen op de nieuwe viewport, net als endNav() dat doet na canvas-pan.
+    if (stage && mainLayer) {
+      const keep = new Set(transformer?.nodes() ?? [])
+      applyViewportCulling(stage, mainLayer, n => keep.has(n))
+      mainLayer.batchDraw()
+    }
   }
 
   if (!thumbnail) return null
