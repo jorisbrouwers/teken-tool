@@ -2,15 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import { GRID_SIZE } from './useGrid.js'
 import { getPillCssStyle } from './pillStyle.js'
-import { getConns, walkHierarchy, collectSnapVertices } from './wallGraph.js'
+import { getConns, walkHierarchy, collectSnapVertices, findWallBodyNear } from './wallGraph.js'
 
 const SNAP_RAD = 3 * Math.PI / 180
 
 const EP_SNAP_SCREEN_PX    = 20  // screen pixels within which endpoint-to-endpoint snapping kicks in
+const BODY_SNAP_SCREEN_PX  = 15  // screen pixels within which endpoint-onto-wall-body snapping (auto-split) kicks in
 const ALIGN_SNAP_SCREEN_PX = 10  // screen pixels within which vertex alignment snapping kicks in
 
 // eslint-disable-next-line no-unused-vars
-export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onMeasureConfirm, onMeasureDelete, snapEnabledRef, version, autoEditRef, showPills = true, pillStyle }) {
+export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onEndpointBodySnap, onEndpointCollapse, onMeasureConfirm, onMeasureDelete, snapEnabledRef, version, autoEditRef, showPills = true, pillStyle }) {
   const [, setVersion] = useState(0)
   const [editing, setEditing] = useState(false)
   const [inputValue, setInputValue] = useState('')
@@ -22,7 +23,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
   const snapIndicatorRef = useRef(null)
   const xAlignIndicatorRef = useRef(null)  // pink vertical guide for X alignment snap
   const yAlignIndicatorRef = useRef(null)  // pink horizontal guide for Y alignment snap
-  const snapTargetRef = useRef(null)       // { nodeId, ep } when endpoint-snap is active
+  const snapTargetRef = useRef(null)       // { kind: 'vertex', nodeId, ep } | { kind: 'body', hostId, x, y } | null
   const activeDragRef = useRef(null)       // 0 | 1 | null — which endpoint is being dragged
 
   function removeSnapIndicator(layer) {
@@ -168,7 +169,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
           cy = epSnap.absY - targetNode.y()
           removeSnapIndicator(layer)
           removeAlignIndicators(layer)
-          snapTargetRef.current = { nodeId: epSnap.nodeId, ep: epSnap.ep }
+          snapTargetRef.current = { kind: 'vertex', nodeId: epSnap.nodeId, ep: epSnap.ep }
         } else {
           snapTargetRef.current = null
 
@@ -277,6 +278,23 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
           } else {
             removeSnapIndicator(layer)
           }
+
+          // ── 1.5 Endpoint-onto-wall-body snapping (auto-split) ────────────────
+          // Draait NA uitlijn/hoek-snap, als fijnkorrelige correctie op het al
+          // berekende punt (niet als vervanging) — zo blijven de roze/blauwe
+          // hulplijnen gewoon werken terwijl je over een andere muur beweegt;
+          // alleen als het (eventueel al gesnapte) eindpunt toevallig binnen
+          // BODY_SNAP_SCREEN_PX van een muur-lijf valt, wordt het er exact op
+          // gelegd. Sluit de eigen node en zijn huidige buren uit: nooit tegen
+          // je eigen aansluiting "splitsen".
+          const bodySnapDist = BODY_SNAP_SCREEN_PX / (stage?.scaleX() ?? 1)
+          const bodyExcludeIds = [targetNode.id(), ...currentConns.map(c => c.id)]
+          const bodyHit = findWallBodyNear(layer, targetNode.x() + cx, targetNode.y() + cy, bodySnapDist, epSnapDist, bodyExcludeIds)
+          if (bodyHit) {
+            cx = bodyHit.x - targetNode.x()
+            cy = bodyHit.y - targetNode.y()
+            snapTargetRef.current = { kind: 'body', hostId: bodyHit.node.id(), x: bodyHit.x, y: bodyHit.y }
+          }
         }
 
         const finalAbsX = targetNode.x() + cx
@@ -338,7 +356,19 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
 
           const snap = snapTargetRef.current
           snapTargetRef.current = null
-          if (snap) onEndpointSnap?.(targetNode.id(), i, snap.nodeId, snap.ep)
+          if (snap?.kind === 'vertex') onEndpointSnap?.(targetNode.id(), i, snap.nodeId, snap.ep)
+          else if (snap?.kind === 'body') onEndpointBodySnap?.(targetNode.id(), i, snap.hostId, snap.x, snap.y)
+          else {
+            // Geen snap-target, maar het segment kan alsnog tot (bijna) nul lengte
+            // zijn ingeklapt door het eindpunt handmatig/via uitlijn-snap op het
+            // ANDERE eindpunt van dezelfde muur te laten vallen (findWallEndpointNear/
+            // findWallBodyNear sluiten targetNode zelf altijd uit, dus dit pad
+            // wordt nooit als vertex- of body-snap gezien) — ook dan verwijderen.
+            const finalPts = targetNode.points()
+            if (Math.hypot(finalPts[2] - finalPts[0], finalPts[3] - finalPts[1]) < 0.5) {
+              onEndpointCollapse?.(targetNode.id())
+            }
+          }
           onEndpointDragEnd()
           startStagePt = null; startCirclePt = null; lastAbsPos = null
         }

@@ -10,6 +10,9 @@ const HIT_MARGIN = 8
 const WALL_EP_SNAP_SCREEN_PX = 30
 // Muur-tool: schermpixels waarbinnen vertex-uitlijning kikt — zelfde als LineGizmo.
 const WALL_ALIGN_SNAP_SCREEN_PX = 20
+// Muur-tool: schermpixels waarbinnen een eindpunt op de BODY van een andere muur
+// snapt (auto-split naar T-punt) — zelfde waarde als LineGizmo's BODY_SNAP_SCREEN_PX.
+const WALL_BODY_SNAP_SCREEN_PX = 15
 // Muur-tool: hoek-snap-tolerantie (45°-veelvouden), zelfde als lijn/pijl-tool.
 const SNAP_RAD_WALL = 3 * Math.PI / 180
 // Muur-tool: wereld-afstand (stage-eenheden, zoom-onafhankelijk) die overschreden
@@ -75,7 +78,7 @@ import { useHistory } from './useHistory.js'
 import { useGrid, GRID_SIZE } from './useGrid.js'
 import { evaluateExpression } from '../../math/mathEval.js'
 import { deserializeLayer, serializeNodes, normalizeSnapshot } from './konvaSerialize.js'
-import { getConns, connsAttr, addConn, removeConn, collectHierarchyVertices, collectSnapVertices, findWallEndpointNear, closestPointOnSegment } from './wallGraph.js'
+import { getConns, connsAttr, addConn, removeConn, weldAllAt, connectAllPairs, collectHierarchyVertices, collectSnapVertices, findWallEndpointNear, findWallBodyNear, closestPointOnSegment } from './wallGraph.js'
 import { getPillCssStyle } from './pillStyle.js'
 import { applyViewportCulling } from './viewportCulling.js'
 import { liveSnapshotCache } from './usePersistence.js'
@@ -464,36 +467,119 @@ const CanvasView = forwardRef(function CanvasView(
     const targetNode = layer.findOne(`#${targetNodeId}`)
     if (!node || !targetNode) return
 
-    // If the node collapsed to zero length, remove it and weld all its former
-    // peers (plus the snap target) pairwise together so the chain stays intact.
+    // Als het segment tot (bijna) 0 lengte is ingeklapt, komen BEIDE eindpunten
+    // van node op hetzelfde punt te liggen als het las-doel — dus alle drie de
+    // voorheen aparte kliekjes (buren op draggedEp, het las-doel + zíjn buren,
+    // en de buren aan de ANDERE kant van node) moeten samen één complete kliek
+    // worden. connectAllPairs (i.p.v. alleen sideDragged × sideOther) voorkomt
+    // dat een bestaand T-punt/kruispunt na de ineenklap een kettinkje wordt.
     const pts = node.points()
     if (Math.hypot(pts[2] - pts[0], pts[3] - pts[1]) < 0.5) {
-      const sideDragged = [...getConns(node, draggedEp), { id: targetNodeId, ep: targetEp }]
-      const sideOther   = getConns(node, 1 - draggedEp)
+      const mergedMembers = [
+        ...getConns(node, draggedEp),
+        { id: targetNodeId, ep: targetEp }, ...getConns(targetNode, targetEp),
+        ...getConns(node, 1 - draggedEp),
+      ]
       for (let ep = 0; ep < 2; ep++) {
         for (const conn of getConns(node, ep)) {
           const peer = layer.findOne(`#${conn.id}`)
           if (peer) removeConn(peer, conn.ep, node.id(), ep)
         }
       }
-      for (const a of sideDragged) {
-        for (const b of sideOther) {
-          if (a.id === b.id) continue
-          const an = layer.findOne(`#${a.id}`)
-          const bn = layer.findOne(`#${b.id}`)
-          if (an && bn) addConn(an, a.ep, bn, b.ep)
-        }
-      }
+      connectAllPairs(layer, mergedMembers)
       node.destroy()
       hideToolbar()
       layer.batchDraw()
       return
     }
 
-    // Normal weld: the connection is added alongside any existing ones.
+    // Normal weld: verbind met het las-doel ÉN met alles wat daar al op aangesloten
+    // zit (weldAllAt) — anders raakt de las maar één specifiek lid van een bestaand
+    // T-punt/kruispunt, en blijft het resultaat een kettinkje i.p.v. een volledig
+    // verbonden mesh (zichtbaar zodra je later één arm daarvan versleept).
     // Verbindings-lijsten maken graad-N-hoekpunten mogelijk, dus een las hoeft
     // geen bestaande verbinding meer te verbreken ("stelen") zoals voorheen.
-    addConn(node, draggedEp, targetNode, targetEp)
+    weldAllAt(layer, node, draggedEp, targetNode, targetEp)
+  }
+
+  // Endpoint landde op de BODY van een andere muur (geen vertex) — splits die
+  // muur op het gesnapte punt en koppel het endpoint aan beide helften, zodat
+  // er een echt T-punt ontstaat i.p.v. een visueel toevallig uitgelijnde lijn.
+  function handleLineEndpointBodySnap(sourceNodeId, draggedEp, hostNodeId, splitX, splitY) {
+    const layer = mainLayerRef.current
+    if (!layer) return
+    const node = layer.findOne(`#${sourceNodeId}`)
+    const host = layer.findOne(`#${hostNodeId}`)
+    if (!node || !host) return
+
+    // Zelfde ineenklap-check als handleLineEndpointSnap: de sleep kan het segment
+    // tegelijk tot ~0 lengte trekken EN op een andere muur-body landen. Splits de
+    // host dan toch, maar koppel niet `node` (die dadelijk vernietigd wordt) aan
+    // de helften — koppel zijn overgebleven buren (aan BEIDE kanten, niet alleen
+    // de andere kant: node's eigen draggedEp-kant kan zelf ook al ergens anders
+    // aan vastzitten) volledig onderling én aan beide nieuwe helften.
+    const pts = node.points()
+    if (Math.hypot(pts[2] - pts[0], pts[3] - pts[1]) < 0.5) {
+      const mergedMembers = [...getConns(node, 1 - draggedEp), ...getConns(node, draggedEp)]
+      for (let ep = 0; ep < 2; ep++) {
+        for (const conn of getConns(node, ep)) {
+          const peer = layer.findOne(`#${conn.id}`)
+          if (peer) removeConn(peer, conn.ep, node.id(), ep)
+        }
+      }
+      const { halfA, halfB } = splitWallAt(host, splitX, splitY, layer)
+      for (const m of mergedMembers) {
+        const mn = layer.findOne(`#${m.id}`)
+        if (mn) { addConn(mn, m.ep, halfA, 1); addConn(mn, m.ep, halfB, 0) }
+      }
+      connectAllPairs(layer, mergedMembers)
+      node.destroy()
+      hideToolbar()
+      layer.batchDraw()
+      return
+    }
+
+    // Normaal geval: host splitsen op het gesnapte punt, nieuw T-punt aan beide
+    // helften koppelen — zelfde bedrading als de bestaande start-side split
+    // (mid-segment-aftakking) in onPointerUp van de muur-tool.
+    const { halfA, halfB } = splitWallAt(host, splitX, splitY, layer)
+    addConn(node, draggedEp, halfA, 1)
+    addConn(node, draggedEp, halfB, 0)
+    layer.batchDraw()
+  }
+
+  // Eindpunt is (bijna) tot 0 lengte ingeklapt zonder dat er een vertex- of
+  // body-snap-target was — bv. handmatig of via uitlijn-snap op het ANDERE
+  // eindpunt van dezelfde muur laten vallen. Zelfde opruim-patroon als de
+  // ineenklap-tak in handleLineEndpointSnap, maar zonder extra snap-target:
+  // weld gewoon de twee kanten van de verdwijnende muur pairwise aan elkaar.
+  function handleLineEndpointCollapse(nodeId) {
+    const layer = mainLayerRef.current
+    if (!layer) return
+    const node = layer.findOne(`#${nodeId}`)
+    if (!node) return
+    const pts = node.points()
+    if (Math.hypot(pts[2] - pts[0], pts[3] - pts[1]) >= 0.5) return
+
+    const side0 = getConns(node, 0)
+    const side1 = getConns(node, 1)
+    for (let ep = 0; ep < 2; ep++) {
+      for (const conn of getConns(node, ep)) {
+        const peer = layer.findOne(`#${conn.id}`)
+        if (peer) removeConn(peer, conn.ep, node.id(), ep)
+      }
+    }
+    for (const a of side0) {
+      for (const b of side1) {
+        if (a.id === b.id) continue
+        const an = layer.findOne(`#${a.id}`)
+        const bn = layer.findOne(`#${b.id}`)
+        if (an && bn) addConn(an, a.ep, bn, b.ep)
+      }
+    }
+    node.destroy()
+    hideToolbar()
+    layer.batchDraw()
   }
 
   // Survives Effect 3 re-runs (which reset local closure vars) so onClick doesn't
@@ -1647,7 +1733,7 @@ const CanvasView = forwardRef(function CanvasView(
       if (weld) {
         removeWallGuides()
         drawingLayer.batchDraw()
-        return { x: weld.x, y: weld.y, weldConn: { id: weld.node.id(), ep: weld.ep } }
+        return { x: weld.x, y: weld.y, weldConn: { id: weld.node.id(), ep: weld.ep }, splitHost: null }
       }
 
       // 2. Uitlijn-snap (roze gidslijnen), onafhankelijk per as.
@@ -1722,8 +1808,25 @@ const CanvasView = forwardRef(function CanvasView(
         wallSnapIndicator.destroy(); wallSnapIndicator = null
       }
 
+      // 4. Body-snap: draait NA uitlijn/hoek-snap, als fijnkorrelige correctie op
+      // het al berekende punt (niet als vervanging) — zo blijven de roze/blauwe
+      // hulplijnen gewoon werken terwijl je over een andere muur beweegt; alleen
+      // als het (eventueel al gesnapte) eindpunt toevallig binnen
+      // WALL_BODY_SNAP_SCREEN_PX van een muur-lijf valt (niet bij een vertex, die
+      // had via de las-snap hierboven al voorrang), wordt die muur straks bij
+      // commit gesplitst. wd.splitHost (start-kant) wordt uitgesloten zodat de
+      // EIND-kant nooit dezelfde host als de START-kant probeert te splitsen —
+      // die host is bij commit al vernietigd door de start-side split.
+      const bodySnapDist = WALL_BODY_SNAP_SCREEN_PX / stage.scaleX()
+      const bodyExcludeIds = wd.splitHost ? [wd.splitHost.id()] : []
+      const bodyHit = findWallBodyNear(mainLayer, cx, cy, bodySnapDist, epSnapDist, bodyExcludeIds)
+      if (bodyHit) {
+        cx = bodyHit.x
+        cy = bodyHit.y
+      }
+
       drawingLayer.batchDraw()
-      return { x: cx, y: cy, weldConn: null }
+      return { x: cx, y: cy, weldConn: null, splitHost: bodyHit ? bodyHit.node : null }
     }
 
     function cancelWallDraw() {
@@ -2122,7 +2225,7 @@ const CanvasView = forwardRef(function CanvasView(
           startPt,
           startConn: startCandidate ? { id: startCandidate.node.id(), ep: startCandidate.ep } : null,
           splitHost,
-          endPt: startPt, endConn: null,
+          endPt: startPt, endConn: null, endSplitHost: null,
           previewLine: null, pillEl: null,
           hitNodeAtDown: isWallSegment(hit) ? hit : null,
           moved: false,
@@ -2271,9 +2374,10 @@ const CanvasView = forwardRef(function CanvasView(
           }
         }
 
-        const { x: endX, y: endY, weldConn } = computeWallEndpoint(pos.x, pos.y, wd)
+        const { x: endX, y: endY, weldConn, splitHost: endSplitHost } = computeWallEndpoint(pos.x, pos.y, wd)
         wd.endPt = { x: endX, y: endY }
         wd.endConn = weldConn
+        wd.endSplitHost = endSplitHost
         wd.previewLine.points([wd.startPt.x, wd.startPt.y, endX, endY])
         drawingLayer.batchDraw()
 
@@ -2478,12 +2582,24 @@ const CanvasView = forwardRef(function CanvasView(
           addConn(halfA, 1, newNode, 0)
           addConn(halfB, 0, newNode, 0)
         } else if (wd.startConn) {
+          // weldAllAt: verbindt niet alleen met startNode maar met alles wat daar
+          // al aan vastzit — anders raakt de las maar één lid van een bestaand
+          // T-punt/kruispunt en ontstaat een onvolledig verbonden kettinkje.
           const startNode = mainLayer.findOne(`#${wd.startConn.id}`)
-          if (startNode) addConn(startNode, wd.startConn.ep, newNode, 0)
+          if (startNode) weldAllAt(mainLayer, newNode, 0, startNode, wd.startConn.ep)
         }
-        if (wd.endConn) {
+        // Eind-kant: analoog aan de start-kant hierboven. Randgeval: start- en
+        // eind-kant zouden toevallig dezelfde host kunnen aanwijzen (zeer korte/
+        // rare sleep die op beide kanten tegen dezelfde muur triggert) — die host
+        // is dan al vernietigd door de start-side split hierboven, dus we laten
+        // dat eind bewust ongekoppeld i.p.v. een vernietigde node te splitsen.
+        if (wd.endSplitHost && wd.endSplitHost !== wd.splitHost && wd.endSplitHost.getLayer()) {
+          const { halfA, halfB } = splitWallAt(wd.endSplitHost, endPt.x, endPt.y, mainLayer)
+          addConn(halfA, 1, newNode, 1)
+          addConn(halfB, 0, newNode, 1)
+        } else if (wd.endConn) {
           const endNode = mainLayer.findOne(`#${wd.endConn.id}`)
-          if (endNode) addConn(endNode, wd.endConn.ep, newNode, 1)
+          if (endNode) weldAllAt(mainLayer, newNode, 1, endNode, wd.endConn.ep)
         }
         mainLayer.batchDraw()
         history.pushState()
@@ -3702,6 +3818,8 @@ const CanvasView = forwardRef(function CanvasView(
           onEndpointDragMove={handleLineEndpointDragMove}
           onEndpointDragEnd={handleLineEndpointDragEnd}
           onEndpointSnap={handleLineEndpointSnap}
+          onEndpointBodySnap={handleLineEndpointBodySnap}
+          onEndpointCollapse={handleLineEndpointCollapse}
           onMeasureConfirm={handleMeasureConfirm}
           onMeasureDelete={handleMeasureDelete}
           snapEnabledRef={snapEnabledRef}

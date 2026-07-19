@@ -35,6 +35,39 @@ function link(node, ep, peerId, peerEp) {
   }
 }
 
+// Verbindt alle paren in `members` ({id, ep}) onderling volledig (nooit met
+// zichzelf) — gebruikt om twee of meer voorheen aparte "kliekjes" die op
+// hetzelfde punt samenkomen (las, ineenklap, T-splitsing) tot één volledig
+// verbonden mesh te maken. Een T-punt/kruispunt moet ALTIJD een complete kliek
+// zijn (elk lid rechtstreeks verbonden met elk ander lid): handleLineEndpointDragMove
+// propageert bewust maar 1 hop (geen ketting-propagatie), dus zodra twee leden
+// van hetzelfde punt niet rechtstreeks verbonden zijn, laat het verslepen van
+// het ene lid het andere achter.
+export function connectAllPairs(layer, members) {
+  for (let x = 0; x < members.length; x++) {
+    for (let y = x + 1; y < members.length; y++) {
+      const a = members[x], b = members[y]
+      if (a.id === b.id) continue
+      const an = layer.findOne(`#${a.id}`)
+      const bn = layer.findOne(`#${b.id}`)
+      if (an && bn) addConn(an, a.ep, bn, b.ep)
+    }
+  }
+}
+
+// Las (node, ep) vast aan (targetNode, targetEp): voegt de twee kliekjes
+// samen (node + zijn huidige buren op ep, target + zijn huidige buren op
+// targetEp) tot één complete kliek — een gewone las die alleen node-target
+// verbindt raakt anders maar één specifiek lid van een bestaand T-punt/
+// kruispunt, waardoor het resultaat een kettinkje blijft i.p.v. een mesh.
+export function weldAllAt(layer, node, ep, targetNode, targetEp) {
+  const members = [
+    { id: node.id(), ep }, ...getConns(node, ep),
+    { id: targetNode.id(), ep: targetEp }, ...getConns(targetNode, targetEp),
+  ]
+  connectAllPairs(layer, members)
+}
+
 // Eén entry uit de lijst van `node` verwijderen (alleen deze richting —
 // de spiegel-entry bij de peer moet apart verwijderd worden).
 export function removeConn(node, ep, peerId, peerEp) {
@@ -104,6 +137,31 @@ export function findWallEndpointNear(layer, absX, absY, maxDist) {
       const d = Math.hypot(ex - absX, ey - absY)
       if (d < bestD) { bestD = d; best = { node, ep, x: ex, y: ey } }
     }
+  }
+  return best
+}
+
+// Dichtstbijzijnde punt op de BODY van een muur (niet bij een eindpunt) binnen
+// maxDist — voor auto-splitsen bij snap: een endpoint dat op een bestaande
+// muur-lijn landt (i.p.v. op een vertex, die snap heeft al voorrang via
+// findWallEndpointNear) moet die muur splitsen op het geprojecteerde punt.
+// endExclusionDist voorkomt dubbele triggering vlak bij een eindpunt (dat
+// geval hoort bij de las-snap). excludeIds: host-kandidaten die deze aanroep
+// niet mag gebruiken (bv. de muur waar de sleep zelf toe behoort).
+export function findWallBodyNear(layer, x, y, maxDist, endExclusionDist, excludeIds = []) {
+  let best = null, bestD = maxDist
+  for (const node of layer.getChildren()) {
+    if (!node.attrs.isWall || excludeIds.includes(node.id())) continue
+    const pts = node.points()
+    if (!pts || pts.length !== 4) continue
+    const ax = node.x() + pts[0], ay = node.y() + pts[1]
+    const bx = node.x() + pts[2], by = node.y() + pts[3]
+    const proj = closestPointOnSegment(x, y, ax, ay, bx, by)
+    const distToEp0 = Math.hypot(proj.x - ax, proj.y - ay)
+    const distToEp1 = Math.hypot(proj.x - bx, proj.y - by)
+    if (distToEp0 < endExclusionDist || distToEp1 < endExclusionDist) continue
+    const d = Math.hypot(proj.x - x, proj.y - y)
+    if (d < bestD) { bestD = d; best = { node, x: proj.x, y: proj.y } }
   }
   return best
 }
