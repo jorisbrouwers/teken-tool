@@ -86,7 +86,7 @@ import { COLORS } from '../StylePanel/StylePanel.jsx'
 import './Canvas.css'
 
 const CanvasView = forwardRef(function CanvasView(
-  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true },
+  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, onCanvasPointerDown, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true },
   ref
 ) {
   // ─── DOM + Konva refs ───────────────────────────────────────────────────────
@@ -107,6 +107,7 @@ const CanvasView = forwardRef(function CanvasView(
   const pressureSensitiveRef = useRef(pressureSensitive)
   const activeToolRef = useRef(activeTool)
   const onInputDetectedRef = useRef(onInputDetected)
+  const onCanvasPointerDownRef = useRef(onCanvasPointerDown)
   penColorRef.current = penColor
   penSizeRef.current = penSize
   opacityRef.current = opacity
@@ -114,6 +115,7 @@ const CanvasView = forwardRef(function CanvasView(
   pressureSensitiveRef.current = pressureSensitive
   activeToolRef.current = activeTool
   onInputDetectedRef.current = onInputDetected
+  onCanvasPointerDownRef.current = onCanvasPointerDown
 
   // ─── Floating toolbar state ─────────────────────────────────────────────────
   const toolbarDivRef = useRef(null)
@@ -984,6 +986,12 @@ const CanvasView = forwardRef(function CanvasView(
     }
 
     function onPointerDown(e) {
+      // Ongefilterd (geen lastInputType-dedup zoals notifyInputType) — moet bij
+      // ÉLKE aanraking vuren, ook herhaalde touches van hetzelfde type, zodat
+      // zwevende UI (bv. de installaties-sidebar) altijd sluit bij canvas-
+      // interactie. Vóór eventuele stopImmediatePropagation() hieronder.
+      onCanvasPointerDownRef.current?.(e)
+
       if (e.pointerType === 'pen') penGestureActive = true
 
       // ── Pen eraser button ──────────────────────────────────────────────

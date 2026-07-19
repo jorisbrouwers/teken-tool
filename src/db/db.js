@@ -1,6 +1,6 @@
 import Dexie from 'dexie'
 
-function generateUUID() {
+export function generateUUID() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID()
   }
@@ -91,6 +91,9 @@ export async function duplicateNote(id) {
   return note
 }
 
+// Retourneert de twee gewijzigde {id, sort_order}-paren (of null als er niets
+// te verplaatsen viel), zodat de caller de lokale state gericht kan patchen
+// i.p.v. alle notities opnieuw te moeten ophalen.
 export async function moveNote(id, direction, isTemplate) {
   const all = await db.notes.where('deleted_at').equals(0).toArray()
   const filtered = all
@@ -98,10 +101,13 @@ export async function moveNote(id, direction, isTemplate) {
     .sort((a, b) => a.sort_order - b.sort_order)
   const idx = filtered.findIndex(n => n.id === id)
   const targetIdx = direction === 'up' ? idx - 1 : idx + 1
-  if (targetIdx < 0 || targetIdx >= filtered.length) return
-  const tmp = filtered[idx].sort_order
-  await db.notes.update(filtered[idx].id, { sort_order: filtered[targetIdx].sort_order })
-  await db.notes.update(filtered[targetIdx].id, { sort_order: tmp })
+  if (targetIdx < 0 || targetIdx >= filtered.length) return null
+  const a = filtered[idx]
+  const b = filtered[targetIdx]
+  const tmp = a.sort_order
+  await db.notes.update(a.id, { sort_order: b.sort_order })
+  await db.notes.update(b.id, { sort_order: tmp })
+  return [{ id: a.id, sort_order: b.sort_order }, { id: b.id, sort_order: tmp }]
 }
 
 export async function updateNoteSnapshot(id, snapshot) {
@@ -126,7 +132,9 @@ export async function renameNote(id, title) {
 }
 
 export async function softDeleteNote(id) {
-  await db.notes.update(id, { deleted_at: Date.now() })
+  const deleted_at = Date.now()
+  await db.notes.update(id, { deleted_at })
+  return deleted_at
 }
 
 export async function restoreNote(id) {

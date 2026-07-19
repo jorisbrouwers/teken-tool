@@ -6,12 +6,15 @@ import AppToolbar from './components/Toolbar/AppToolbar.jsx'
 import StylePanel, { SIZE_MAP } from './components/StylePanel/StylePanel.jsx'
 import HamburgerMenu from './components/HamburgerMenu/HamburgerMenu.jsx'
 import ProjectsPanel from './components/Projects/ProjectsPanel.jsx'
-import { updateNoteSettings, getAppSettings, saveAppSettings } from './db/db.js'
+import { updateNoteSettings, getAppSettings, saveAppSettings, generateUUID } from './db/db.js'
 import Calculator from './components/Calculator/Calculator.jsx'
 import { exportJnote } from './export/exportJnote.js'
 import { exportPdf } from './export/exportPdf.js'
 import { parseJnote } from './import/importJnote.js'
 import SettingsPanel from './components/Settings/SettingsPanel.jsx'
+import FabButton from './components/Sidebar/FabButton.jsx'
+import LeftSidebar from './components/Sidebar/LeftSidebar.jsx'
+import InstallationsSidebar from './components/Installations/InstallationsSidebar.jsx'
 import './App.css'
 
 export default function App() {
@@ -31,10 +34,13 @@ export default function App() {
     duplicateNote,
     moveNote,
     refreshNotes,
+    patchNoteSettings,
+    moveNoteBetweenLists,
   } = useNotes()
 
   const [projectsOpen, setProjectsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [installationsOpen, setInstallationsOpen] = useState(false)
   const [showPills, setShowPills] = useState(false)
   const [showPillsInPdf, setShowPillsInPdf] = useState(false)
   const [showHinges, setShowHinges] = useState(true)
@@ -94,6 +100,15 @@ export default function App() {
     else if (type === 'pen-eraser') setActiveTool('eraser')
   }, [])
 
+  // Sluit zwevende UI (installaties-sidebar) bij élke canvas-interactie —
+  // muis, pen of vinger, inclusief navigeren. CanvasView roept dit ongefilterd
+  // aan bij elke pointerdown (zie onCanvasPointerDownRef aldaar); i.t.t.
+  // onInputDetected hierboven is dit NIET gededupliceerd op input-type, dus
+  // het blijft ook werken bij herhaalde aanrakingen van hetzelfde type.
+  const handleCanvasPointerDown = useCallback(() => {
+    setInstallationsOpen(false)
+  }, [])
+
   const [penColor, setPenColor] = useState('#1d1d1d')
   const [opacity, setOpacity] = useState(100)
   const [penSizeCategory, setPenSizeCategory] = useState('s')
@@ -107,6 +122,7 @@ export default function App() {
     ?? templateNotes.find((n) => n.id === activeNoteId)
     ?? null
   const showGrid = activeNote?.settings?.background === 'grid'
+  const installations = activeNote?.settings?.installations ?? []
 
   const handleToggleGrid = useCallback(async () => {
     if (!activeNote) return
@@ -114,6 +130,27 @@ export default function App() {
     await updateNoteSettings(activeNote.id, { ...activeNote.settings, background: newBg })
     await refreshNotes()
   }, [activeNote, showGrid, refreshNotes])
+
+  // Zero-setup default: een verse notitie krijgt automatisch één CV-ketel,
+  // zodat alle ruimtes zonder verdere actie tot "Zone 1" behoren.
+  useEffect(() => {
+    if (!activeNote) return
+    if (activeNote.settings?.installations !== undefined) return
+    const seeded = [{ id: generateUUID(), kind: 'verwarming', type: 'cv_ketel' }]
+    const newSettings = { ...activeNote.settings, installations: seeded }
+    patchNoteSettings(activeNote.id, newSettings)
+    updateNoteSettings(activeNote.id, newSettings)
+  }, [activeNote?.id])
+
+  // Optimistisch: de UI wordt meteen bijgewerkt (patchNoteSettings, synchroon),
+  // de IndexedDB-schrijfactie loopt op de achtergrond. Voorkomt de merkbare
+  // vertraging van steeds een volledige notities-refetch afwachten.
+  const handleInstallationsChange = useCallback((newList) => {
+    if (!activeNote) return
+    const newSettings = { ...activeNote.settings, installations: newList }
+    patchNoteSettings(activeNote.id, newSettings)
+    updateNoteSettings(activeNote.id, newSettings)
+  }, [activeNote, patchNoteSettings])
 
   const handleExportPdf = useCallback(async () => {
     const stage = canvasViewRef.current?.getStage()
@@ -149,23 +186,24 @@ export default function App() {
     const dup = await duplicateNote(note.id)
     // Mark the duplicate as a template via direct db update
     const { default: db } = await import('./db/db.js')
-    await db.notes.update(dup.id, {
-      is_template: true,
-      title: `Template: ${note.title}`,
-    })
-    await refreshNotes()
-  }, [duplicateNote, refreshNotes])
+    const title = `Template: ${note.title}`
+    await db.notes.update(dup.id, { is_template: true, title })
+    // duplicateNote() plaatste dup al lokaal in `notes` (is_template volgde
+    // de bron); nu is_template alsnog naar true is gezet, hoort hij in
+    // templateNotes — moveNoteBetweenLists regelt dat zonder volledige
+    // refetch (die traag is naarmate de gedupliceerde notitie groter is).
+    moveNoteBetweenLists(dup.id, { ...dup, is_template: true, title })
+  }, [duplicateNote, moveNoteBetweenLists])
 
   const handleCreateFromTemplate = useCallback(async (templateId) => {
     const dup = await duplicateNote(templateId)
     const { default: db } = await import('./db/db.js')
-    await db.notes.update(dup.id, {
-      is_template: false,
-      title: dup.title.replace(/^Kopie van (?:Template: )?/, ''),
-    })
-    await refreshNotes()
-    return dup
-  }, [duplicateNote, refreshNotes])
+    const title = dup.title.replace(/^Kopie van (?:Template: )?/, '')
+    await db.notes.update(dup.id, { is_template: false, title })
+    const finalNote = { ...dup, is_template: false, title }
+    moveNoteBetweenLists(dup.id, finalNote)
+    return finalNote
+  }, [duplicateNote, moveNoteBetweenLists])
 
   const handleCopyData = useCallback((data) => {
     setClipboardData(data)
@@ -275,6 +313,7 @@ export default function App() {
               strokeStyle={strokeStyle}
               pressureSensitive={pressureSensitive}
               onInputDetected={handleInputDetected}
+              onCanvasPointerDown={handleCanvasPointerDown}
               shouldCenter={centerOnSelect}
               onCopy={handleCopyData}
               onSelectionChange={handleSelectionChange}
@@ -328,6 +367,33 @@ export default function App() {
                 <rect x="7" y="7" width="6" height="6" rx="1" />
               </svg>
             </button>
+
+            <div className="sidebar-fab-stack">
+              <FabButton
+                title="Installaties"
+                active={installationsOpen}
+                onClick={() => setInstallationsOpen(v => !v)}
+                icon={
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 2v16M3.5 5.5l13 9M16.5 5.5l-13 9" />
+                    <path d="M10 2l-1.6 1.6M10 2l1.6 1.6M10 18l-1.6-1.6M10 18l1.6-1.6" />
+                    <path d="M3.5 5.5l.3 2.2M3.5 5.5l2.2-.5M16.5 5.5l-2.2-.5M16.5 5.5l-.3 2.2" />
+                    <path d="M3.5 14.5l2.2.5M3.5 14.5l.3-2.2M16.5 14.5l-.3-2.2M16.5 14.5l-2.2.5" />
+                  </svg>
+                }
+              />
+            </div>
+
+            <LeftSidebar
+              open={installationsOpen}
+              onClose={() => setInstallationsOpen(false)}
+              title="Installaties"
+            >
+              <InstallationsSidebar
+                installations={installations}
+                onChange={handleInstallationsChange}
+              />
+            </LeftSidebar>
           </>
         ) : (
           <>
