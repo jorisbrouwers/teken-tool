@@ -68,6 +68,69 @@
   background: var(--color-item-hover);
 }
 
+/* Toewijzingspopup van de "ruimte toewijzen"-tool (klimatiseringszones) */
+.room-assign-popup {
+  position: fixed;
+  z-index: 100;
+  transform: translateX(-50%);
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08);
+  padding: 8px 10px;
+  min-width: 200px;
+  user-select: none;
+  pointer-events: auto;
+}
+
+.room-assign-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+}
+
+.room-assign-close {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.room-assign-close:hover {
+  background: var(--color-item-hover);
+  color: var(--color-text);
+}
+
+.room-assign-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.room-assign-label {
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.room-assign-row select {
+  flex: 1;
+  min-width: 0;
+  max-width: 130px;
+  padding: 4px 6px;
+  font-size: 12px;
+  border: 1px solid var(--color-sidebar-border);
+  border-radius: var(--radius);
+}
+
 .object-toolbar-btn.locked {
   color: var(--color-accent);
   background: var(--color-item-active);

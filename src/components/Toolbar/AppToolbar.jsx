@@ -111,14 +111,21 @@ const Icons = {
       <circle cx="7" cy="8.5" r="1.2" fill={S} stroke="none" />
     </svg>
   ),
+  zonesFill: (
+    <svg {...ICON}>
+      <path d="M3 10l6-6 7 7-6 6a4 4 0 0 1-7-7z" />
+      <path d="M9 4l6 6" />
+      <circle cx="16" cy="16" r="1.3" fill={S} stroke="none" />
+    </svg>
+  ),
 }
 
 const DRAW_TOOLS = [
-  { id: 'select', icon: Icons.select, title: 'Selecteren' },
-  { id: 'pen',    icon: Icons.pen,    title: 'Tekenen' },
   { id: 'wall',   icon: Icons.wall,   title: 'Muur' },
-  { id: 'eraser', icon: Icons.eraser, title: 'Gum' },
   { id: 'text',   icon: Icons.text,   title: 'Tekst' },
+  { id: 'eraser', icon: Icons.eraser, title: 'Gum' },
+  { id: 'pen',    icon: Icons.pen,    title: 'Tekenen' },
+  { id: 'select', icon: Icons.select, title: 'Selecteren' },
 ]
 
 const SHAPE_TOOLS = [
@@ -138,6 +145,8 @@ export default function AppToolbar({
   onToggleSnap,
   showPills,
   onTogglePills,
+  showZones,
+  onToggleZones,
   onRename,
   onImportImage,
   onUndo,
@@ -421,6 +430,15 @@ export default function AppToolbar({
         onClick={onTogglePills}
       >
         {Icons.pillTag}
+      </button>
+
+      {/* Klimatiseringszones inkleuren */}
+      <button
+        className={`toolbar-btn${showZones ? ' active' : ''}`}
+        title={showZones ? 'Zones inkleuren (nu aan)' : 'Zones inkleuren (nu uit)'}
+        onClick={onToggleZones}
+      >
+        {Icons.zonesFill}
       </button>
 
       {/* Camera modal */}

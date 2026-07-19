@@ -21,6 +21,10 @@ const WALL_DRAW_THRESHOLD_STAGE = 0.5 * GRID_SIZE
 // zoom-onafhankelijk) — voorkomt een absurde schaalfactor bij een bijna-nul-
 // lengte lijn (bv. een trilling van de pen zonder echte sleep).
 const MIN_CALIBRATION_LINE_STAGE = 0.15 * GRID_SIZE
+// Ruimte-toewijzing: het klikbare/hoverbare vlak wordt met dit bedrag
+// (stage-eenheden) naar binnen gekrompen t.o.v. het gevulde vlak, zodat
+// bewerken vlak bij een muurrand of scharnier de hittest niet laat flikkeren.
+const ROOM_CLICK_MARGIN_STAGE = 0.3 * GRID_SIZE
 
 // crypto.randomUUID() requires a secure context (https/localhost).
 // This fallback works over plain http (e.g. local network IP).
@@ -82,11 +86,14 @@ import Minimap from '../Minimap/Minimap.jsx'
 import LineGizmo from './LineGizmo.jsx'
 import MeasurementLabels from './MeasurementLabels.jsx'
 import HingeDecorations from './HingeDecorations.jsx'
+import ZoneFillOverlay from './ZoneFillOverlay.jsx'
+import { detectFaces, facesFromNodes, computeFacesFromWalls, pointInFace, faceHash, resolveRoomAssignment, shrinkPolygon } from './roomGraph.js'
+import { dropdownLabel } from '../Installations/InstallationsSidebar.jsx'
 import { COLORS } from '../StylePanel/StylePanel.jsx'
 import './Canvas.css'
 
 const CanvasView = forwardRef(function CanvasView(
-  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, onCanvasPointerDown, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true },
+  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, onCanvasPointerDown, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true, showZones = false, patchNoteSettings },
   ref
 ) {
   // ─── DOM + Konva refs ───────────────────────────────────────────────────────
@@ -191,6 +198,88 @@ const CanvasView = forwardRef(function CanvasView(
 
   const showGrid = note.settings?.background === 'grid'
 
+  // ─── Klimatiseringszones: ruimte-toewijzing (Fase 3) ────────────────────────
+  // roomAssignments leeft lokaal (geseed uit note.settings bij mount, net als
+  // pan/zoom) en wordt bij wijziging direct teruggeschreven — zelfde
+  // fire-and-forget-patroon als savePanZoom hieronder, niet via App.jsx's
+  // patchNoteSettings-mechanisme (dat is voor de installaties-sidebar, die
+  // toch al sluit zodra het canvas wordt aangeraakt).
+  const [roomAssignments, setRoomAssignments] = useState(() => note.settings?.roomAssignments ?? {})
+  const [assignPopup, setAssignPopup] = useState(null) // { hash, left, top } | null
+  const hoveredFaceKeyRef = useRef(null)
+  // true zolang een hinge (endpoint) of een hele hiërarchie wordt gesleept —
+  // vlak-detectie/hover/vulling schakelen dan volledig uit i.p.v. te proberen
+  // bij te blijven: bij snel slepen levert continu opnieuw detecteren op een
+  // kortstondig inconsistente graaf zichtbaar geflikker op.
+  const wallEditActiveRef = useRef(false)
+
+  function updateRoomAssignment(hash, patch) {
+    // Belangrijk: als dit vlak nog geen expliciete entry heeft, moet het
+    // ontbrekende veld hier eerst de EFFECTIEVE (met default) waarde krijgen
+    // voordat de patch erbovenop komt — anders creëert bv. het instellen van
+    // koeling een entry met heatingInstallationId: undefined, wat door
+    // resolveRoomAssignment als "expliciet geen" (null) wordt gelezen zodra
+    // de entry eenmaal bestaat, en zo de impliciete CV-ketel-default stilletjes
+    // wist.
+    const current = resolveRoomAssignment(hash, roomAssignments, note.settings?.installations ?? [], note.settings?.defaultHeatingInstallationId)
+    const next = { ...roomAssignments, [hash]: { ...current, ...patch } }
+    setRoomAssignments(next)
+    const newSettings = { ...note.settings, roomAssignments: next }
+    // Zonder patchNoteSettings blijft App.jsx's eigen `notes`-state (waar de
+    // `note`-prop hier vandaan komt) op de oude settings staan — bij het
+    // terugwisselen naar deze notitie zou CanvasView dan opnieuw seeden vanuit
+    // die verouderde prop, en zo lijkt de toewijzing "niet opgeslagen" terwijl
+    // hij wel degelijk al in IndexedDB stond.
+    patchNoteSettings?.(note.id, newSettings)
+    updateNoteSettings(note.id, newSettings)
+  }
+
+  // Zet ruimte-toewijzingen over van de oorspronkelijke vlakken naar hun
+  // gedupliceerde tegenhangers. oldFaces = vlakken berekend over de
+  // muur-subset ZOALS DIE WAS vóór het klonen (dus met de oude muur-ids in
+  // edgeIds); idMap = oude muur-id -> nieuwe muur-id (al beschikbaar bij
+  // zowel dupliceren als plakken, om verbindings-attrs te remappen). Omdat
+  // een vlak puur door zijn muur-ids bepaald wordt, is de nieuwe hash simpelweg
+  // de oude edgeIds via idMap vertaald — geen nieuwe vlak-detectie nodig op de
+  // gekloonde nodes zelf. Een vlak waarvan niet alle muren gekloond zijn (dus
+  // deels buiten de selectie) wordt overgeslagen: de kloon heeft dan geen
+  // volledige tegenhanger van dat vlak.
+  function carryRoomAssignments(oldFaces, idMap) {
+    const additions = {}
+    for (const face of oldFaces) {
+      if (!face.edgeIds.every(id => idMap.has(id))) continue
+      const oldAssignment = roomAssignments[faceHash(face)]
+      if (!oldAssignment) continue
+      const newHash = face.edgeIds.map(id => idMap.get(id)).sort().join('|')
+      additions[newHash] = oldAssignment
+    }
+    if (!Object.keys(additions).length) return
+    const next = { ...roomAssignments, ...additions }
+    setRoomAssignments(next)
+    const newSettings = { ...note.settings, roomAssignments: next }
+    patchNoteSettings?.(note.id, newSettings)
+    updateNoteSettings(note.id, newSettings)
+  }
+
+  useEffect(() => {
+    if (activeTool !== 'wall') {
+      setAssignPopup(null)
+      // hoveredFaceKeyRef wordt alleen bijgewerkt terwijl tool==='wall' (zie
+      // onPointerMove); zonder deze reset blijft een vlak dat net gehoverd
+      // werd met de pen grijs staan zodra bv. met de vinger gepand wordt
+      // (schakelt automatisch naar 'select') — touch-pointermove keert in
+      // onPointerMove sowieso meteen terug, dus die tak komt er niet aan toe.
+      hoveredFaceKeyRef.current = null
+    }
+  }, [activeTool])
+
+  // Edit mode (gizmo/vertex-handles van een geselecteerde muur-hiërarchie)
+  // sluit een eventueel openstaand toewijzingsmenu — beide tegelijk open is
+  // verwarrend en de hittests zijn toch al uitgeschakeld tijdens edit mode.
+  useEffect(() => {
+    if (lineGizmoNode) setAssignPopup(null)
+  }, [lineGizmoNode])
+
   const onSelectionChangeRef = useRef(onSelectionChange)
   onSelectionChangeRef.current = onSelectionChange
   const snapEnabledRef = useRef(snapEnabled)
@@ -290,6 +379,7 @@ const CanvasView = forwardRef(function CanvasView(
   }
 
   function handleLineEndpointDragMove(nodeId, endpointIndex, absX, absY) {
+    wallEditActiveRef.current = true
     const layer = mainLayerRef.current
     if (!layer) return
     const node = layer.findOne(`#${nodeId}`)
@@ -310,6 +400,7 @@ const CanvasView = forwardRef(function CanvasView(
   }
 
   function handleLineEndpointDragEnd() {
+    wallEditActiveRef.current = false
     historyPushRef.current?.()
     scheduleSnapshot()
   }
@@ -411,6 +502,14 @@ const CanvasView = forwardRef(function CanvasView(
   const justHandledTapRef        = useRef(false)
   const justCommittedLinearRef   = useRef(false)
   const justDraggedNodeRef       = useRef(false)
+  // Voorkomt dat de klik die een sleep-getekende muur afrondt ALSO als een
+  // "klik op een vlak" voor de ruimte-toewijzing telt (bv. loslaten binnen
+  // een net gesplitste kamer).
+  const justDrewWallRef          = useRef(false)
+  // Voorkomt dat de klik die edit mode verlaat (tik op leeg canvas terwijl de
+  // gizmo nog openstond) in diezelfde klik ook meteen het toewijzingsmenu
+  // opent — pas de eerstvolgende, aparte klik mag dat doen.
+  const justExitedEditModeRef    = useRef(false)
 
   function handlePillClick(nodeId) {
     const node = mainLayerRef.current?.findOne(`#${nodeId}`)
@@ -1492,6 +1591,7 @@ const CanvasView = forwardRef(function CanvasView(
     const justHandledTap    = justHandledTapRef
     const justCommittedLinear = justCommittedLinearRef
     const justDraggedNode   = justDraggedNodeRef
+    const justDrewWall      = justDrewWallRef
 
     // ── Muur-tool tekenstate (Fase 2) ───────────────────────────────────────
     // Tik-vs-sleep wordt pas beslist zodra de sleepafstand WALL_DRAW_THRESHOLD_STAGE
@@ -2087,6 +2187,23 @@ const CanvasView = forwardRef(function CanvasView(
       const tool = activeToolRef.current
       const pos  = stagePos() // stage-space coords (corrects for pan/zoom)
 
+      // Ruimte-toewijzing (klimatiseringszones) via de muur-tool. !wallDraw
+      // voorkomt dat dit de bestaande sleep-preview van een nieuwe muur in de
+      // weg zit.
+      if (tool === 'wall' && !wallDraw) {
+        // Uitgeschakeld tijdens het slepen én zolang de gizmo (vertex-handles)
+        // van een geselecteerde muur-hiërarchie zichtbaar is ("edit mode") —
+        // anders licht een vlak op/is aanklikbaar terwijl de gebruiker net
+        // een hoekpunt probeert te verslepen.
+        if (wallEditActiveRef.current || lineGizmoNodeRef.current) {
+          hoveredFaceKeyRef.current = null
+        } else {
+          const faces = detectFaces(mainLayer)
+          const face  = faces.find(f => pointInFace({ vertices: shrinkPolygon(f.vertices, ROOM_CLICK_MARGIN_STAGE) }, pos.x, pos.y))
+          hoveredFaceKeyRef.current = face ? faceHash(face) : null
+        }
+      }
+
       if (draggingNodes) {
         const dx = pos.x - dragOriginPos.x
         const dy = pos.y - dragOriginPos.y
@@ -2328,8 +2445,12 @@ const CanvasView = forwardRef(function CanvasView(
         if (!wd.moved) {
           // Tik zonder sleep: selecteert de muur waarop de tik begon (edit-toestand);
           // een tik op leeg canvas of een andere muur legt de selectie elders/leeg.
-          if (wd.hitNodeAtDown) positionAndShowToolbar(wd.hitNodeAtDown)
-          else if (lineGizmoNodeRef.current) hideToolbar()
+          if (wd.hitNodeAtDown) {
+            positionAndShowToolbar(wd.hitNodeAtDown)
+          } else if (lineGizmoNodeRef.current) {
+            hideToolbar()
+            justExitedEditModeRef.current = true
+          }
           return
         }
 
@@ -2367,6 +2488,10 @@ const CanvasView = forwardRef(function CanvasView(
         mainLayer.batchDraw()
         history.pushState()
         scheduleSnapshot()
+        // Voorkomt dat de meteen volgende native click (loslaten binnen een
+        // vlak, bv. een net gesplitste kamer) door de ruimte-toewijzing wordt
+        // opgevat als een klik op dat vlak.
+        justDrewWall.current = true
         // Terug naar "niets geselecteerd": de volgende pen-down bij dit eindpunt
         // tekent meteen de volgende schakel (kettingen), zonder tool te wisselen.
         transformer.nodes([])
@@ -2498,8 +2623,40 @@ const CanvasView = forwardRef(function CanvasView(
 
     function onClick(e) {
       if (e.evt.pointerType === 'touch') return
+      // Alleen de primaire (linker) knop — anders opent bv. rechtsklikken/
+      // pannen op een vlak ook meteen het toewijzingsmenu.
+      if (e.evt.button !== 0) return
       const tool = activeToolRef.current
       const hit  = e.target
+
+      if (tool === 'wall' && justDrewWall.current) {
+        justDrewWall.current = false
+        return
+      }
+
+      if (tool === 'wall' && justExitedEditModeRef.current) {
+        justExitedEditModeRef.current = false
+        return
+      }
+
+      // Ruimte-toewijzing (klimatiseringszones) via de muur-tool (zie
+      // onPointerMove hierboven) — hit === stage voorkomt dat een klik op een
+      // bestaand muursegment (selectie/gizmo) hierdoor wordt overschaduwd.
+      if (tool === 'wall' && hit === stage) {
+        // Uitgeschakeld tijdens het slepen én zolang de gizmo (edit mode) van
+        // een geselecteerde muur-hiërarchie actief is.
+        if (wallEditActiveRef.current || lineGizmoNodeRef.current) { setAssignPopup(null); return }
+        const pos   = stagePos()
+        const faces = detectFaces(mainLayer)
+        const face  = faces.find(f => pointInFace({ vertices: shrinkPolygon(f.vertices, ROOM_CLICK_MARGIN_STAGE) }, pos.x, pos.y))
+        if (!face) { setAssignPopup(null); return }
+        setAssignPopup({
+          hash: faceHash(face),
+          left: e.evt.clientX,
+          top: e.evt.clientY + 12,
+        })
+        return
+      }
 
       if (tool === 'text') {
         if (hit === stage) {
@@ -2644,6 +2801,7 @@ const CanvasView = forwardRef(function CanvasView(
     let lastDragPos = null
     mainLayer.on('dragstart', ev => {
       lastDragPos = { x: ev.target.x(), y: ev.target.y() }
+      if (isWallSegment(ev.target)) wallEditActiveRef.current = true
     })
     mainLayer.on('dragmove', ev => {
       const target = ev.target
@@ -2738,6 +2896,7 @@ const CanvasView = forwardRef(function CanvasView(
     mainLayer.on('dragend', ev => {
       const target = ev.target
       lastDragPos = null
+      wallEditActiveRef.current = false
       removeBodyAlignIndicators(mainLayerRef.current)
       historyPushRef.current?.()
       scheduleSnapshot()
@@ -3250,6 +3409,11 @@ const CanvasView = forwardRef(function CanvasView(
       if (isSingleLinear(n)) idMap.set(n.id(), generateId())
     }
 
+    // Vlakken berekenen vóórdat er iets gekloond wordt (oude muur-ids), zodat
+    // een eventuele ruimte-toewijzing straks naar de nieuwe hash kan worden
+    // overgezet — zie carryRoomAssignments hierboven.
+    const oldFacesForDuplicate = facesFromNodes(nodesToClone)
+
     const offset = 20
     const newNodes = nodesToClone.map(n => {
       const clone = n.clone()
@@ -3285,6 +3449,7 @@ const CanvasView = forwardRef(function CanvasView(
     if (newNodes.length === 1) positionAndShowToolbar(newNodes[0])
     else positionToolbarAtTransformer()
     mainLayer.batchDraw()
+    carryRoomAssignments(oldFacesForDuplicate, idMap)
     history.pushState()
     scheduleSnapshot()
   }
@@ -3366,6 +3531,24 @@ const CanvasView = forwardRef(function CanvasView(
       // hierarchy connection attrs reference the new IDs instead of the originals.
       const idMap = new Map()
       data.forEach(({ attrs }) => { if (attrs.id) idMap.set(attrs.id, generateId()) })
+
+      // Vlakken van de gekopieerde muren (oude ids), rechtstreeks uit de
+      // geserialiseerde attrs — geen live Konva-nodes nodig. Alleen zinvol
+      // als het plakken binnen dezelfde notitie gebeurt als waar gekopieerd
+      // is: roomAssignments leeft per notitie, dus bij plakken in een andere
+      // notitie is er hier simpelweg niets om over te zetten (bekende
+      // beperking, geen regressie t.o.v. voorheen).
+      const oldWallsForPaste = data
+        .filter(({ type, attrs }) => (type === 'Line' || type === 'Arrow') && attrs.isWall && attrs.points?.length === 4)
+        .map(({ attrs }) => ({
+          id: attrs.id,
+          x0: (attrs.x ?? 0) + attrs.points[0], y0: (attrs.y ?? 0) + attrs.points[1],
+          x1: (attrs.x ?? 0) + attrs.points[2], y1: (attrs.y ?? 0) + attrs.points[3],
+          conns0: attrs._ep0conns ?? [],
+          conns1: attrs._ep1conns ?? [],
+        }))
+      const oldFacesForPaste = computeFacesFromWalls(oldWallsForPaste)
+
       const remapConns = conns => {
         const remapped = (conns ?? [])
           .filter(c => idMap.has(c.id))
@@ -3409,6 +3592,7 @@ const CanvasView = forwardRef(function CanvasView(
         else positionToolbarAtTransformer()
       }
       mainLayer.batchDraw()
+      carryRoomAssignments(oldFacesForPaste, idMap)
       history.pushState()
       scheduleSnapshot()
     },
@@ -3456,6 +3640,57 @@ const CanvasView = forwardRef(function CanvasView(
         showPills={showPills}
         pillStyle={pillStyle}
       />
+
+      <ZoneFillOverlay
+        stageRef={stageRef}
+        mainLayerRef={mainLayerRef}
+        installations={note.settings?.installations ?? []}
+        roomAssignments={roomAssignments}
+        defaultHeatingInstallationId={note.settings?.defaultHeatingInstallationId}
+        visible={showZones}
+        hoveredFaceKeyRef={hoveredFaceKeyRef}
+        suppressRef={wallEditActiveRef}
+      />
+
+      {assignPopup && (() => {
+        const effective = resolveRoomAssignment(
+          assignPopup.hash, roomAssignments,
+          note.settings?.installations ?? [], note.settings?.defaultHeatingInstallationId,
+        )
+        return (
+          <div
+            className="room-assign-popup"
+            style={{ left: assignPopup.left, top: assignPopup.top }}
+            onPointerDown={e => e.stopPropagation()}
+          >
+            <div className="room-assign-header">
+              <span>Ruimte toewijzen</span>
+              <button className="room-assign-close" onClick={() => setAssignPopup(null)} title="Sluiten">✕</button>
+            </div>
+            {['verwarming', 'koeling'].map(kind => {
+              const field = kind === 'verwarming' ? 'heatingInstallationId' : 'coolingInstallationId'
+              const allInstallations = note.settings?.installations ?? []
+              const options = allInstallations.filter(i => i.kind === kind)
+              return (
+                <div className="room-assign-row" key={kind}>
+                  <span className="room-assign-label">{kind === 'verwarming' ? 'Verwarming' : 'Koeling'}</span>
+                  <select
+                    value={effective[field] ?? ''}
+                    onChange={e => updateRoomAssignment(assignPopup.hash, { [field]: e.target.value || null })}
+                  >
+                    <option value="">geen</option>
+                    {options.map(inst => (
+                      <option key={inst.id} value={inst.id}>
+                        {dropdownLabel(allInstallations, inst)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
 
       {lineGizmoNode && (
         <LineGizmo

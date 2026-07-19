@@ -6,8 +6,7 @@ const GRID_SIZE  = 25     // must match useGrid.js
 const MARGIN     = 40     // whitespace around content, in stage-space units
 const MAX_LONG   = 8000   // max output pixels on the longest side
 
-export async function exportPdf(note, stage, showGrid, showPillsInPdf = false, pillStyle, showHinges = true) {
-  const mainLayer = stage.getLayers()[0]
+export async function exportPdf(note, stage, mainLayer, showGrid, showPillsInPdf = false, pillStyle, showHinges = true, showZonesInPdf = false) {
   const nodes = mainLayer.getChildren().filter(n => n.getClassName() !== 'Transformer')
 
   if (nodes.length === 0) {
@@ -47,6 +46,13 @@ export async function exportPdf(note, stage, showGrid, showPillsInPdf = false, p
 
   // Capture Konva layers into an offscreen canvas. Culled (off-screen) nodes
   // must be temporarily visible: the PDF covers the full content area.
+  // stage.toCanvas() rastert alle layers (incl. de zone-vullaag, indien
+  // aanwezig) — de zichtbaarheid daarvan wordt hier onafhankelijk van de
+  // live canvas-toggle (showZones) tijdelijk op de export-keuze gezet.
+  const zoneLayer = stage.findOne('.zoneFillLayer')
+  const prevZoneVisible = zoneLayer?.visible()
+  if (zoneLayer) zoneLayer.visible(showZonesInPdf)
+
   const konvaCanvas = withCulledVisible(mainLayer, () => stage.toCanvas({
     x: canvasCropX,
     y: canvasCropY,
@@ -54,6 +60,8 @@ export async function exportPdf(note, stage, showGrid, showPillsInPdf = false, p
     height: canvasCropH,
     pixelRatio,
   }))
+
+  if (zoneLayer) zoneLayer.visible(prevZoneVisible)
 
   // Composite in correct layer order: white background → grid → Konva content.
   const finalCanvas = document.createElement('canvas')

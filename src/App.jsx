@@ -43,6 +43,7 @@ export default function App() {
   const [installationsOpen, setInstallationsOpen] = useState(false)
   const [showPills, setShowPills] = useState(false)
   const [showPillsInPdf, setShowPillsInPdf] = useState(false)
+  const [showZonesInPdf, setShowZonesInPdf] = useState(false)
   const [showHinges, setShowHinges] = useState(true)
   const [pillColor, setPillColor] = useState('#1971c2')
   const [pillOpacity, setPillOpacity] = useState(100)
@@ -54,6 +55,7 @@ export default function App() {
     getAppSettings().then(s => {
       if (s.showPills !== undefined) setShowPills(s.showPills)
       if (s.showPillsInPdf !== undefined) setShowPillsInPdf(s.showPillsInPdf)
+      if (s.showZonesInPdf !== undefined) setShowZonesInPdf(s.showZonesInPdf)
       if (s.showHinges !== undefined) setShowHinges(s.showHinges)
       if (s.pillColor !== undefined) setPillColor(s.pillColor)
       if (s.pillOpacity !== undefined) setPillOpacity(s.pillOpacity)
@@ -65,8 +67,8 @@ export default function App() {
 
   useEffect(() => {
     if (!settingsLoadedRef.current) return
-    saveAppSettings({ showPills, showPillsInPdf, showHinges, pillColor, pillOpacity, pillFontSize, pillTextColor })
-  }, [showPills, showPillsInPdf, showHinges, pillColor, pillOpacity, pillFontSize, pillTextColor])
+    saveAppSettings({ showPills, showPillsInPdf, showZonesInPdf, showHinges, pillColor, pillOpacity, pillFontSize, pillTextColor })
+  }, [showPills, showPillsInPdf, showZonesInPdf, showHinges, pillColor, pillOpacity, pillFontSize, pillTextColor])
 
   const pillStyle = { pillColor, pillOpacity, pillFontSize, pillTextColor }
   const [clipboardData, setClipboardData] = useState(null)
@@ -137,7 +139,7 @@ export default function App() {
     if (!activeNote) return
     if (activeNote.settings?.installations !== undefined) return
     const seeded = [{ id: generateUUID(), kind: 'verwarming', type: 'cv_ketel' }]
-    const newSettings = { ...activeNote.settings, installations: seeded }
+    const newSettings = { ...activeNote.settings, installations: seeded, defaultHeatingInstallationId: seeded[0].id }
     patchNoteSettings(activeNote.id, newSettings)
     updateNoteSettings(activeNote.id, newSettings)
   }, [activeNote?.id])
@@ -152,11 +154,22 @@ export default function App() {
     updateNoteSettings(activeNote.id, newSettings)
   }, [activeNote, patchNoteSettings])
 
+  // Default aan: alleen expliciet uitgezet (showZones === false) telt als uit.
+  const showZones = activeNote?.settings?.showZones !== false
+
+  const handleToggleZones = useCallback(() => {
+    if (!activeNote) return
+    const newSettings = { ...activeNote.settings, showZones: !showZones }
+    patchNoteSettings(activeNote.id, newSettings)
+    updateNoteSettings(activeNote.id, newSettings)
+  }, [activeNote, showZones, patchNoteSettings])
+
   const handleExportPdf = useCallback(async () => {
     const stage = canvasViewRef.current?.getStage()
-    if (!stage || !activeNote) return
-    await exportPdf(activeNote, stage, showGrid, showPillsInPdf, pillStyle, showHinges)
-  }, [activeNote, showGrid, showPillsInPdf, pillStyle])
+    const mainLayer = canvasViewRef.current?.getMainLayer()
+    if (!stage || !mainLayer || !activeNote) return
+    await exportPdf(activeNote, stage, mainLayer, showGrid, showPillsInPdf, pillStyle, showHinges, showZonesInPdf)
+  }, [activeNote, showGrid, showPillsInPdf, pillStyle, showHinges, showZonesInPdf])
 
   const handleExportJnote = useCallback(() => {
     const mainLayer = canvasViewRef.current?.getMainLayer()
@@ -168,9 +181,9 @@ export default function App() {
     const stage = canvasViewRef.current?.getStage()
     const mainLayer = canvasViewRef.current?.getMainLayer()
     if (!stage || !mainLayer || !activeNote) return
-    await exportPdf(activeNote, stage, showGrid, showPillsInPdf, pillStyle, showHinges)
+    await exportPdf(activeNote, stage, mainLayer, showGrid, showPillsInPdf, pillStyle, showHinges, showZonesInPdf)
     exportJnote(activeNote, mainLayer)
-  }, [activeNote, showGrid, showPillsInPdf, pillStyle])
+  }, [activeNote, showGrid, showPillsInPdf, pillStyle, showHinges, showZonesInPdf])
 
   const handleImportJnote = useCallback(async (file) => {
     try {
@@ -288,6 +301,8 @@ export default function App() {
               onToggleSnap={() => setSnapEnabled(v => !v)}
               showPills={showPills}
               onTogglePills={() => setShowPills(v => !v)}
+              showZones={showZones}
+              onToggleZones={handleToggleZones}
               onRename={renameNote}
               onImportImage={handleImportImage}
               onUndo={() => canvasViewRef.current?.undo()}
@@ -314,6 +329,7 @@ export default function App() {
               pressureSensitive={pressureSensitive}
               onInputDetected={handleInputDetected}
               onCanvasPointerDown={handleCanvasPointerDown}
+              patchNoteSettings={patchNoteSettings}
               shouldCenter={centerOnSelect}
               onCopy={handleCopyData}
               onSelectionChange={handleSelectionChange}
@@ -321,6 +337,7 @@ export default function App() {
               showPills={showPills}
               pillStyle={pillStyle}
               showHinges={showHinges}
+              showZones={showZones}
             />
             <StylePanel
               activeTool={activeTool}
@@ -421,6 +438,8 @@ export default function App() {
           onToggleGrid={handleToggleGrid}
           showPillsInPdf={showPillsInPdf}
           onTogglePillsInPdf={() => setShowPillsInPdf(v => !v)}
+          showZonesInPdf={showZonesInPdf}
+          onToggleZonesInPdf={() => setShowZonesInPdf(v => !v)}
           pillColor={pillColor}
           onPillColorChange={setPillColor}
           pillOpacity={pillOpacity}
@@ -435,12 +454,14 @@ export default function App() {
           onReset={() => {
             setShowPills(false)
             setShowPillsInPdf(false)
+            setShowZonesInPdf(false)
             setShowHinges(true)
             setPillColor('#1971c2')
             setPillOpacity(100)
             setPillFontSize(10)
             setPillTextColor('#ffffff')
             if (!showGrid) handleToggleGrid()
+            if (!showZones) handleToggleZones()
           }}
         />
       )}

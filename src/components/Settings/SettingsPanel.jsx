@@ -4,6 +4,7 @@ import './SettingsPanel.css'
 export default function SettingsPanel({
   showGrid, onToggleGrid,
   showPillsInPdf, onTogglePillsInPdf,
+  showZonesInPdf, onToggleZonesInPdf,
   showHinges, onToggleHinges,
   pillColor, onPillColorChange,
   pillOpacity, onPillOpacityChange,
@@ -41,13 +42,25 @@ export default function SettingsPanel({
 
           <div className="settings-row">
             <div className="settings-row-text">
-              <span className="settings-row-label">Toon in PDF</span>
+              <span className="settings-row-label">Maat-pills in PDF</span>
               <span className="settings-row-desc">Maat-pills meenemen bij PDF-export</span>
             </div>
             <button
               className={`settings-toggle${showPillsInPdf ? ' on' : ''}`}
               onClick={onTogglePillsInPdf}
               aria-label={showPillsInPdf ? 'Uitschakelen' : 'Inschakelen'}
+            />
+          </div>
+
+          <div className="settings-row">
+            <div className="settings-row-text">
+              <span className="settings-row-label">Zones in PDF</span>
+              <span className="settings-row-desc">Klimatiseringszones inkleuren bij PDF-export</span>
+            </div>
+            <button
+              className={`settings-toggle${showZonesInPdf ? ' on' : ''}`}
+              onClick={onToggleZonesInPdf}
+              aria-label={showZonesInPdf ? 'Uitschakelen' : 'Inschakelen'}
             />
           </div>
 
