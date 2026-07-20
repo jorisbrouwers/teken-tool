@@ -202,11 +202,10 @@ const CanvasView = forwardRef(function CanvasView(
   const showGrid = note.settings?.background === 'grid'
 
   // ─── Klimatiseringszones: ruimte-toewijzing (Fase 3) ────────────────────────
-  // roomAssignments leeft lokaal (geseed uit note.settings bij mount, net als
-  // pan/zoom) en wordt bij wijziging direct teruggeschreven — zelfde
-  // fire-and-forget-patroon als savePanZoom hieronder, niet via App.jsx's
-  // patchNoteSettings-mechanisme (dat is voor de installaties-sidebar, die
-  // toch al sluit zodra het canvas wordt aangeraakt).
+  // roomAssignments leeft lokaal (geseed uit note.settings bij mount) en wordt
+  // bij wijziging direct teruggeschreven via updateNoteSettings, mét
+  // patchNoteSettings erbij zodat App.jsx's eigen `notes`-state meteen
+  // meeloopt (zie updateRoomAssignment/carryRoomAssignments hieronder).
   const [roomAssignments, setRoomAssignments] = useState(() => note.settings?.roomAssignments ?? {})
   const [assignPopup, setAssignPopup] = useState(null) // { hash, left, top } | null
   const hoveredFaceKeyRef = useRef(null)
@@ -993,15 +992,6 @@ const CanvasView = forwardRef(function CanvasView(
       if (tr) tr.anchorSize(Math.max(10, Math.min(22, 22 / scale)))
     }
 
-    function savePanZoom() {
-      const stage = stageRef.current
-      if (!stage) return
-      updateNoteSettings(note.id, {
-        ...note.settings,
-        zoom: stage.scaleX(),
-        pan: { x: stage.x(), y: stage.y() },
-      })
-    }
 
     // Smooth animated pan+zoom to a target stage position and scale.
     // Uses the frozenCanvas overlay so the canvas stays crisp during the animation.
@@ -1024,7 +1014,6 @@ const CanvasView = forwardRef(function CanvasView(
           requestAnimationFrame(frame)
         } else {
           endNav()
-          savePanZoom()
         }
       }
       requestAnimationFrame(frame)
@@ -1053,7 +1042,7 @@ const CanvasView = forwardRef(function CanvasView(
 
       // Animeer via het frozen-canvas mechanisme (CSS-transform per frame in
       // plaats van een volledige vector-redraw per frame); endNav doet daarna
-      // de culling en savePanZoom schrijft dezelfde settings weg.
+      // de culling.
       animateNav(targetX, targetY, targetScale)
     }
     centerToContentRef.current = doCenterToContent
@@ -1419,7 +1408,6 @@ const CanvasView = forwardRef(function CanvasView(
             touchDragNodes = null
             touchDragMoved = false
             twoFingerActive = false
-            savePanZoom()
             return
           }
           touchDragNodes = null
@@ -1486,7 +1474,6 @@ const CanvasView = forwardRef(function CanvasView(
                   animateNav(cW / 2 - stCoord.x * sc, cH / 2 - stCoord.y * sc, sc)
                 }
               }
-              savePanZoom()
               return
             }
             // Record this tap for potential double-tap detection next time.
@@ -1531,7 +1518,6 @@ const CanvasView = forwardRef(function CanvasView(
               hideToolbar()
             }
           }
-          savePanZoom()
         }
         return
       }
@@ -1540,7 +1526,6 @@ const CanvasView = forwardRef(function CanvasView(
       if (mousePanning) {
         mousePanning = false
         endNav()
-        savePanZoom()
       }
     }
 
@@ -1552,7 +1537,6 @@ const CanvasView = forwardRef(function CanvasView(
       clearTimeout(wheelRestoreTimer)
       wheelRestoreTimer = setTimeout(() => {
         endNav()
-        savePanZoom()
       }, 150)
 
       const scaleBy  = 1.15
