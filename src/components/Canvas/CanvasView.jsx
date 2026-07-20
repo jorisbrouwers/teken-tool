@@ -15,6 +15,14 @@ const WALL_ALIGN_SNAP_SCREEN_PX = 20
 const WALL_BODY_SNAP_SCREEN_PX = 15
 // Muur-tool: hoek-snap-tolerantie (45°-veelvouden), zelfde als lijn/pijl-tool.
 const SNAP_RAD_WALL = 3 * Math.PI / 180
+// Muur-body-slepen: precisie-rem. Onder SLOW_PXMS schermpixels/ms komt maar
+// MIN_SENSITIVITY van de ruwe pointerbeweging door (fijn positioneren tot op
+// enkele cm); boven FAST_PXMS is het gewoon 1:1 (huidig gedrag). Ertussenin
+// lineair geïnterpoleerd. Gebruikt schermpixel-snelheid (i.p.v. stage-
+// eenheden) zodat de rem op elk zoomniveau even sterk aanvoelt.
+const WALL_DRAG_MIN_SENSITIVITY = 0.08
+const WALL_DRAG_SLOW_PXMS = 0.05
+const WALL_DRAG_FAST_PXMS = 0.6
 // Muur-tool: wereld-afstand (stage-eenheden, zoom-onafhankelijk) die overschreden
 // moet worden voordat pointerdown→pointerup als "tekenen" geldt i.p.v. een tik
 // (selecteren/deselecteren). 0,5 m voorkomt dat pen-jitter bij een tik per ongeluk
@@ -28,6 +36,17 @@ const MIN_CALIBRATION_LINE_STAGE = 0.15 * GRID_SIZE
 // (stage-eenheden) naar binnen gekrompen t.o.v. het gevulde vlak, zodat
 // bewerken vlak bij een muurrand of scharnier de hittest niet laat flikkeren.
 const ROOM_CLICK_MARGIN_STAGE = 0.3 * GRID_SIZE
+
+// Muur-tool cursors. Basis = zwarte punt met witte rand (tekenen op leeg
+// canvas). De andere drie geven de hover-context weer zodat duidelijk is wat
+// een klik daar doet, vóórdat de gebruiker klikt:
+// - vlak: opent de ruimte-toewijzing (vulling met kleur, wijst dus op "vlak")
+// - lijn/hoekpunt buiten edit mode: activeert edit mode (blauwe ring = "selecteerbaar")
+// - lijn/hoekpunt in edit mode: verplaatsen/slepen (browser-standaard move-cursor)
+const WALL_CURSOR_DRAW = "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12'><circle cx='6' cy='6' r='3.5' fill='black' stroke='white' stroke-width='1.5'/></svg>\") 6 6, crosshair"
+const WALL_CURSOR_FACE = "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14'><circle cx='7' cy='7' r='5' fill='white' stroke='black' stroke-width='1.5'/></svg>\") 7 7, pointer"
+const WALL_CURSOR_ACTIVATE = "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><line x1='10' y1='2' x2='10' y2='18' stroke='black' stroke-width='2'/><line x1='2' y1='10' x2='18' y2='10' stroke='black' stroke-width='2'/><circle cx='10' cy='10' r='3' fill='none' stroke='white' stroke-width='1.5'/></svg>\") 10 10, pointer"
+const WALL_CURSOR_MOVE = 'move'
 
 // crypto.randomUUID() requires a secure context (https/localhost).
 // This fallback works over plain http (e.g. local network IP).
@@ -78,7 +97,7 @@ import { useHistory } from './useHistory.js'
 import { useGrid, GRID_SIZE } from './useGrid.js'
 import { evaluateExpression } from '../../math/mathEval.js'
 import { deserializeLayer, serializeNodes, normalizeSnapshot } from './konvaSerialize.js'
-import { getConns, connsAttr, addConn, removeConn, weldAllAt, connectAllPairs, collectHierarchyVertices, collectSnapVertices, findWallEndpointNear, findWallBodyNear, closestPointOnSegment } from './wallGraph.js'
+import { getConns, connsAttr, addConn, removeConn, weldAllAt, connectAllPairs, walkHierarchy, collectSnapVertices, findWallEndpointNear, findWallBodyNear, closestPointOnSegment } from './wallGraph.js'
 import { getPillCssStyle } from './pillStyle.js'
 import { applyViewportCulling } from './viewportCulling.js'
 import { liveSnapshotCache } from './usePersistence.js'
@@ -159,8 +178,7 @@ const CanvasView = forwardRef(function CanvasView(
   const lineGizmoNodeRef = useRef(null)
   const [lineGizmoVersion, setLineGizmoVersion] = useState(0)
   const suppressMeasureRef  = useRef(false)
-  const bodyXAlignRef       = useRef(null)   // pink vertical guide during body drag
-  const bodyYAlignRef       = useRef(null)   // pink horizontal guide during body drag
+  const bodyXAlignRef       = useRef(null)   // blue rechte-lijn-richting-guide tijdens muur-body-slepen
   const gizmoAutoEditRef    = useRef(false)  // when true, LineGizmo opens edit mode on mount
 
   function setGizmoNode(node) {
@@ -187,15 +205,16 @@ const CanvasView = forwardRef(function CanvasView(
   // vrijwel altijd nee: afbeeldingen/vormen/streken bewegen uitsluitend via
   // ons eigen gizmo-bbox-systeem (dragNodeOrigins), nooit via Konva-native
   // dragging — zo kan niets versleept worden zonder het eerst te selecteren.
-  // Muren zijn de uitzondering (mainLayer's dragmove-handler doet daar de
-  // buur-rek-logica via een echte Konva-drag), maar ook dan alléén het
-  // segment dat al geselecteerd is via de gizmo.
+  // Muren waren lange tijd de uitzondering (een echte Konva-drag op het
+  // geselecteerde segment), maar dat bleek net als bij afbeeldingen/vormen
+  // niet betrouwbaar met pen-input: Konva's dragend vuurde soms niet af,
+  // waardoor de muur "vast" bleef hangen in Konva's interne drag-state en bij
+  // de eerstvolgende drag ergens anders alsnog meesprong. Body-slepen van een
+  // muur loopt daarom nu ook via het handmatige pointer-systeem (wallBodyDrag
+  // in Effect 3), dus hier altijd false.
   function computeDraggable(node, tool) {
     if (node.getClassName() === 'Transformer') return false
     if (node.attrs.isLocked) return false
-    if (isWallSegment(node)) {
-      return (tool === 'select' || tool === 'wall') && node === lineGizmoNodeRef.current
-    }
     return false
   }
 
@@ -637,7 +656,7 @@ const CanvasView = forwardRef(function CanvasView(
     const r = useTransformerRect ? tr.getClientRect() : node.getClientRect()
     placeToolbar(div, box,
       box.left + r.x + r.width / 2,
-      box.top + r.y + r.height + 8)
+      box.top + r.y + r.height + 14)
   }, [])
 
   const hideToolbar = useCallback(() => {
@@ -670,7 +689,7 @@ const CanvasView = forwardRef(function CanvasView(
     const box = stage.container().getBoundingClientRect()
     placeToolbar(div, box,
       box.left + r.x + r.width / 2,
-      box.top + r.y + r.height + 8)
+      box.top + r.y + r.height + 14)
   }, [])
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -1673,6 +1692,14 @@ const CanvasView = forwardRef(function CanvasView(
     let wallAlignX = null      // pink vertical guide (drawingLayer)
     let wallAlignY = null      // pink horizontal guide (drawingLayer)
     let wallSnapIndicator = null // blue 45°-snap guide (drawingLayer)
+    // Sleep van het BODY van de al-geselecteerde muur (edit mode) — handmatig
+    // via onze eigen pointer-events i.p.v. Konva's native draggable(true), om
+    // dezelfde reden als bij selectie-drag (zie computeDraggable): Konva's
+    // eigen drag-lifecycle bleek niet betrouwbaar met pen-input (dragend
+    // vuurde soms niet af, waardoor de muur in Konva's interne drag-state
+    // "vast" bleef hangen — de eerstvolgende drag ergens anders trok hem dan
+    // alsnog mee naar het nieuwe startpunt).
+    let wallBodyDrag = null    // { node, originPos, originNodeX, originNodeY, moved, axis: 'x'|'y'|null, virtualOffset, lastAxisCoord, lastTime }
 
     function createWallPillEl() {
       const el = document.createElement('div')
@@ -2175,9 +2202,27 @@ const CanvasView = forwardRef(function CanvasView(
       if (tool === 'wall') {
         const hit = e.target
         // Al geselecteerd (gizmo open) en de pen raakt precies dát segment:
-        // laat Konva's eigen draggable (Effect 4) het body-slepen afhandelen.
-        if (isWallSegment(hit) && hit === lineGizmoNodeRef.current) return
+        // start het handmatige body-slepen (zie wallBodyDrag hierboven).
+        if (isWallSegment(hit) && hit === lineGizmoNodeRef.current) {
+          wallBodyDrag = { node: hit, originPos: pos, originNodeX: hit.x(), originNodeY: hit.y(), moved: false, axis: null }
+          wallEditActiveRef.current = true
+          return
+        }
         if (hit?.name?.()?.startsWith('lineGizmoHandle')) return
+
+        // Al in edit mode (een andere muur al geselecteerd/gizmo open) en de
+        // pen raakt het BODY van een ANDERE muur: dat betekent "verplaats
+        // deze muur", niet de aftakking/extrude-flow hieronder (die is
+        // bedoeld voor buiten edit mode). Selecteer 'm meteen en start het
+        // slepen in dezelfde gesture — anders zou hier een nieuwe muur uit
+        // aftakken, en moest de gebruiker eerst apart tikken-om-te-selecteren
+        // vóór hij kon slepen.
+        if (lineGizmoNodeRef.current && isWallSegment(hit)) {
+          positionAndShowToolbar(hit)
+          wallBodyDrag = { node: hit, originPos: pos, originNodeX: hit.x(), originNodeY: hit.y(), moved: false, axis: null }
+          wallEditActiveRef.current = true
+          return
+        }
 
         const epSnapDist = WALL_EP_SNAP_SCREEN_PX / stage.scaleX()
         const startCandidate = findWallEndpointNear(mainLayer, pos.x, pos.y, epSnapDist)
@@ -2278,17 +2323,128 @@ const CanvasView = forwardRef(function CanvasView(
       // voorkomt dat dit de bestaande sleep-preview van een nieuwe muur in de
       // weg zit.
       if (tool === 'wall' && !wallDraw) {
+        const editMode = !!lineGizmoNodeRef.current
         // Uitgeschakeld tijdens het slepen én zolang de gizmo (vertex-handles)
         // van een geselecteerde muur-hiërarchie zichtbaar is ("edit mode") —
         // anders licht een vlak op/is aanklikbaar terwijl de gebruiker net
         // een hoekpunt probeert te verslepen.
-        if (wallEditActiveRef.current || lineGizmoNodeRef.current) {
+        if (wallEditActiveRef.current || editMode) {
           hoveredFaceKeyRef.current = null
         } else {
           const faces = detectFaces(mainLayer)
           const face  = faces.find(f => pointInFace({ vertices: shrinkPolygon(f.vertices, ROOM_CLICK_MARGIN_STAGE) }, pos.x, pos.y))
           hoveredFaceKeyRef.current = face ? faceHash(face) : null
         }
+
+        // Cursor volgt de hover-context (zie WALL_CURSOR_* bovenaan het bestand):
+        // vlak → toewijzing, lijn/hoekpunt buiten edit mode → edit mode activeren,
+        // lijn/hoekpunt van de bewerkte hiërarchie in edit mode → verplaatsen,
+        // daarbuiten in edit mode → default (signaleert "klik = edit mode verlaten").
+        if (wallEditActiveRef.current) {
+          stage.container().style.cursor = WALL_CURSOR_MOVE
+        } else if (editMode) {
+          const hit = e.target
+          const isHandle = hit?.name?.()?.startsWith('lineGizmoHandle')
+          const inHierarchy = isHandle || (isWallSegment(hit) && walkHierarchy(lineGizmoNodeRef.current, mainLayer).includes(hit))
+          stage.container().style.cursor = inHierarchy ? WALL_CURSOR_MOVE : 'default'
+        } else {
+          const hit = e.target
+          const epSnapDist = WALL_EP_SNAP_SCREEN_PX / stage.scaleX()
+          const overWallOrEndpoint = isWallSegment(hit) || !!findWallEndpointNear(mainLayer, pos.x, pos.y, epSnapDist)
+          if (overWallOrEndpoint) {
+            stage.container().style.cursor = WALL_CURSOR_ACTIVATE
+          } else if (hoveredFaceKeyRef.current) {
+            stage.container().style.cursor = WALL_CURSOR_FACE
+          } else {
+            stage.container().style.cursor = WALL_CURSOR_DRAW
+          }
+        }
+      }
+
+      if (wallBodyDrag) {
+        const wb = wallBodyDrag
+        const target = wb.node
+        if (!target.getLayer()) { wallBodyDrag = null; return } // node destroyed mid-drag (shouldn't happen, safety net)
+
+        const dx = pos.x - wb.originPos.x
+        const dy = pos.y - wb.originPos.y
+        if (!wb.moved && Math.hypot(dx, dy) <= 3) return
+
+        // Muur-body-slepen: geen vertex-snap, geen hoek-wiskunde — gewoon een
+        // vaste as. Op het moment dat de sleepdrempel overschreden wordt, kiest
+        // hij ÉÉN keer horizontaal of verticaal (welke van dx/dy op dat moment
+        // groter is) en blijft daaraan vasthouden voor de rest van de sleep. De
+        // andere as staat strikt vast op de startpositie — geen losbreken, geen
+        // diagonaal, dus ook geen paar pixels afwijking meer door heen-en-weer-
+        // wisselende snap-beslissingen elk frame.
+        const nowTs = performance.now()
+        if (!wb.moved) {
+          wb.axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y'
+          wb.moved = true
+          // Startpunt van de virtuele (mogelijk afgeremde) positie — begint bij
+          // de al gemaakte sleepafstand zodat er geen sprongetje ontstaat zodra
+          // de as net gekozen is.
+          wb.virtualOffset = wb.axis === 'x' ? dx : dy
+          wb.lastAxisCoord = wb.axis === 'x' ? pos.x : pos.y
+          wb.lastTime = nowTs
+        } else {
+          // ── Precisie-rem: hoe langzamer de pointer beweegt, hoe minder van
+          // die beweging doorkomt (WALL_DRAG_*) — zo kan je op een tablet met
+          // een trage penstreek nog op de cm nauwkeurig positioneren, terwijl
+          // een gewone vlotte sleep zich gedraagt als voorheen (1:1).
+          const axisCoord = wb.axis === 'x' ? pos.x : pos.y
+          const stepStage = axisCoord - wb.lastAxisCoord
+          const dt = Math.max(1, nowTs - wb.lastTime)
+          const speedPxMs = (Math.abs(stepStage) * stage.scaleX()) / dt
+          const t = Math.min(1, Math.max(0, (speedPxMs - WALL_DRAG_SLOW_PXMS) / (WALL_DRAG_FAST_PXMS - WALL_DRAG_SLOW_PXMS)))
+          const sensitivity = WALL_DRAG_MIN_SENSITIVITY + (1 - WALL_DRAG_MIN_SENSITIVITY) * t
+          wb.virtualOffset += stepStage * sensitivity
+          wb.lastAxisCoord = axisCoord
+          wb.lastTime = nowTs
+        }
+
+        const newX = wb.axis === 'x' ? wb.originNodeX + wb.virtualOffset : wb.originNodeX
+        const newY = wb.axis === 'y' ? wb.originNodeY + wb.virtualOffset : wb.originNodeY
+
+        target.position({ x: newX, y: newY })
+
+        {
+          const sc = stage.scaleX()
+          const stageLeft   = (-stage.x()) / sc
+          const stageRight  = (stage.width()  - stage.x()) / sc
+          const stageTop    = (-stage.y()) / sc
+          const stageBottom = (stage.height() - stage.y()) / sc
+          if (!bodyXAlignRef.current) {
+            bodyXAlignRef.current = new Konva.Line({
+              stroke: '#1971c2', strokeWidth: 1, strokeScaleEnabled: false,
+              dash: [6, 5], opacity: 0.55, listening: false, perfectDrawEnabled: false,
+            })
+            mainLayer.add(bodyXAlignRef.current)
+          }
+          bodyXAlignRef.current.points(
+            wb.axis === 'x'
+              ? [stageLeft, wb.originPos.y, stageRight, wb.originPos.y]
+              : [wb.originPos.x, stageTop, wb.originPos.x, stageBottom]
+          )
+        }
+
+        // ── Verbonden eindpunten meetrekken (alleen directe buren, geen ketting) ──
+        const updatedPts = target.points()
+        for (let i = 0; i < 2; i++) {
+          const newAbsX = target.x() + updatedPts[i * 2]
+          const newAbsY = target.y() + updatedPts[i * 2 + 1]
+          for (const conn of getConns(target, i)) {
+            const connNode = mainLayer.findOne(`#${conn.id}`)
+            if (!connNode) continue
+            const connPts = connNode.points().slice()
+            connPts[conn.ep * 2]     = newAbsX - connNode.x()
+            connPts[conn.ep * 2 + 1] = newAbsY - connNode.y()
+            connNode.points(connPts)
+          }
+        }
+
+        mainLayer.batchDraw()
+        return
       }
 
       if (draggingNodes) {
@@ -2472,6 +2628,19 @@ const CanvasView = forwardRef(function CanvasView(
     function onPointerUp(e) {
       if (e.evt.pointerType === 'touch') return
       const tool = activeToolRef.current
+
+      if (wallBodyDrag) {
+        const wb = wallBodyDrag
+        wallBodyDrag = null
+        wallEditActiveRef.current = false
+        removeBodyAlignIndicators(mainLayer)
+        if (wb.moved) {
+          historyPushRef.current?.()
+          scheduleSnapshot()
+        }
+        if (toolbarTargetRef.current === wb.node) positionAndShowToolbar(wb.node)
+        return
+      }
 
       if (draggingNodes) {
         draggingNodes = false
@@ -2892,116 +3061,15 @@ const CanvasView = forwardRef(function CanvasView(
       const target = toolbarTargetRef.current
       if (target) positionAndShowToolbar(target)
     })
-    const BODY_ALIGN_SNAP_PX = 20
+    // Muur-body-slepen loopt sinds kort volledig via het handmatige
+    // wallBodyDrag-systeem in onPointerDown/onPointerMove/onPointerUp
+    // hierboven (i.p.v. Konva's native draggable) — zie computeDraggable
+    // voor de reden. removeBodyAlignIndicators blijft hier staan, wordt
+    // door dat systeem gebruikt.
     function removeBodyAlignIndicators(layer) {
       if (bodyXAlignRef.current) { bodyXAlignRef.current.destroy(); bodyXAlignRef.current = null }
-      if (bodyYAlignRef.current) { bodyYAlignRef.current.destroy(); bodyYAlignRef.current = null }
       layer?.batchDraw()
     }
-    let lastDragPos = null
-    mainLayer.on('dragstart', ev => {
-      lastDragPos = { x: ev.target.x(), y: ev.target.y() }
-      if (isWallSegment(ev.target)) wallEditActiveRef.current = true
-    })
-    mainLayer.on('dragmove', ev => {
-      const target = ev.target
-      if (!isWallSegment(target) || !lastDragPos) return
-      const layer = mainLayerRef.current
-      const stage = stageRef.current
-      if (!layer || !stage) return
-
-      // ── Vertex alignment snapping ───────────────────────────────────────
-      const pts = target.points()
-      const alignDist = BODY_ALIGN_SNAP_PX / (stage.scaleX() ?? 1)
-      const excludeList = [
-        { id: target.id(), ep: 0 }, { id: target.id(), ep: 1 },
-        ...getConns(target, 0), ...getConns(target, 1),
-      ]
-      const verts = collectHierarchyVertices(target, layer, excludeList)
-
-      const ep0x = target.x() + pts[0], ep0y = target.y() + pts[1]
-      const ep1x = target.x() + pts[2], ep1y = target.y() + pts[3]
-
-      let snapX = null, snapY = null
-      for (const v of verts) {
-        if (snapX === null) {
-          if (Math.abs(ep0x - v.x) < alignDist)      snapX = { val: v.x, ptIdx: 0 }
-          else if (Math.abs(ep1x - v.x) < alignDist) snapX = { val: v.x, ptIdx: 2 }
-        }
-        if (snapY === null) {
-          if (Math.abs(ep0y - v.y) < alignDist)      snapY = { val: v.y, ptIdx: 1 }
-          else if (Math.abs(ep1y - v.y) < alignDist) snapY = { val: v.y, ptIdx: 3 }
-        }
-        if (snapX !== null && snapY !== null) break
-      }
-
-      if (snapX !== null) target.x(snapX.val - pts[snapX.ptIdx])
-      if (snapY !== null) target.y(snapY.val - pts[snapY.ptIdx])
-
-      const sc = stage.scaleX()
-      const stageLeft   = (-stage.x()) / sc
-      const stageRight  = (stage.width()  - stage.x()) / sc
-      const stageTop    = (-stage.y()) / sc
-      const stageBottom = (stage.height() - stage.y()) / sc
-
-      if (snapX !== null) {
-        if (!bodyXAlignRef.current) {
-          bodyXAlignRef.current = new Konva.Line({
-            stroke: '#e64980', strokeWidth: 1, strokeScaleEnabled: false,
-            dash: [6, 5], opacity: 0.65, listening: false, perfectDrawEnabled: false,
-          })
-          layer.add(bodyXAlignRef.current)
-        }
-        bodyXAlignRef.current.points([snapX.val, stageTop, snapX.val, stageBottom])
-      } else if (bodyXAlignRef.current) {
-        bodyXAlignRef.current.destroy(); bodyXAlignRef.current = null
-      }
-
-      if (snapY !== null) {
-        if (!bodyYAlignRef.current) {
-          bodyYAlignRef.current = new Konva.Line({
-            stroke: '#e64980', strokeWidth: 1, strokeScaleEnabled: false,
-            dash: [6, 5], opacity: 0.65, listening: false, perfectDrawEnabled: false,
-          })
-          layer.add(bodyYAlignRef.current)
-        }
-        bodyYAlignRef.current.points([stageLeft, snapY.val, stageRight, snapY.val])
-      } else if (bodyYAlignRef.current) {
-        bodyYAlignRef.current.destroy(); bodyYAlignRef.current = null
-      }
-
-      // ── Stretch connected endpoints ─────────────────────────────────────
-      const delta = { x: target.x() - lastDragPos.x, y: target.y() - lastDragPos.y }
-      if (delta.x !== 0 || delta.y !== 0) {
-        // Only stretch the directly connected endpoints — don't propagate the
-        // full chain. This lets the user reposition a single wall within the
-        // hierarchy; adjacent walls deform to follow rather than all moving.
-        const updatedPts = target.points()
-        for (let i = 0; i < 2; i++) {
-          const newAbsX = target.x() + updatedPts[i * 2]
-          const newAbsY = target.y() + updatedPts[i * 2 + 1]
-          for (const conn of getConns(target, i)) {
-            const connNode = layer.findOne(`#${conn.id}`)
-            if (!connNode) continue
-            const connPts = connNode.points().slice()
-            connPts[conn.ep * 2]     = newAbsX - connNode.x()
-            connPts[conn.ep * 2 + 1] = newAbsY - connNode.y()
-            connNode.points(connPts)
-          }
-        }
-        layer.batchDraw()
-        lastDragPos = { x: target.x(), y: target.y() }
-      }
-    })
-    mainLayer.on('dragend', ev => {
-      const target = ev.target
-      lastDragPos = null
-      wallEditActiveRef.current = false
-      removeBodyAlignIndicators(mainLayerRef.current)
-      historyPushRef.current?.()
-      scheduleSnapshot()
-      if (toolbarTargetRef.current === target) positionAndShowToolbar(target)
-    })
 
     // pointerrawupdate fires at native device rate (~240 Hz on Surface Pen),
     // before the browser coalesces events into pointermove. Chromium-only.
@@ -3046,9 +3114,6 @@ const CanvasView = forwardRef(function CanvasView(
       transformer.off('transformstart')
       transformer.off('transform')
       transformer.off('transformend')
-      mainLayer.off('dragend')
-      mainLayer.off('dragmove')
-      mainLayer.off('dragstart')
       if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null }
       if (typeof cancelIdleCallback !== 'undefined') cancelIdleCallback(batchRicId)
       clearTimeout(batchToId)
@@ -3084,9 +3149,11 @@ const CanvasView = forwardRef(function CanvasView(
     const mainLayer = mainLayerRef.current
     if (!stage || !mainLayer) return
 
-    const dotCursor = "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12'><circle cx='6' cy='6' r='3.5' fill='black' stroke='white' stroke-width='1.5'/></svg>\") 6 6, crosshair"
     const calibrateCursor = "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><line x1='10' y1='2' x2='10' y2='18' stroke='%23e8590c' stroke-width='2'/><line x1='2' y1='10' x2='18' y2='10' stroke='%23e8590c' stroke-width='2'/><circle cx='10' cy='10' r='3' fill='none' stroke='white' stroke-width='1.5'/></svg>\") 10 10, crosshair"
-    const cursors = { select: 'default', pen: dotCursor, wall: dotCursor, eraser: 'cell', text: 'text', rect: 'crosshair', circle: 'crosshair', line: 'crosshair', arrow: 'crosshair', lshape: 'crosshair' }
+    const cursors = { select: 'default', pen: WALL_CURSOR_DRAW, wall: WALL_CURSOR_DRAW, eraser: 'cell', text: 'text', rect: 'crosshair', circle: 'crosshair', line: 'crosshair', arrow: 'crosshair', lshape: 'crosshair' }
+    // Voor de muur-tool wordt de cursor daarna continu overschreven door
+    // onPointerMove (Effect 3) op basis van de hover-context (vlak/lijn/
+    // hoekpunt/edit mode) — dit is alleen de basiswaarde tot de eerste move.
     stage.container().style.cursor = calibratePhase === 'drawing' ? calibrateCursor : (cursors[activeTool] ?? 'default')
 
     mainLayer.getChildren().forEach(node => node.draggable(computeDraggable(node, activeTool)))
@@ -3531,8 +3598,7 @@ const CanvasView = forwardRef(function CanvasView(
       }
       if (clone.attrs.isImage) {
         // draggable blijft false — verplaatsen loopt via ons eigen gizmo-bbox-
-        // systeem (computeDraggable); Effect 4 corrigeert eventuele muur-
-        // uitzondering vanzelf zodra setGizmoNode hieronder de selectie zet.
+        // systeem (computeDraggable).
         clone.setAttrs({ isLocked: false, listening: true, draggable: false })
         mainLayer.add(clone)
         clone.moveToBottom()

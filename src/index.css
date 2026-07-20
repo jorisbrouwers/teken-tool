@@ -22,6 +22,12 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  /* Chromium/Edge tonen een grijze tap-highlight-overlay op elk element dat
+     "klikbaar" oogt (o.a. cursor: pointer) zodra het getikt/vastgehouden wordt
+     op een touchscreen — nergens in deze app gewenst (geen <a>-achtige tap-
+     feedback nodig). Globaal uitzetten voorkomt verrassingen bij toekomstige
+     cursor: pointer-gebruik elders in de app. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 html, body, #root {

@@ -6,9 +6,15 @@ import { getConns, walkHierarchy, collectSnapVertices, findWallBodyNear } from '
 
 const SNAP_RAD = 3 * Math.PI / 180
 
-const EP_SNAP_SCREEN_PX    = 20  // screen pixels within which endpoint-to-endpoint snapping kicks in
-const BODY_SNAP_SCREEN_PX  = 15  // screen pixels within which endpoint-onto-wall-body snapping (auto-split) kicks in
-const ALIGN_SNAP_SCREEN_PX = 10  // screen pixels within which vertex alignment snapping kicks in
+const EP_SNAP_SCREEN_PX    = 10  // screen pixels within which endpoint-to-endpoint snapping kicks in
+const BODY_SNAP_SCREEN_PX  = 10  // screen pixels within which endpoint-onto-wall-body snapping (auto-split) kicks in
+const ALIGN_SNAP_SCREEN_PX = 5  // screen pixels within which vertex alignment snapping kicks in
+
+// Endpoint-handle (bol) straal: schaalt mee met zoom (HANDLE_RADIUS_BASE / zoom),
+// geklemd tussen MIN en MAX zodat hij nooit te klein (onbruikbaar) of te groot wordt.
+const HANDLE_RADIUS_BASE = 7
+const HANDLE_RADIUS_MIN  = 2
+const HANDLE_RADIUS_MAX  = 8
 
 // eslint-disable-next-line no-unused-vars
 export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onEndpointBodySnap, onEndpointCollapse, onMeasureConfirm, onMeasureDelete, snapEnabledRef, version, autoEditRef, showPills = true, pillStyle }) {
@@ -19,6 +25,8 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
   const nodeRef = useRef(node)
   nodeRef.current = node
   const circlesRef = useRef([])
+  const highlightLineRef = useRef(null)
+  const gizmoLayerRef = useRef(null)
   const rafRef = useRef(null)
   const snapIndicatorRef = useRef(null)
   const xAlignIndicatorRef = useRef(null)  // pink vertical guide for X alignment snap
@@ -90,12 +98,37 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
     return () => cancelAnimationFrame(rafRef.current)
   }, [node, stageRef, mainLayerRef])
 
-  // Konva circles op mainLayer — drag is volledig manueel via native pointer events
-  // zodat we op elk pointermove updaten (niet alleen per rAF-frame zoals Konva's eigen drag doet).
-  // Voor elke node in de connected hierarchy worden 2 circles aangemaakt (edit mode).
+  // Eigen laag voor de bewerk-handles (bollen/kruisjes/geselecteerde-lijn-
+  // highlight), boven ZoneFillOverlay's vlak-vulling. ZoneFillOverlay en
+  // HingeDecorations zetten hun canvas op een expliciete CSS z-index (5 resp.
+  // 6) om Konva's DOM-volgorde te overroepen (frozenCanvas-fix) — zonder een
+  // eigen, nóg hogere z-index hier zouden de handles daar governance-loos
+  // achter vallen zodra een vlak een kleur heeft. Leeft zolang de gizmo zelf
+  // gemount is (dus alleen tijdens edit mode).
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    const gizmoLayer = new Konva.Layer({ name: 'lineGizmoHandleLayer' })
+    stage.add(gizmoLayer)
+    gizmoLayer.getCanvas()._canvas.style.zIndex = 7
+    gizmoLayerRef.current = gizmoLayer
+    return () => {
+      gizmoLayer.destroy()
+      gizmoLayerRef.current = null
+    }
+  }, [stageRef])
+
+  // Konva circles op een eigen handle-laag (zie hierboven) — drag is volledig
+  // manueel via native pointer events zodat we op elk pointermove updaten
+  // (niet alleen per rAF-frame zoals Konva's eigen drag doet). Voor elke node
+  // in de connected hierarchy worden 2 circles aangemaakt (edit mode).
+  // `layer` blijft mainLayer: alle hit-queries (walkHierarchy, snap-vertices,
+  // wall-body-detectie) moeten de échte muur-content doorzoeken, niet de
+  // lege handle-laag.
   useEffect(() => {
     const layer = mainLayerRef.current
-    if (!layer || !node) return
+    const gizmoLayer = gizmoLayerRef.current
+    if (!layer || !gizmoLayer || !node) return
 
     function clientToStage(clientX, clientY) {
       const stage = stageRef.current
@@ -111,18 +144,42 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
 
     function createCircle(targetNode, i) {
       const pts = targetNode.points()
-      const isSelectedNode = targetNode === node
       const circle = new Konva.Circle({
         x: targetNode.x() + pts[i * 2],
         y: targetNode.y() + pts[i * 2 + 1],
-        radius: 10,
+        radius: HANDLE_RADIUS_BASE,
         fill: 'white',
-        stroke: isSelectedNode ? '#1971c2' : '#868e96',
-        strokeWidth: isSelectedNode ? 2 : 1.5,
+        stroke: 'black',
+        strokeWidth: 1,
         draggable: false,
         hitStrokeWidth: 14,
         perfectDrawEnabled: false,
         name: `lineGizmoHandle_${targetNode.id()}_${i}`,
+      })
+
+      // Puur decoratief kruisje boven op de bol — geen eigen hit-detectie/
+      // drag-logica, volgt gewoon positie/straal/kleur van `circle` (die
+      // blijft de enige interactieve hit/drag-target, ongewijzigd). Blijft
+      // bewust binnen de cirkelrand (precisie-kruis, steekt niet uit).
+      function drawCross(ctx) {
+        const r = circle.radius()
+        const len = r * 1
+        ctx.strokeStyle = circle.stroke()
+        // Geen vaste ondergrens: die zou bij het inzoomen (r klemt richting
+        // HANDLE_RADIUS_MIN) een disproportioneel dikke lijn geven — een
+        // stage-eenheden-breedte wordt immers mee vergroot door de zoom.
+        ctx.lineWidth = r * 0.12
+        ctx.beginPath()
+        ctx.moveTo(-len, 0); ctx.lineTo(len, 0)
+        ctx.moveTo(0, -len); ctx.lineTo(0, len)
+        ctx.stroke()
+      }
+      const cross = new Konva.Shape({
+        x: circle.x(), y: circle.y(),
+        sceneFunc: (ctx) => drawCross(ctx),
+        listening: false,
+        perfectDrawEnabled: false,
+        name: `lineGizmoHandle_${targetNode.id()}_${i}_cross`,
       })
 
       let startStagePt = null
@@ -300,6 +357,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
         const finalAbsX = targetNode.x() + cx
         const finalAbsY = targetNode.y() + cy
         circle.position({ x: finalAbsX, y: finalAbsY })
+        cross.position({ x: finalAbsX, y: finalAbsY })
 
         if (lastAbsPos && (finalAbsX !== lastAbsPos.x || finalAbsY !== lastAbsPos.y)) {
           onEndpointDragMove?.(targetNode.id(), i, finalAbsX, finalAbsY)
@@ -310,6 +368,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
         currentPts[i * 2 + 1] = cy
         targetNode.points(currentPts)
         layer.batchDraw()
+        gizmoLayer.batchDraw()
         setVersion(v => v + 1)
       }
 
@@ -378,8 +437,9 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
         windowListeners.push({ move: onMove, up: onUp })
       })
 
-      layer.add(circle)
-      return { targetNode, ep: i, circle }
+      gizmoLayer.add(circle)
+      gizmoLayer.add(cross)
+      return { targetNode, ep: i, circle, cross }
     }
 
     const hierarchyNodes = walkHierarchy(node, layer)
@@ -387,13 +447,37 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
     circlesRef.current = circleEntries
     // Op een T-punt vallen tot drie handles exact samen (bijv. na een split);
     // breng de handles van het geselecteerde segment altijd naar voren zodat
-    // zijn blauwe/oranje (anker-)styling nooit achter een buur-handle verdwijnt.
-    circleEntries.forEach(({ targetNode, circle }) => { if (targetNode === node) circle.moveToTop() })
+    // ze nooit achter een buur-handle verdwijnen.
+    circleEntries.forEach(({ targetNode, circle, cross }) => { if (targetNode === node) { circle.moveToTop(); cross.moveToTop() } })
+
+    // Highlight-overlay: geeft aan WELKE muur precies geselecteerd is (niet de
+    // hoekpunten — die blijven overal neutraal, zie createCircle). Getekend
+    // exact over het geselecteerde segment met dezelfde dikte, dus leest als
+    // "deze lijn is nu grijs" zonder de echte stroke-attr van de node aan te
+    // raken (die wordt geserialiseerd; dit overlay-object niet, zie de
+    // lineGizmoHandle-naamfilter in konvaSerialize.js).
+    const highlightLine = new Konva.Line({
+      points: node.points(),
+      x: node.x(), y: node.y(),
+      stroke: '#929aa1',
+      strokeWidth: node.strokeWidth(),
+      lineCap: node.lineCap(),
+      listening: false,
+      perfectDrawEnabled: false,
+      name: 'lineGizmoHandle_selectedLine',
+    })
+    layer.add(highlightLine)
+    highlightLine.moveToTop()
+    highlightLineRef.current = highlightLine
+
     layer.batchDraw()
+    gizmoLayer.batchDraw()
 
     return () => {
-      circleEntries.forEach(({ circle }) => circle.destroy())
+      circleEntries.forEach(({ circle, cross }) => { circle.destroy(); cross.destroy() })
       circlesRef.current = []
+      highlightLine.destroy()
+      highlightLineRef.current = null
       activeDragRef.current = null
       snapTargetRef.current = null
       windowListeners.forEach(({ move, up }) => {
@@ -408,34 +492,45 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
   // Sync circle posities + anker-highlight na elke render (vangt body drag,
   // hierarchy-bewegingen en het openen/wisselen van de maatinvoer op).
   useEffect(() => {
-    let dirty = false
+    let handlesDirty = false
+    let mainDirty = false
     const active = activeDragRef.current
     const anchorEp = node?._measureAnchorEp ?? 0
     const moveEp = 1 - anchorEp
-    for (const { targetNode, ep, circle } of circlesRef.current) {
+    for (const { targetNode, ep, circle, cross } of circlesRef.current) {
       if (active?.nodeId === targetNode.id() && active?.ep === ep) continue
       const pts = targetNode.points()
       if (!pts || pts.length < 4) continue
-      circle.position({ x: targetNode.x() + pts[ep * 2], y: targetNode.y() + pts[ep * 2 + 1] })
+      const p = { x: targetNode.x() + pts[ep * 2], y: targetNode.y() + pts[ep * 2 + 1] }
+      circle.position(p)
+      cross.position(p)
       // Tijdens maatbewerking licht het endpoint op dat gaat bewegen (5.2) —
       // tikken op het andere (het anker) wisselt dit, zie onUp hierboven.
       if (editing && targetNode === node && ep === moveEp) {
         circle.stroke('#e8590c')
-        circle.strokeWidth(2.5)
+        circle.strokeWidth(2)
       } else {
-        const isSelectedNode = targetNode === node
-        circle.stroke(isSelectedNode ? '#1971c2' : '#868e96')
-        circle.strokeWidth(isSelectedNode ? 2 : 1.5)
+        circle.stroke('black')
+        circle.strokeWidth(1)
       }
-      dirty = true
+      handlesDirty = true
     }
-    if (dirty) mainLayerRef.current?.batchDraw()
+    if (node && highlightLineRef.current) {
+      const pts = node.points()
+      if (pts && pts.length >= 4) {
+        highlightLineRef.current.points(pts)
+        highlightLineRef.current.position({ x: node.x(), y: node.y() })
+        mainDirty = true
+      }
+    }
+    if (handlesDirty) gizmoLayerRef.current?.batchDraw()
+    if (mainDirty) mainLayerRef.current?.batchDraw()
   })
 
   // Schaal circle radius mee met zoom
   useEffect(() => {
     const zoom = stageRef.current?.scaleX() ?? 1
-    const r = Math.max(4, Math.min(12, 10 / zoom))
+    const r = Math.max(HANDLE_RADIUS_MIN, Math.min(HANDLE_RADIUS_MAX, HANDLE_RADIUS_BASE / zoom))
     circlesRef.current.forEach(({ circle }) => circle?.radius(r))
   })
 

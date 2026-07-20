@@ -5,6 +5,15 @@
   background: #ffffff;
   /* Verhinder standaard touch-gedrag zodat Fabric.js de pointer events kan afhandelen */
   touch-action: none;
+  /* Sinds de muur-tool cursors op 'pointer' als CSS-fallback eindigen (WALL_CURSOR_FACE/
+     WALL_CURSOR_ACTIVATE in CanvasView.jsx) behandelt Chromium/Edge dit element als
+     "klikbaar" en toont bij een tik/houd de standaard grijze tap-highlight-overlay over
+     de volledige wrapper (canvas + minimap + fab-knoppen) — precies het "dimmen" dat
+     leek op de projecten-modal-backdrop. Nergens anders in de app is deze highlight
+     al gereset, dus hij was hier nooit eerder zichtbaar totdat 'pointer' als cursor
+     voorkwam. Standaard uitzetten voorkomt 'm zonder de cursor zelf aan te passen.
+  */
+  -webkit-tap-highlight-color: transparent;
 }
 
 .canvas-wrapper canvas {

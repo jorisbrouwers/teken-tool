@@ -30,6 +30,13 @@ export default function HingeDecorations({ stageRef, mainLayerRef, editModeActiv
         layer = new Konva.Layer({ listening: false, name: 'hingeLayer' })
         stage.add(layer)
         layer.zIndex(1)  // boven mainLayer, onder drawingLayer
+        // ZoneFillOverlay zet zijn canvas op CSS z-index 5 (frozenCanvas-fix,
+        // zie de toelichting daar) — dat overroept Konva's eigen DOM-volgorde
+        // en zou de scharnieren daardoor altijd achter de vlak-vulling laten
+        // vallen, ongeacht welke van de twee lagen het eerst gemount is. Zet
+        // hier expliciet een hógere CSS z-index zodat scharnieren altijd vóór
+        // de vulling staan.
+        layer.getCanvas()._canvas.style.zIndex = 6
       }
 
       if (!ml || editModeActiveRef.current || !visibleRef.current) {
