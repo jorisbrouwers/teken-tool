@@ -88,7 +88,20 @@ export default function ZoneFillOverlay({ stageRef, mainLayerRef, installations,
       if (!layer) {
         layer = new Konva.Layer({ listening: false, name: 'zoneFillLayer' })
         stage.add(layer)
-        layer.moveToBottom() // onder mainLayer — muren moeten boven de vulling zichtbaar blijven
+        // Boven mainLayer (index 0) — niet eronder: afbeeldingen (locked én
+        // unlocked) staan altijd onderin mainLayer, dus een vullaag ONDER
+        // mainLayer zou daar volledig achter verdwijnen. Bij de lage dekking
+        // (FILL_OPACITY) blijven muren/tekst er nog prima doorheen zichtbaar.
+        layer.zIndex(1)
+        // Konva ordent zijn eigen layers puur via DOM-volgorde (geen CSS
+        // z-index) — maar tijdens pan/zoom legt CanvasView een los DOM-element
+        // (frozenCanvas, een bevroren snapshot van mainLayer inclusief
+        // afbeeldingen) over de canvassen heen, zonder zelf een z-index te
+        // zetten. Afhankelijk van het toevalstiming van wanneer deze layer
+        // versus frozenCanvas aan de DOM zijn toegevoegd, kon die snapshot zo
+        // alsnog boven deze laag komen te liggen. Een expliciete z-index hier
+        // maakt die volgorde ondubbelzinnig, ongeacht DOM-toevoegingsvolgorde.
+        layer.getCanvas()._canvas.style.zIndex = 5
       }
 
       if (!ml || !visibleRef.current) {
