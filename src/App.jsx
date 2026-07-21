@@ -463,7 +463,7 @@ export default function App() {
             setShowHinges(true)
             setShowMinimap(true)
             setPillColor('#1971c2')
-            setPillOpacity(100)
+            setPillOpacity(70)
             setPillFontSize(10)
             setPillTextColor('#ffffff')
             if (!showGrid) handleToggleGrid()

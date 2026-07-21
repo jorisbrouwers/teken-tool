@@ -97,7 +97,7 @@ import { useHistory } from './useHistory.js'
 import { useGrid, GRID_SIZE } from './useGrid.js'
 import { evaluateExpression } from '../../math/mathEval.js'
 import { deserializeLayer, serializeNodes, normalizeSnapshot } from './konvaSerialize.js'
-import { getConns, connsAttr, addConn, removeConn, weldAllAt, connectAllPairs, walkHierarchy, collectSnapVertices, findWallEndpointNear, findWallBodyNear, closestPointOnSegment } from './wallGraph.js'
+import { getConns, connsAttr, addConn, removeConn, weldAllAt, connectAllPairs, walkHierarchy, collectSnapVertices, collectMeasureAffected, findWallEndpointNear, findWallBodyNear, closestPointOnSegment } from './wallGraph.js'
 import { getPillCssStyle } from './pillStyle.js'
 import { applyViewportCulling } from './viewportCulling.js'
 import { liveSnapshotCache } from './usePersistence.js'
@@ -444,17 +444,33 @@ const CanvasView = forwardRef(function CanvasView(
     newPts[moveIdx]     = pts[anchorIdx] + Math.cos(angle) * newLen
     newPts[moveIdx + 1] = pts[anchorIdx + 1] + Math.sin(angle) * newLen
     node.points(newPts)
-    // Stretch the adjacent segment's endpoint at the moving side to follow the new
-    // position — same as endpoint drag does. A whole-body shift of the neighbour
-    // would break closed loops (it moves the node connected back to the anchor away
-    // from its own anchor).
-    for (const conn of getConns(node, moveEp)) {
-      const connNode = layer.findOne(`#${conn.id}`)
-      if (!connNode) continue
-      const connPts = connNode.points().slice()
-      connPts[conn.ep * 2]     = (node.x() + newPts[moveIdx])     - connNode.x()
-      connPts[conn.ep * 2 + 1] = (node.y() + newPts[moveIdx + 1]) - connNode.y()
-      connNode.points(connPts)
+    // Precies één richtingswissel vanaf `node` zelf: de eerste niet-
+    // evenwijdige aansluiting op het bewegende hoekpunt start een nieuwe
+    // rechte lijn die oneindig wordt doorgetrokken (180°) — zie
+    // collectMeasureAffected. Die schuift als rigide geheel mee; alles wat
+    // daar zijdelings nog op aansluit (of evenwijdig aan `node` zelf loopt)
+    // blijft alleen gelast.
+    const oldMoveAbsX = node.x() + pts[moveIdx],    oldMoveAbsY = node.y() + pts[moveIdx + 1]
+    const newMoveAbsX = node.x() + newPts[moveIdx], newMoveAbsY = node.y() + newPts[moveIdx + 1]
+    const deltaX = newMoveAbsX - oldMoveAbsX
+    const deltaY = newMoveAbsY - oldMoveAbsY
+    const { affected, welds } = collectMeasureAffected(node, moveEp, layer)
+    for (const affectedNode of affected) {
+      affectedNode.position({ x: affectedNode.x() + deltaX, y: affectedNode.y() + deltaY })
+    }
+    for (const { jointNode, jointEp, exceptIds } of welds) {
+      const jp = jointNode.points()
+      const jx = jointNode.x() + jp[jointEp * 2]
+      const jy = jointNode.y() + jp[jointEp * 2 + 1]
+      for (const conn of getConns(jointNode, jointEp)) {
+        if (exceptIds.has(conn.id)) continue
+        const sideNode = layer.findOne(`#${conn.id}`)
+        if (!sideNode) continue
+        const sidePts = sideNode.points().slice()
+        sidePts[conn.ep * 2]     = jx - sideNode.x()
+        sidePts[conn.ep * 2 + 1] = jy - sideNode.y()
+        sideNode.points(sidePts)
+      }
     }
     layer.batchDraw()
     historyPushRef.current?.()
@@ -2226,6 +2242,19 @@ const CanvasView = forwardRef(function CanvasView(
 
         const epSnapDist = WALL_EP_SNAP_SCREEN_PX / stage.scaleX()
         const startCandidate = findWallEndpointNear(mainLayer, pos.x, pos.y, epSnapDist)
+
+        // In edit mode nooit een nieuwe muur aftakken vanaf een bestaand
+        // hoekpunt (ook niet van de eigen hiërarchie) — dat verwacht de
+        // gebruiker hier als "ik mikte net naast de hinge" (de handle miste
+        // net de hit-test, bijv. door pen-jitter), niet als "teken een nieuwe
+        // muur". Selecteer in plaats daarvan gewoon de muur van dat hoekpunt;
+        // muren tekenen blijft alleen mogelijk op leeg canvas (nieuwe
+        // hiërarchie) of via de body-drag-branches hierboven.
+        if (lineGizmoNodeRef.current && startCandidate) {
+          positionAndShowToolbar(startCandidate.node)
+          return
+        }
+
         let startPt = startCandidate ? { x: startCandidate.x, y: startCandidate.y } : pos
 
         // Mid-segment-aftakking (5.2): pen-down op de body van een ANDERE muur

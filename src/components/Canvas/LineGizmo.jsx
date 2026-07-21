@@ -2,19 +2,24 @@ import { useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import { GRID_SIZE } from './useGrid.js'
 import { getPillCssStyle } from './pillStyle.js'
-import { getConns, walkHierarchy, collectSnapVertices, findWallBodyNear } from './wallGraph.js'
+import { getConns, walkHierarchy, collectSnapVertices, collectMeasureAffected, findWallBodyNear } from './wallGraph.js'
 
 const SNAP_RAD = 3 * Math.PI / 180
 
 const EP_SNAP_SCREEN_PX    = 10  // screen pixels within which endpoint-to-endpoint snapping kicks in
 const BODY_SNAP_SCREEN_PX  = 10  // screen pixels within which endpoint-onto-wall-body snapping (auto-split) kicks in
-const ALIGN_SNAP_SCREEN_PX = 5  // screen pixels within which vertex alignment snapping kicks in
+const ALIGN_SNAP_SCREEN_PX = 8  // screen pixels within which vertex alignment snapping kicks in
 
 // Endpoint-handle (bol) straal: schaalt mee met zoom (HANDLE_RADIUS_BASE / zoom),
 // geklemd tussen MIN en MAX zodat hij nooit te klein (onbruikbaar) of te groot wordt.
 const HANDLE_RADIUS_BASE = 7
 const HANDLE_RADIUS_MIN  = 2
 const HANDLE_RADIUS_MAX  = 8
+// Extra hit-marge rondom de zichtbare bol (stage-eenheden) — puur voor het
+// raken/pakken van de handle, verandert niets aan het uiterlijk. Groter dan
+// de bol zelf zodat per ongeluk een muurlijn pakken i.p.v. de hinge minder
+// snel gebeurt.
+const HANDLE_HIT_STROKE_WIDTH = 26
 
 // eslint-disable-next-line no-unused-vars
 export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onEndpointBodySnap, onEndpointCollapse, onMeasureConfirm, onMeasureDelete, snapEnabledRef, version, autoEditRef, showPills = true, pillStyle }) {
@@ -26,6 +31,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
   nodeRef.current = node
   const circlesRef = useRef([])
   const highlightLineRef = useRef(null)
+  const moveNeighborLinesRef = useRef(new Map())  // nodeId -> oranje overlay-lijn, tijdens maatinvoer
   const gizmoLayerRef = useRef(null)
   const rafRef = useRef(null)
   const snapIndicatorRef = useRef(null)
@@ -33,6 +39,16 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
   const yAlignIndicatorRef = useRef(null)  // pink horizontal guide for Y alignment snap
   const snapTargetRef = useRef(null)       // { kind: 'vertex', nodeId, ep } | { kind: 'body', hostId, x, y } | null
   const activeDragRef = useRef(null)       // 0 | 1 | null — which endpoint is being dragged
+
+  // Wisselt welk eindpunt het anker is tijdens maatinvoer (5.2) — zelfde
+  // effect als tikken op het ankerpunt (zie onUp hieronder), nu ook via de
+  // draai-richting-knop naast het invoerveld.
+  function swapMeasureAnchor() {
+    if (!node) return
+    const anchorEp = node._measureAnchorEp ?? 0
+    node._measureAnchorEp = 1 - anchorEp
+    setVersion(v => v + 1)
+  }
 
   function removeSnapIndicator(layer) {
     if (snapIndicatorRef.current) {
@@ -152,7 +168,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
         stroke: 'black',
         strokeWidth: 1,
         draggable: false,
-        hitStrokeWidth: 14,
+        hitStrokeWidth: HANDLE_HIT_STROKE_WIDTH,
         perfectDrawEnabled: false,
         name: `lineGizmoHandle_${targetNode.id()}_${i}`,
       })
@@ -405,10 +421,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
             : 0
           if (totalMove < 1 && editingRef.current && targetNode === node) {
             const anchorEp = node._measureAnchorEp ?? 0
-            if (i === anchorEp) {
-              node._measureAnchorEp = 1 - anchorEp
-              setVersion(v => v + 1)
-            }
+            if (i === anchorEp) swapMeasureAnchor()
             startStagePt = null; startCirclePt = null; lastAbsPos = null
             return
           }
@@ -478,6 +491,8 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
       circlesRef.current = []
       highlightLine.destroy()
       highlightLineRef.current = null
+      for (const line of moveNeighborLinesRef.current.values()) line.destroy()
+      moveNeighborLinesRef.current.clear()
       activeDragRef.current = null
       snapTargetRef.current = null
       windowListeners.forEach(({ move, up }) => {
@@ -497,6 +512,14 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
     const active = activeDragRef.current
     const anchorEp = node?._measureAnchorEp ?? 0
     const moveEp = 1 - anchorEp
+    // De muren die bij bevestigen als rigide geheel meeverschuiven (zie
+    // collectMeasureAffected/handleMeasureConfirm in CanvasView.jsx) — ook
+    // oranje: precies één richtingswissel vanaf `node` zelf, en dan die ene
+    // rechte lijn oneindig doorgetrokken (180°). Evenwijdig aan `node` zelf
+    // wordt nooit meegenomen.
+    const moveNeighborIds = editing && node && mainLayerRef.current
+      ? new Set(collectMeasureAffected(node, moveEp, mainLayerRef.current).affected.map(n => n.id()))
+      : null
     for (const { targetNode, ep, circle, cross } of circlesRef.current) {
       if (active?.nodeId === targetNode.id() && active?.ep === ep) continue
       const pts = targetNode.points()
@@ -505,14 +528,15 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
       circle.position(p)
       cross.position(p)
       // Tijdens maatbewerking licht het endpoint op dat gaat bewegen (5.2) —
-      // tikken op het andere (het anker) wisselt dit, zie onUp hierboven.
-      if (editing && targetNode === node && ep === moveEp) {
+      // tikken op het andere (het anker) wisselt dit, zie onUp hierboven —
+      // én de muren die in het rechte verlengde meeverschuiven. Zelfde
+      // dikte als een normale handle, alleen de kleur wijkt af.
+      if (editing && ((targetNode === node && ep === moveEp) || moveNeighborIds?.has(targetNode.id()))) {
         circle.stroke('#e8590c')
-        circle.strokeWidth(2)
       } else {
         circle.stroke('black')
-        circle.strokeWidth(1)
       }
+      circle.strokeWidth(1)
       handlesDirty = true
     }
     if (node && highlightLineRef.current) {
@@ -521,6 +545,35 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
         highlightLineRef.current.points(pts)
         highlightLineRef.current.position({ x: node.x(), y: node.y() })
         mainDirty = true
+      }
+    }
+    // Oranje overlay-lijn(en) over de muur(en) die meeverschuiven — zelfde
+    // aanpak als highlightLineRef, maar dan per meeverschuivende buur i.p.v.
+    // het geselecteerde segment.
+    const wantedIds = moveNeighborIds ?? new Set()
+    for (const [id, line] of moveNeighborLinesRef.current) {
+      if (!wantedIds.has(id)) { line.destroy(); moveNeighborLinesRef.current.delete(id) }
+    }
+    for (const { targetNode } of circlesRef.current) {
+      if (!wantedIds.has(targetNode.id())) continue
+      let line = moveNeighborLinesRef.current.get(targetNode.id())
+      if (!line) {
+        line = new Konva.Line({
+          stroke: '#e8590c',
+          strokeWidth: targetNode.strokeWidth(),
+          lineCap: targetNode.lineCap(),
+          listening: false,
+          perfectDrawEnabled: false,
+          name: 'lineGizmoHandle_measureNeighborLine',
+        })
+        gizmoLayerRef.current?.add(line)
+        moveNeighborLinesRef.current.set(targetNode.id(), line)
+      }
+      const npts = targetNode.points()
+      if (npts && npts.length >= 4) {
+        line.points(npts)
+        line.position({ x: targetNode.x(), y: targetNode.y() })
+        handlesDirty = true
       }
     }
     if (handlesDirty) gizmoLayerRef.current?.batchDraw()
@@ -595,6 +648,23 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
           }}
           onBlur={() => confirmMeasure(inputValue)}
         />
+      )}
+
+      {editing && (
+        <button
+          type="button"
+          className="line-gizmo-measure-swap"
+          style={{ left: midScreen.x + 46, top: midScreen.y }}
+          title="Draairichting omwisselen"
+          // preventDefault op mousedown houdt de focus op het invoerveld — anders
+          // blurt het veld eerst (en bevestigt/sluit confirmMeasure de invoer al)
+          // vóórdat de klik zelf verwerkt wordt.
+          onMouseDown={e => e.preventDefault()}
+          onPointerDown={e => e.stopPropagation()}
+          onClick={swapMeasureAnchor}
+        >
+          ⇄
+        </button>
       )}
     </>
   )

@@ -122,6 +122,93 @@ export function collectHierarchyVertices(startNode, layer, excludeList) {
   return vertices
 }
 
+// Bij maatinvoer (5.2): precies ÉÉN richtingswissel toegestaan, vanaf de
+// bewerkte muur (`node`) zelf. Op het bewegende hoekpunt (`ep`) wordt elke
+// aansluiting die NIET evenwijdig aan `node` loopt (T-splitsing, hoek — in de
+// praktijk meestal 90°, maar elke afwijkende hoek telt) als een nieuwe rechte
+// lijn beschouwd, die vervolgens "oneindig" wordt doorgetrokken zolang hij
+// zelf 180° rechtdoor blijft lopen. Verdere richtingswissels op die
+// doorgetrokken lijn worden NIET meer gevolgd (geen tweede bocht) — een
+// aansluiting die daar niet evenwijdig aan de nieuwe lijn loopt, blijft alleen
+// gelast (haakt niet los, schuift zelf niet mee). Een aansluiting die WEL
+// evenwijdig aan `node` zelf loopt (het restant van dezelfde rechte lijn als
+// de bewerkte muur) wordt nooit meegenomen — die kan alleen korter/langer
+// worden. Retourneert { affected, welds }: `affected` = platte array van
+// muren die als rigide geheel meeschuiven; `welds` = [{ jointNode, jointEp,
+// exceptIds }] — de aanroeper moet dit NA het toepassen van de translatie op
+// `affected` afhandelen (jointNode.points()/x()/y() dan uitlezen geeft dus de
+// al-vertaalde, definitieve positie — vandaar node-referenties i.p.v. hier al
+// vast te leggen absolute coördinaten, die anders stilzwijgend verouderd
+// zouden raken zodra de aanroeper de translatie toepast).
+export function collectMeasureAffected(node, ep, layer, collinearTolRad = 8 * Math.PI / 180) {
+  const affected = []
+  const welds = []
+
+  function angleAt(n, e) {
+    const p = n.points()
+    return Math.atan2(p[e * 2 + 1] - p[(1 - e) * 2 + 1], p[e * 2] - p[(1 - e) * 2])
+  }
+  function angleDiff(a, b) {
+    let d = Math.abs(a - b) % (2 * Math.PI)
+    return d > Math.PI ? 2 * Math.PI - d : d
+  }
+
+  const ownAngle = angleAt(node, ep)
+  const firstJointExcept = new Set([node.id()])
+
+  for (const conn of getConns(node, ep)) {
+    const connNode = layer.findOne(`#${conn.id}`)
+    if (!connNode) continue
+    const farEp = 1 - conn.ep
+    const connAngle = angleAt(connNode, farEp)
+    if (angleDiff(ownAngle, connAngle) < collinearTolRad) continue  // evenwijdig aan node — nooit meenemen
+
+    firstJointExcept.add(connNode.id())
+    affected.push(connNode)
+
+    // Doorgetrokken lijn vanaf deze eerste bocht: alleen nog collineair
+    // (t.o.v. de vorige stap) verder lopen, geen tweede bocht meer.
+    const visited = new Set([node.id(), connNode.id()])
+    let curNode = connNode, curEp = farEp
+    while (true) {
+      const curAngle = angleAt(curNode, curEp)
+      let nextCollinear = null
+      const sideIds = new Set()
+      for (const c2 of getConns(curNode, curEp)) {
+        if (visited.has(c2.id)) continue
+        const n2 = layer.findOne(`#${c2.id}`)
+        if (!n2) continue
+        const fe2 = 1 - c2.ep
+        const a2 = angleAt(n2, fe2)
+        if (angleDiff(curAngle, a2) < collinearTolRad) nextCollinear = { node: n2, farEp: fe2 }
+        else sideIds.add(c2.id)
+      }
+      if (sideIds.size) {
+        // exceptIds = wat NIET gelast mag worden op dit hoekpunt (de
+        // collineaire voortzetting, die al via `affected` rigide meeschuift)
+        // — de aanroeper last vervolgens alles ANDERS op getConns(curNode,
+        // curEp), dus precies sideIds. (Niet sideIds zelf doorgeven: dat zou
+        // de aanroeper's blacklist-filter net omdraaien.)
+        const exceptIds = nextCollinear ? new Set([nextCollinear.node.id()]) : new Set()
+        welds.push({ jointNode: curNode, jointEp: curEp, exceptIds })
+      }
+      if (!nextCollinear) break
+      visited.add(nextCollinear.node.id())
+      affected.push(nextCollinear.node)
+      curNode = nextCollinear.node
+      curEp = nextCollinear.farEp
+    }
+  }
+
+  // Op het allereerste hoekpunt (node's eigen bewegende kant) moet ook alles
+  // gelast worden dat niet meeschuift — dat is precies wat firstJointExcept
+  // hierboven al uitsluit (node zelf + de zojuist gevonden eerste-bocht-
+  // muren, die schuiven al mee via `affected`).
+  welds.push({ jointNode: node, jointEp: ep, exceptIds: firstJointExcept })
+
+  return { affected, welds }
+}
+
 // Dichtstbijzijnde muur-eindpunt binnen maxDist (stage-eenheden), voor lassen/
 // kettingen tijdens het tekenen. Scant alle muren op de layer, ongeacht
 // hiërarchie — dit is de las-snap en die is per definitie pointer-lokaal (de
