@@ -17,7 +17,7 @@ export function applyViewportCulling(stage, layer, shouldSkip) {
   const h = stage.height()
   for (const node of layer.getChildren()) {
     if (node.getClassName() === 'Transformer') continue
-    if (node.name()?.startsWith('lineGizmoHandle')) continue
+    if (node.name()?.startsWith('lineGizmoHandle') || node.name()?.startsWith('segmentGizmoHandle')) continue
     if (shouldSkip?.(node)) {
       if (node._culled) { node.visible(true); node._culled = false }
       continue

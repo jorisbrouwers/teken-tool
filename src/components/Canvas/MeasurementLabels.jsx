@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { GRID_SIZE } from './useGrid.js'
 import { getPillCssStyle } from './pillStyle.js'
 
-export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, suppressRef, onPillClick, showPills = true, pillStyle }) {
+export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, suppressRef, onPillClick, showPills = true, pillStyle, editModeActive = false }) {
   const containerRef    = useRef(null)
   const labelMapRef     = useRef(new Map())
   const rafRef          = useRef(null)
@@ -12,6 +12,12 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
   showPillsRef.current  = showPills
   const pillStyleRef    = useRef(pillStyle)
   pillStyleRef.current  = pillStyle
+  // In edit mode moeten pillen "doorzichtig" zijn voor de pointer: anders
+  // vangt de pill een pendown weg die eigenlijk bedoeld is om de muur
+  // eronder te slepen (body-drag begint immers al bij pointerdown, niet pas
+  // bij een los click-event dat de pill zelf afhandelt).
+  const editModeActiveRef = useRef(editModeActive)
+  editModeActiveRef.current = editModeActive
 
   useEffect(() => {
     const container = containerRef.current
@@ -63,7 +69,6 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
           if (!el) {
             el = document.createElement('span')
             el.className = 'measurement-label-global'
-            el.style.pointerEvents = 'auto'
             el.style.cursor = 'pointer'
             el.addEventListener('click', (e) => {
               e.stopPropagation()
@@ -81,6 +86,10 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
           el.style.left    = x + 'px'
           el.style.top     = y + 'px'
           el.textContent   = text
+          // In edit mode: 'none' zodat pointerdown door de pill heen valt
+          // naar de muur eronder (body-drag) i.p.v. door de pill zelf
+          // afgevangen te worden.
+          el.style.pointerEvents = editModeActiveRef.current ? 'none' : 'auto'
         }
 
         for (const [id, el] of [...labelMapRef.current]) {

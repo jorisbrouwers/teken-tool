@@ -6,7 +6,7 @@ const MAX_HISTORY = 50
 // Snapshot: exclude Transformer, images, and LineGizmo handle circles.
 function takeSnapshot(layer) {
   return layer.getChildren()
-    .filter(n => n.getClassName() !== 'Transformer' && n.getClassName() !== 'Image' && !n.name()?.startsWith('lineGizmoHandle'))
+    .filter(n => n.getClassName() !== 'Transformer' && n.getClassName() !== 'Image' && !n.name()?.startsWith('lineGizmoHandle') && !n.name()?.startsWith('segmentGizmoHandle'))
     .map(n => {
       const attrs = { ...n.attrs }
       delete attrs.visible // runtime-only (viewport culling) — undo mag dit niet terugzetten

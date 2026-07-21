@@ -19,7 +19,7 @@ const HANDLE_RADIUS_MAX  = 8
 // raken/pakken van de handle, verandert niets aan het uiterlijk. Groter dan
 // de bol zelf zodat per ongeluk een muurlijn pakken i.p.v. de hinge minder
 // snel gebeurt.
-const HANDLE_HIT_STROKE_WIDTH = 26
+const HANDLE_HIT_STROKE_WIDTH = 16
 
 // eslint-disable-next-line no-unused-vars
 export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onEndpointBodySnap, onEndpointCollapse, onMeasureConfirm, onMeasureDelete, snapEnabledRef, version, autoEditRef, showPills = true, pillStyle }) {

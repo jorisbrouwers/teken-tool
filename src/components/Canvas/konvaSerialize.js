@@ -39,7 +39,7 @@ export function serializeNodes(nodes) {
 // afgaat zou ze anders als content opslaan.
 export function serializeLayer(layer) {
   return layer.getChildren()
-    .filter(n => n.getClassName() !== 'Transformer' && !n.name()?.startsWith('lineGizmoHandle'))
+    .filter(n => n.getClassName() !== 'Transformer' && !n.name()?.startsWith('lineGizmoHandle') && !n.name()?.startsWith('segmentGizmoHandle'))
     .map(node => {
       const attrs = { ...node.attrs }
       if (node.getClassName() === 'Image') delete attrs.image // not serializable
@@ -63,7 +63,7 @@ export function deserializeLayer(data, layer) {
 
   data.forEach(({ type, attrs }) => {
     // Oudere snapshots kunnen per abuis opgeslagen gizmo-handles bevatten.
-    if (attrs.name?.startsWith('lineGizmoHandle')) return
+    if (attrs.name?.startsWith('lineGizmoHandle') || attrs.name?.startsWith('segmentGizmoHandle')) return
     if (type === 'Image') {
       const img = new Image()
       img.onload = () => {

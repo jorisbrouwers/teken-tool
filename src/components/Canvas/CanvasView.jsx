@@ -15,6 +15,11 @@ const WALL_ALIGN_SNAP_SCREEN_PX = 20
 const WALL_BODY_SNAP_SCREEN_PX = 15
 // Muur-tool: hoek-snap-tolerantie (45°-veelvouden), zelfde als lijn/pijl-tool.
 const SNAP_RAD_WALL = 3 * Math.PI / 180
+// Muur-tool: tolerantie voor het automatisch ongedaan maken van een mid-
+// segment-aftakking (splitWallAt) zodra de aftakking zelf verwijderd wordt —
+// zie tryMergeCollinearJoint. Iets ruimer dan SNAP_RAD_WALL omdat een muur
+// na eerdere bewerkingen niet meer perfect 180° hoeft te zijn.
+const WALL_MERGE_COLLINEAR_TOL_RAD = 8 * Math.PI / 180
 // Muur-body-slepen: precisie-rem. Onder SLOW_PXMS schermpixels/ms komt maar
 // MIN_SENSITIVITY van de ruwe pointerbeweging door (fijn positioneren tot op
 // enkele cm); boven FAST_PXMS is het gewoon 1:1 (huidig gedrag). Ertussenin
@@ -106,6 +111,7 @@ import CropOverlay from './CropOverlay.jsx'
 import CalibrateDialog from '../common/CalibrateDialog.jsx'
 import Minimap from '../Minimap/Minimap.jsx'
 import LineGizmo from './LineGizmo.jsx'
+import SegmentGizmo from './SegmentGizmo.jsx'
 import MeasurementLabels from './MeasurementLabels.jsx'
 import HingeDecorations from './HingeDecorations.jsx'
 import ZoneFillOverlay from './ZoneFillOverlay.jsx'
@@ -181,9 +187,18 @@ const CanvasView = forwardRef(function CanvasView(
   const bodyXAlignRef       = useRef(null)   // blue rechte-lijn-richting-guide tijdens muur-body-slepen
   const gizmoAutoEditRef    = useRef(false)  // when true, LineGizmo opens edit mode on mount
 
+  // ─── Segment gizmo state (losse lijn/pijl/L-vorm, zie isEditableLinear) ─────
+  const [segmentGizmoNode, setSegmentGizmoNode] = useState(null)
+  const segmentGizmoNodeRef = useRef(null)
+
   function setGizmoNode(node) {
     lineGizmoNodeRef.current = node
     setLineGizmoNode(node)
+  }
+
+  function setSegmentGizmo(node) {
+    segmentGizmoNodeRef.current = node
+    setSegmentGizmoNode(node)
   }
 
   function isSingleLinear(node) {
@@ -197,6 +212,20 @@ const CanvasView = forwardRef(function CanvasView(
   // markering bij het inladen (normalizeSnapshot).
   function isWallSegment(node) {
     return isSingleLinear(node) && !!node.attrs.isWall
+  }
+
+  // Losse (niet-muur) lijn/pijl/L-vorm: scalen/roteren via de Transformer is
+  // voor deze vormen onlogisch (je verplaatst alleen een hoekpunt, of het
+  // geheel) — die krijgen daarom SegmentGizmo (alleen hoekpunt-handles) i.p.v.
+  // de normale resize/rotate-anchors. L-vorm = Line met 3 punten (6 getallen),
+  // niet gesloten (dat zou een driehoek zijn).
+  function isEditableLinear(node) {
+    if (!node) return false
+    const cls = node.getClassName()
+    if (cls !== 'Line' && cls !== 'Arrow') return false
+    if (node.attrs.isWall || node.attrs.closed) return false
+    const len = node.points().length
+    return len === 4 || len === 6
   }
 
   // Centrale plek voor "mag Konva deze node native slepen?" — gebruikt overal
@@ -330,12 +359,81 @@ const CanvasView = forwardRef(function CanvasView(
     setMinimapVersion(v => v + 1)
   }
 
-  // Breaks connections on adjacent nodes then destroys each node.
-  // Returns true if the active gizmo node was deleted or had a connection cleared
-  // (caller must then either call hideToolbar() or setLineGizmoVersion()).
+  // Als (peerNode, peerEp) na het verbreken van een verbinding nog maar één
+  // buur overheeft die bovendien in het verlengde ligt (180°, binnen
+  // WALL_MERGE_COLLINEAR_TOL_RAD) — d.w.z. een mid-segment-aftakking is net
+  // verwijderd en het T-punt is overbodig geworden — smelt de twee helften
+  // samen tot één muur die de oorspronkelijke (voor-de-split) geometrie
+  // herstelt. Bewaart lengte/stijl; herbedraadt externe verbindingen aan
+  // beide buitenkanten. Geeft de nieuwe muur terug, of null als er niets te
+  // versmelten viel.
+  function tryMergeCollinearJoint(node, ep, layer) {
+    const conns = getConns(node, ep)
+    if (conns.length !== 1) return null  // nog een T-splitsing, of een vrij eindpunt
+    const peer = layer.findOne(`#${conns[0].id}`)
+    if (!peer || peer === node) return null
+    const peerEp = conns[0].ep
+    if (getConns(peer, peerEp).length !== 1) return null  // peer zelf ziet hier nog meer buren
+
+    const pts = node.points()
+    const angle = Math.atan2(pts[ep * 2 + 1] - pts[(1 - ep) * 2 + 1], pts[ep * 2] - pts[(1 - ep) * 2])
+    const ppts = peer.points()
+    const peerFarEp = 1 - peerEp
+    const peerAngle = Math.atan2(ppts[peerFarEp * 2 + 1] - ppts[peerEp * 2 + 1], ppts[peerFarEp * 2] - ppts[peerEp * 2])
+    let diff = Math.abs(angle - peerAngle) % (2 * Math.PI)
+    if (diff > Math.PI) diff = 2 * Math.PI - diff
+    if (diff >= WALL_MERGE_COLLINEAR_TOL_RAD) return null  // niet (meer) recht — laat het T-punt gewoon staan
+
+    const outerA = { x: node.x() + pts[(1 - ep) * 2], y: node.y() + pts[(1 - ep) * 2 + 1] }
+    const outerB = { x: peer.x() + ppts[peerFarEp * 2], y: peer.y() + ppts[peerFarEp * 2 + 1] }
+    const cls = node.getClassName()
+    const merged = new Konva[cls]({
+      id: generateId(), x: outerA.x, y: outerA.y,
+      points: [0, 0, outerB.x - outerA.x, outerB.y - outerA.y],
+      stroke: node.stroke(), strokeWidth: node.strokeWidth(), opacity: node.opacity(),
+      hitStrokeWidth: node.hitStrokeWidth(), listening: true, draggable: false,
+      perfectDrawEnabled: false, shadowForStrokeEnabled: false, isWall: true,
+      lineCap: node.lineCap(), lineJoin: node.lineJoin(),
+      ...(node.dash()?.length ? { dash: node.dash() } : {}),
+      ...(cls === 'Arrow' ? { fill: node.fill(), pointerLength: node.pointerLength(), pointerWidth: node.pointerWidth() } : {}),
+    })
+    layer.add(merged)
+
+    for (const conn of getConns(node, 1 - ep)) {
+      const p = layer.findOne(`#${conn.id}`)
+      if (!p) continue
+      removeConn(p, conn.ep, node.id(), 1 - ep)
+      addConn(p, conn.ep, merged, 0)
+    }
+    for (const conn of getConns(peer, peerFarEp)) {
+      const p = layer.findOne(`#${conn.id}`)
+      if (!p) continue
+      removeConn(p, conn.ep, peer.id(), peerFarEp)
+      addConn(p, conn.ep, merged, 1)
+    }
+
+    // Verwijzingen naar de twee oude helften moeten meeverhuizen naar de
+    // nieuwe muur — anders verdwijnt bijvoorbeeld de toolbar/gizmo stilletjes
+    // omdat hun node ineens vernietigd is.
+    if (lineGizmoNodeRef.current === node || lineGizmoNodeRef.current === peer) setGizmoNode(merged)
+    if (toolbarTargetRef.current === node || toolbarTargetRef.current === peer) toolbarTargetRef.current = merged
+
+    node.destroy()
+    peer.destroy()
+    return merged
+  }
+
+  // Breaks connections on adjacent nodes then destroys each node. Ook: als
+  // het verbreken van een verbinding een mid-segment-aftakking (splitWallAt)
+  // overbodig maakt (het T-punt heeft nu nog maar twee, rechte buren), wordt
+  // die automatisch weer samengevoegd tot één muur — zie tryMergeCollinearJoint.
+  // Returns true if the active gizmo node was deleted, had a connection
+  // cleared, or werd vervangen door een samengevoegde muur (caller moet dan
+  // hideToolbar() of setLineGizmoVersion() aanroepen).
   function disconnectAndDestroy(nodesToDelete, layer) {
     const gizmoNode = lineGizmoNodeRef.current
     let gizmoAffected = false
+    const affectedPeers = []  // [{ node, ep }] — kandidaten voor tryMergeCollinearJoint
     for (const node of nodesToDelete) {
       for (let ep = 0; ep < 2; ep++) {
         for (const conn of getConns(node, ep)) {
@@ -343,10 +441,16 @@ const CanvasView = forwardRef(function CanvasView(
           if (!peer) continue
           removeConn(peer, conn.ep, node.id(), ep)
           if (peer === gizmoNode) gizmoAffected = true
+          affectedPeers.push({ node: peer, ep: conn.ep })
         }
       }
       if (node === gizmoNode) gizmoAffected = true
       node.destroy()
+    }
+    for (const { node: peerNode, ep: peerEp } of affectedPeers) {
+      if (!peerNode.getLayer()) continue  // ondertussen zelf al vernietigd/versmolten
+      const merged = tryMergeCollinearJoint(peerNode, peerEp, layer)
+      if (merged && (peerNode === gizmoNode || merged === lineGizmoNodeRef.current)) gizmoAffected = true
     }
     return gizmoAffected
   }
@@ -422,6 +526,11 @@ const CanvasView = forwardRef(function CanvasView(
 
   function handleLineEndpointDragEnd() {
     wallEditActiveRef.current = false
+    historyPushRef.current?.()
+    scheduleSnapshot()
+  }
+
+  function handleSegmentEndpointDragEnd() {
     historyPushRef.current?.()
     scheduleSnapshot()
   }
@@ -656,8 +765,21 @@ const CanvasView = forwardRef(function CanvasView(
     if (isWallSegment(node)) {
       tr?.nodes([])
       setGizmoNode(node)
+      setSegmentGizmo(null)
+    } else if (isEditableLinear(node)) {
+      // Losse lijn/pijl/L-vorm: scalen/roteren via de Transformer is voor
+      // deze vormen onlogisch (alleen een hoekpunt, of het geheel, wordt
+      // verplaatst) — net als bij een muur dus een eigen gizmo i.p.v. de
+      // Transformer (die berekent zijn hit-box/clientRect uit zijn eigen
+      // zichtbare anchors/border, dus enkel de anchors verbergen volstaat
+      // niet — vandaar volledige detach, met SegmentGizmo's eigen body-drag
+      // als vervanging voor het gizmo-bbox-slepen).
+      tr?.nodes([])
+      setGizmoNode(null)
+      setSegmentGizmo(node)
     } else {
       setGizmoNode(null)
+      setSegmentGizmo(null)
     }
     // Images get their own rotate buttons — hide the transformer rotation handle.
     if (tr) tr.rotateEnabled(!isImage)
@@ -668,7 +790,7 @@ const CanvasView = forwardRef(function CanvasView(
     // clientRect (incl. padding/anchors/rotatiegreep) zodat de toolbar er onder
     // altijd echt vrij van blijft — dezelfde aanpak als bij multi-selectie.
     const box = stage.container().getBoundingClientRect()
-    const useTransformerRect = tr && !isWallSegment(node) && !node.attrs.isLocked && tr.nodes().includes(node)
+    const useTransformerRect = tr && !isWallSegment(node) && !isEditableLinear(node) && !node.attrs.isLocked && tr.nodes().includes(node)
     const r = useTransformerRect ? tr.getClientRect() : node.getClientRect()
     placeToolbar(div, box,
       box.left + r.x + r.width / 2,
@@ -682,6 +804,7 @@ const CanvasView = forwardRef(function CanvasView(
     setShowColorPicker(false)
     setImageLocked(false)
     setGizmoNode(null)
+    setSegmentGizmo(null)
     if (toolbarDivRef.current) toolbarDivRef.current.style.display = 'none'
     // Restore rotation handle when deselecting.
     const tr = transformerRef.current
@@ -868,7 +991,7 @@ const CanvasView = forwardRef(function CanvasView(
       for (let dx = -R; dx <= R; dx += STEP) {
         if (dx * dx + dy * dy > R * R) continue
         const hit = mainLayer.getIntersection({ x: containerPos.x + dx, y: containerPos.y + dy })
-        if (hit && hit.getClassName() !== 'Transformer' && !hit.attrs.isImage && !hit.name()?.startsWith('lineGizmoHandle')) {
+        if (hit && hit.getClassName() !== 'Transformer' && !hit.attrs.isImage && !hit.name()?.startsWith('lineGizmoHandle') && !hit.name()?.startsWith('segmentGizmoHandle')) {
           toDestroy.add(hit)
         }
       }
@@ -1479,7 +1602,7 @@ const CanvasView = forwardRef(function CanvasView(
                 const mainLayer = mainLayerRef.current
                 // Hit-test: check normal nodes, then locked images manually.
                 let hit = hitTestAt(mainLayer, pos)
-                if (hit?.name()?.startsWith('lineGizmoHandle')) hit = null
+                if (hit?.name()?.startsWith('lineGizmoHandle') || hit?.name()?.startsWith('segmentGizmoHandle')) hit = null
                 if (!hit || hit.getClassName() === 'Transformer') {
                   const children = mainLayer?.getChildren() ?? []
                   for (let i = children.length - 1; i >= 0; i--) {
@@ -1522,7 +1645,7 @@ const CanvasView = forwardRef(function CanvasView(
             const mainLayer  = mainLayerRef.current
             const transformer = transformerRef.current
             let hit = hitTestAt(mainLayer, pos)
-            if (hit?.name()?.startsWith('lineGizmoHandle')) hit = null
+            if (hit?.name()?.startsWith('lineGizmoHandle') || hit?.name()?.startsWith('segmentGizmoHandle')) hit = null
 
             if (!hit || hit.getClassName() === 'Transformer') {
               // Fall back to manual bounding-box check for locked images.
@@ -1681,6 +1804,7 @@ const CanvasView = forwardRef(function CanvasView(
     let shapePreview        = null  // temporary shape on drawingLayer
     let shapeStart          = { x: 0, y: 0 }
     let snapIndicator       = null  // dashed snap indicator line on drawingLayer
+    let shapeDrawPillEl     = null  // maat-pill tijdens het tekenen van een 'line' (alleen die tool, alleen tijdens plaatsen)
     let selecting           = false
     let selStart            = { x: 0, y: 0 }
     let erasing             = false
@@ -2128,6 +2252,8 @@ const CanvasView = forwardRef(function CanvasView(
       if (!shapePreview) return
       snapIndicator?.destroy()
       snapIndicator = null
+      shapeDrawPillEl?.remove()
+      shapeDrawPillEl = null
       const cls = shapePreview.getClassName()
       // Strip transparent fill so the hit canvas only covers the stroke border.
       // Without this, getIntersection fires inside a hollow Rect/Ellipse.
@@ -2592,6 +2718,14 @@ const CanvasView = forwardRef(function CanvasView(
           const snapped = snapLineAngle(shapeStart, pos, snapEnabledRef.current)
           const { x: endX, y: endY, isSnapping, snappedAngle } = snapped
           shapePreview.points([shapeStart.x, shapeStart.y, endX, endY])
+          // Maat-pill tijdens het plaatsen — alleen voor de 'line'-tool (niet
+          // pijl/L-vorm/etc.), en alleen deze allereerste teken-drag; de
+          // SegmentGizmo die na selectie verschijnt toont hem bewust niet meer.
+          if (tool === 'line') {
+            if (!shapeDrawPillEl) shapeDrawPillEl = createWallPillEl()
+            const lengthM = Math.hypot(endX - shapeStart.x, endY - shapeStart.y) / GRID_SIZE
+            updateWallPillEl(shapeDrawPillEl, (shapeStart.x + endX) / 2, (shapeStart.y + endY) / 2, lengthM)
+          }
           if (isSnapping) {
             // Extend indicator to full canvas edges in the snapped direction
             const sc = Math.cos(snappedAngle), ss = Math.sin(snappedAngle)
@@ -2874,7 +3008,7 @@ const CanvasView = forwardRef(function CanvasView(
           const cp = stage.getPointerPosition()
           if (cp) {
             let hit = mainLayer.getIntersection(cp)
-            if (hit?.name()?.startsWith('lineGizmoHandle')) hit = null
+            if (hit?.name()?.startsWith('lineGizmoHandle') || hit?.name()?.startsWith('segmentGizmoHandle')) hit = null
             // Locked images have listening:false — check them manually.
             if (!hit || hit.getClassName() === 'Transformer') {
               const children = mainLayer.getChildren()
@@ -3150,6 +3284,7 @@ const CanvasView = forwardRef(function CanvasView(
       selRect.destroy()
       clearLiveCanvas()
       shapePreview?.destroy()
+      shapeDrawPillEl?.remove()
       cancelWallDraw()
       calibDrawRef.current?.previewLine?.destroy()
     }
@@ -3164,7 +3299,7 @@ const CanvasView = forwardRef(function CanvasView(
     const tr = transformerRef.current
     const ml = mainLayerRef.current
     if (!tr) return
-    const hasSelection = tr.nodes().length > 0 || !!lineGizmoNodeRef.current
+    const hasSelection = tr.nodes().length > 0 || !!lineGizmoNodeRef.current || !!segmentGizmoNodeRef.current
     if (!hasSelection) return
     tr.nodes([])
     hideToolbar()
@@ -3217,7 +3352,7 @@ const CanvasView = forwardRef(function CanvasView(
         if (!mainLayer || !transformer) return
         e.preventDefault()
         const trNodes   = transformer.nodes()
-        const gizmoNode = lineGizmoNodeRef.current
+        const gizmoNode = lineGizmoNodeRef.current ?? segmentGizmoNodeRef.current
         const allNodes  = gizmoNode && !trNodes.includes(gizmoNode)
           ? [...trNodes, gizmoNode]
           : trNodes
@@ -3836,6 +3971,7 @@ const CanvasView = forwardRef(function CanvasView(
         onPillClick={handlePillClick}
         showPills={showPills}
         pillStyle={pillStyle}
+        editModeActive={!!lineGizmoNode}
       />
 
       <ZoneFillOverlay
@@ -3906,6 +4042,16 @@ const CanvasView = forwardRef(function CanvasView(
           autoEditRef={gizmoAutoEditRef}
           showPills={showPills}
           pillStyle={pillStyle}
+        />
+      )}
+
+      {segmentGizmoNode && (
+        <SegmentGizmo
+          node={segmentGizmoNode}
+          stageRef={stageRef}
+          mainLayerRef={mainLayerRef}
+          snapEnabledRef={snapEnabledRef}
+          onEndpointDragEnd={handleSegmentEndpointDragEnd}
         />
       )}
 
