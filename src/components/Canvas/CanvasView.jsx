@@ -42,6 +42,23 @@ const MIN_CALIBRATION_LINE_STAGE = 0.15 * GRID_SIZE
 // bewerken vlak bij een muurrand of scharnier de hittest niet laat flikkeren.
 const ROOM_CLICK_MARGIN_STAGE = 0.3 * GRID_SIZE
 
+// Muren worden altijd in deze vaste kleur getekend, ongeacht de globaal
+// actieve pen-kleur — begrenzing (zie WALL_BOUNDARY_OPTIONS in wallGraph.js)
+// bepaalt de zichtbare kleur via een aparte overlay-laag, niet de muur zelf.
+const WALL_STROKE_COLOR = '#1d1d1d'
+
+// Vlak-aard: onafhankelijk van installatie-toewijzing (zie faceAttributes
+// hieronder) — bepaalt hoe een vlak bij de latere Blender-export behandeld
+// wordt (gebruiksoppervlak, dakvlak, buiten de berekening, of beperkte
+// stahoogte). Default (geen entry in note.settings.faceAttributes) = eerste
+// waarde hier.
+const FACE_AARD_OPTIONS = [
+  { value: 'gebruiksruimte', label: 'Gebruiksruimte' },
+  { value: 'plat dak', label: 'Plat dak' },
+  { value: 'niet berekend', label: 'Niet berekend' },
+  { value: '<1.5m', label: '<1,5m' },
+]
+
 // Muur-tool cursors. Basis = zwarte punt met witte rand (tekenen op leeg
 // canvas). De andere drie geven de hover-context weer zodat duidelijk is wat
 // een klik daar doet, vóórdat de gebruiker klikt:
@@ -67,6 +84,16 @@ function generateId() {
 // is altijd de positie ONDER de selectie; is daar niet genoeg ruimte voor, dan
 // klemt hij simpelweg tegen de onderrand van het canvas (blijft dus onder de
 // selectie "plakken" i.p.v. naar boven te springen — dat zou de gizmo's blokkeren).
+// Stage-coördinaat (content-space) → scherm-coördinaat (viewport, voor
+// fixed-position DOM-overlays zoals de floaty-toast) — zelfde soort
+// container-relatief-naar-viewport-omrekening als positionAndShowToolbar
+// verderop doet.
+function stageToClient(stage, x, y) {
+  const p = stage.getAbsoluteTransform().point({ x, y })
+  const box = stage.container().getBoundingClientRect()
+  return { x: box.left + p.x, y: box.top + p.y }
+}
+
 function placeToolbar(div, box, left, top) {
   div.style.display = 'flex'  // vóór het meten: offsetWidth/Height van display:none is 0
   const m = 8
@@ -102,7 +129,9 @@ import { useHistory } from './useHistory.js'
 import { useGrid, GRID_SIZE } from './useGrid.js'
 import { evaluateExpression } from '../../math/mathEval.js'
 import { deserializeLayer, serializeNodes, normalizeSnapshot } from './konvaSerialize.js'
-import { getConns, connsAttr, addConn, removeConn, weldAllAt, connectAllPairs, walkHierarchy, collectSnapVertices, collectMeasureAffected, findWallEndpointNear, findWallBodyNear, closestPointOnSegment } from './wallGraph.js'
+import { getConns, connsAttr, addConn, removeConn, weldAllAt, connectAllPairs, walkHierarchy, collectSnapVertices, collectMeasureAffected, findWallEndpointNear, findWallBodyNear, closestPointOnSegment, WALL_BOUNDARY_OPTIONS, resolveWallBoundary } from './wallGraph.js'
+import WallBoundaryOverlay from './WallBoundaryOverlay.jsx'
+import { spawnFloatyText } from './floatyText.js'
 import { getPillCssStyle } from './pillStyle.js'
 import { applyViewportCulling } from './viewportCulling.js'
 import { liveSnapshotCache } from './usePersistence.js'
@@ -121,7 +150,7 @@ import { COLORS } from '../StylePanel/StylePanel.jsx'
 import './Canvas.css'
 
 const CanvasView = forwardRef(function CanvasView(
-  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, onCanvasPointerDown, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true, showZones = false, showMinimap = true, patchNoteSettings },
+  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, onCanvasPointerDown, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true, showZones = false, showMinimap = true, patchNoteSettings, linkingFloorId = null, onEndpointLinked },
   ref
 ) {
   // ─── DOM + Konva refs ───────────────────────────────────────────────────────
@@ -143,6 +172,19 @@ const CanvasView = forwardRef(function CanvasView(
   const activeToolRef = useRef(activeTool)
   const onInputDetectedRef = useRef(onInputDetected)
   const onCanvasPointerDownRef = useRef(onCanvasPointerDown)
+  // linkingFloorId/note worden gelezen in pointer-handlers die éénmalig (bij
+  // mount, dependency [note.id, ...] — niet [note]) via useEffect zijn
+  // opgezet — zonder ref zou die closure de waarde vasthouden van het moment
+  // dat de effect opzette (stale closure), net als bij activeToolRef
+  // hierboven. Voor `note` is dit extra belangrijk: note.settings.floors
+  // (referentiepunten) wijzigt binnen dezelfde notitie, dus zonder
+  // noteRef zou de hiërarchie-eigendomscheck hieronder een verouderde
+  // floors-lijst zien. onEndpointLinked zelf hoeft geen ref (App.jsx geeft
+  // er een stabiele, leeg-dep useCallback voor door), maar wordt voor de
+  // consistentie met dit patroon toch via een ref gelezen.
+  const linkingFloorIdRef = useRef(linkingFloorId)
+  const onEndpointLinkedRef = useRef(onEndpointLinked)
+  const noteRef = useRef(note)
   penColorRef.current = penColor
   penSizeRef.current = penSize
   opacityRef.current = opacity
@@ -151,6 +193,9 @@ const CanvasView = forwardRef(function CanvasView(
   activeToolRef.current = activeTool
   onInputDetectedRef.current = onInputDetected
   onCanvasPointerDownRef.current = onCanvasPointerDown
+  linkingFloorIdRef.current = linkingFloorId
+  onEndpointLinkedRef.current = onEndpointLinked
+  noteRef.current = note
 
   // ─── Floating toolbar state ─────────────────────────────────────────────────
   const toolbarDivRef = useRef(null)
@@ -158,6 +203,20 @@ const CanvasView = forwardRef(function CanvasView(
   const [imageLocked, setImageLocked] = useState(false)
   const [selectedType, setSelectedType] = useState(null)
   const [selectedColor, setSelectedColor] = useState(null)
+  // Muurbegrenzing/hulplijn-toggle in de object-toolbar (i.p.v. de vrije
+  // kleurkeuze, die voor muren niet meer getoond wordt — zie
+  // positionAndShowToolbar/hideToolbar en handleBoundaryChange/handleAuxToggle).
+  const [isWallToolbarTarget, setIsWallToolbarTarget] = useState(false)
+  const [wallBoundary, setWallBoundary] = useState('buiten')
+  const [wallIsAux, setWallIsAux] = useState(false)
+  // Dak boven een gevel (t.b.v. Blender-export, zie BLENDER_EXPORT_PLAN.md).
+  // Velden bewerken als strings; naar attrs geschreven als getallen/null via
+  // applyRoof(). roofDirtyRef: er is sinds de laatste history-push getypt in
+  // een dakveld — zodat een blur (of selectiewissel) precies één undo-punt zet.
+  const [wallRoofBaseHeight, setWallRoofBaseHeight] = useState('')
+  const [wallRoofCourses, setWallRoofCourses] = useState([])
+  const [showRoofPanel, setShowRoofPanel] = useState(false)
+  const roofDirtyRef = useRef(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [deleteHolding, setDeleteHolding] = useState(false)
   const deleteTimerRef = useRef(null)
@@ -190,6 +249,105 @@ const CanvasView = forwardRef(function CanvasView(
   // ─── Segment gizmo state (losse lijn/pijl/L-vorm, zie isEditableLinear) ─────
   const [segmentGizmoNode, setSegmentGizmoNode] = useState(null)
   const segmentGizmoNodeRef = useRef(null)
+
+  // ─── Referentiepunt-koppeling (Gebouweigenschappen: verdieping ↔ hoekpunt) ──
+  // "Koppel" in de sidebar zet linkingFloorId aan; de eerstvolgende tik op een
+  // hoekpunt (via de wallDraw-pointerup-afhandeling, zie hieronder) committeert
+  // meteen (onEndpointLinked) — geen aparte bevestigingsstap. De marker is
+  // puur visuele feedback, leeft op drawingLayer (niet mainLayer), dus nooit
+  // onderdeel van de persistente content (geen serialisatie-uitzondering
+  // nodig, zie konvaSerialize.js performance-invariant 1).
+  const linkedMarkerRef = useRef(null)
+
+  function showLinkedMarker(point) {
+    const layer = drawingLayerRef.current
+    if (linkedMarkerRef.current) {
+      linkedMarkerRef.current.destroy()
+      linkedMarkerRef.current = null
+    }
+    if (point && layer) {
+      const marker = new Konva.Circle({
+        x: point.x, y: point.y, radius: 6 / (stageRef.current?.scaleX() || 1),
+        stroke: '#e64980', strokeWidth: 2 / (stageRef.current?.scaleX() || 1),
+        fill: 'white', listening: false, perfectDrawEnabled: false,
+      })
+      layer.add(marker)
+      linkedMarkerRef.current = marker
+    }
+    layer?.batchDraw()
+  }
+
+  // Gedeeld door beide plekken die een hoek-treffer tijdens de koppel-modus
+  // afhandelen (de wallDraw-pointerup-afhandeling voor de normale tik-op-de-
+  // muur-zelf-route, en de onClick-fallback voor een tik op écht leeg
+  // canvas). `found` komt van findWallEndpointNear: { node, ep, x, y }.
+  //
+  // Elke muur-hiërarchie mag maar door één verdieping geclaimd worden — een
+  // hiërarchie is immers één getekende plattegrond, die hoort niet
+  // tegelijk het referentiepunt van twee verdiepingen te zijn. Bij een
+  // conflict (een ANDERE verdieping heeft deze hiërarchie al) komt er een
+  // foutmelding i.p.v. een koppeling; de eigen verdieping herkoppelen binnen
+  // dezelfde hiërarchie (het punt verplaatsen) blijft gewoon toegestaan.
+  function commitLinkedEndpoint(found) {
+    const stage = stageRef.current
+    const mainLayer = mainLayerRef.current
+    if (!stage || !mainLayer) return
+    const clientPos = stageToClient(stage, found.x, found.y)
+    const toastY = clientPos.y + 14 // net onder het scharnier, niet op de cursor (pen op tablet is onbetrouwbaar)
+
+    const hierarchyIds = new Set(walkHierarchy(found.node, mainLayer).map(n => n.id()))
+    const floors = noteRef.current.settings?.floors ?? []
+    const owner = floors.find(f => f.referencePoint && hierarchyIds.has(f.referencePoint.wallId))
+    if (owner && owner.id !== linkingFloorIdRef.current) {
+      spawnFloatyText(clientPos.x, toastY, `Al gekoppeld aan "${owner.name}"`, 'error')
+      // Koppel-modus alsnog verlaten (point=null → App.jsx schrijft niets weg,
+      // zet linkingFloorId enkel op null) — zonder dit blijft de gebruiker
+      // vastzitten in een modus zonder zichtbare manier om 'm te verlaten,
+      // vooral met de sidebar al dicht.
+      onEndpointLinkedRef.current?.(null)
+      return
+    }
+
+    const point = { wallId: found.node.id(), ep: found.ep, x: found.x, y: found.y }
+    showLinkedMarker(point)
+    spawnFloatyText(clientPos.x, toastY, 'Gekoppeld', 'success')
+    onEndpointLinkedRef.current?.(point)
+  }
+
+  // Verbreekt stilzwijgend elk referentiepunt waarvan de gekoppelde muur niet
+  // meer bestaat — een merge/split/verwijdering (tryMergeCollinearJoint,
+  // splitWallAt, handleLineEndpointCollapse, "Verwijderen", …) vervangt of
+  // vernietigt de node-id waar referencePoint.wallId naar wijst, waardoor de
+  // koppeling stilletjes een dangling reference zou worden. Bewust géén
+  // melding hier (op verzoek: "stilzwijgend verbreken") — pas bij de export
+  // wordt gecontroleerd of een verdieping alsnog gekoppeld is (zie
+  // App.jsx/handleExportBlender), dáár komt de floaty-toast.
+  //
+  // Aangeroepen vanuit scheduleSnapshot() — dat is al de centrale plek die na
+  // vrijwel elke structurele wijziging aangeroepen wordt, dus dit vangt elke
+  // muur-vernietigende actie op zonder dat elke afzonderlijke plek (merge,
+  // split, delete, …) dit zelf hoeft te onthouden. Simpel verplaatsen van een
+  // hoekpunt of de hele hiërarchie behoudt dezelfde node-id's en raakt dus
+  // niet aan deze check — de export leest de live positie toch opnieuw uit.
+  function pruneInvalidReferencePoints() {
+    const note = noteRef.current
+    const floors = note?.settings?.floors ?? []
+    if (!floors.some(f => f.referencePoint)) return // veruit het gebruikelijkste geval, snel eruit
+    const mainLayer = mainLayerRef.current
+    if (!mainLayer) return
+    let changed = false
+    const nextFloors = floors.map(f => {
+      if (!f.referencePoint) return f
+      const node = mainLayer.findOne(`#${f.referencePoint.wallId}`)
+      if (node && isWallSegment(node)) return f
+      changed = true
+      return { ...f, referencePoint: null }
+    })
+    if (!changed) return
+    const newSettings = { ...note.settings, floors: nextFloors }
+    patchNoteSettings?.(note.id, newSettings)
+    updateNoteSettings(note.id, newSettings)
+  }
 
   function setGizmoNode(node) {
     lineGizmoNodeRef.current = node
@@ -255,6 +413,10 @@ const CanvasView = forwardRef(function CanvasView(
   // patchNoteSettings erbij zodat App.jsx's eigen `notes`-state meteen
   // meeloopt (zie updateRoomAssignment/carryRoomAssignments hieronder).
   const [roomAssignments, setRoomAssignments] = useState(() => note.settings?.roomAssignments ?? {})
+  // Vlak-aard: onafhankelijk van installatie-toewijzing (zie BLENDER_EXPORT_PLAN.md —
+  // een vlak kan zowel "geen installatie" als "niet berekend" zijn, of "geen
+  // installatie" + "plat dak"). Default (geen entry) = 'gebruiksruimte'.
+  const [faceAttributes, setFaceAttributes] = useState(() => note.settings?.faceAttributes ?? {})
   const [assignPopup, setAssignPopup] = useState(null) // { hash, left, top } | null
   const hoveredFaceKeyRef = useRef(null)
   // true zolang een hinge (endpoint) of een hele hiërarchie wordt gesleept —
@@ -311,6 +473,33 @@ const CanvasView = forwardRef(function CanvasView(
     updateNoteSettings(note.id, newSettings)
   }
 
+  function updateFaceAttribute(hash, aard) {
+    const next = { ...faceAttributes, [hash]: { aard } }
+    setFaceAttributes(next)
+    const newSettings = { ...note.settings, faceAttributes: next }
+    patchNoteSettings?.(note.id, newSettings)
+    updateNoteSettings(note.id, newSettings)
+  }
+
+  // Zelfde remap-logica als carryRoomAssignments hierboven, voor de losse
+  // vlak-aard-toewijzing — zie die functie voor de volledige toelichting.
+  function carryFaceAttributes(oldFaces, idMap) {
+    const additions = {}
+    for (const face of oldFaces) {
+      if (!face.edgeIds.every(id => idMap.has(id))) continue
+      const oldAttr = faceAttributes[faceHash(face)]
+      if (!oldAttr) continue
+      const newHash = face.edgeIds.map(id => idMap.get(id)).sort().join('|')
+      additions[newHash] = oldAttr
+    }
+    if (!Object.keys(additions).length) return
+    const next = { ...faceAttributes, ...additions }
+    setFaceAttributes(next)
+    const newSettings = { ...note.settings, faceAttributes: next }
+    patchNoteSettings?.(note.id, newSettings)
+    updateNoteSettings(note.id, newSettings)
+  }
+
   useEffect(() => {
     if (activeTool !== 'wall') {
       setAssignPopup(null)
@@ -320,8 +509,15 @@ const CanvasView = forwardRef(function CanvasView(
       // (schakelt automatisch naar 'select') — touch-pointermove keert in
       // onPointerMove sowieso meteen terug, dus die tak komt er niet aan toe.
       hoveredFaceKeyRef.current = null
+      showLinkedMarker(null)
     }
   }, [activeTool])
+
+  // Marker opruimen zodra de koppel-modus zelf uitgaat (succesvol gekoppeld,
+  // of anderszins beëindigd) — mag niet blijven hangen na afloop.
+  useEffect(() => {
+    if (!linkingFloorId) showLinkedMarker(null)
+  }, [linkingFloorId])
 
   // Edit mode (gizmo/vertex-handles van een geselecteerde muur-hiërarchie)
   // sluit een eventueel openstaand toewijzingsmenu — beide tegelijk open is
@@ -355,6 +551,11 @@ const CanvasView = forwardRef(function CanvasView(
   usePersistence(mainLayerRef, note.id, persistenceScheduleRef, persistenceFlushRef, penActivityRef)
 
   function scheduleSnapshot() {
+    // Centrale plek: wordt al na vrijwel elke structurele wijziging
+    // aangeroepen, dus dit vangt automatisch elke muur-vernietigende actie op
+    // (merge/split/verwijderen/…) zonder dat elke plek dit zelf hoeft te
+    // onthouden — zie pruneInvalidReferencePoints hierboven.
+    pruneInvalidReferencePoints()
     persistenceScheduleRef.current?.()
     setMinimapVersion(v => v + 1)
   }
@@ -393,6 +594,10 @@ const CanvasView = forwardRef(function CanvasView(
       stroke: node.stroke(), strokeWidth: node.strokeWidth(), opacity: node.opacity(),
       hitStrokeWidth: node.hitStrokeWidth(), listening: true, draggable: false,
       perfectDrawEnabled: false, shadowForStrokeEnabled: false, isWall: true,
+      // Begrenzing/hulplijn-status van de twee samengevoegde helften (die
+      // horen normaliter overeen te komen — afkomstig van dezelfde
+      // oorspronkelijke muur) gaan anders verloren bij het samenvoegen.
+      boundary: node.attrs.boundary, isAux: node.attrs.isAux,
       lineCap: node.lineCap(), lineJoin: node.lineJoin(),
       ...(node.dash()?.length ? { dash: node.dash() } : {}),
       ...(cls === 'Arrow' ? { fill: node.fill(), pointerLength: node.pointerLength(), pointerWidth: node.pointerWidth() } : {}),
@@ -470,6 +675,9 @@ const CanvasView = forwardRef(function CanvasView(
       stroke: host.stroke(), strokeWidth: host.strokeWidth(), opacity: host.opacity(),
       hitStrokeWidth: host.hitStrokeWidth(), listening: true, draggable: false,
       perfectDrawEnabled: false, shadowForStrokeEnabled: false, isWall: true,
+      // Begrenzing/hulplijn-status van de host gaat naar beide helften —
+      // zaten niet in de rest van deze lijst en gingen anders verloren.
+      boundary: host.attrs.boundary, isAux: host.attrs.isAux,
       lineCap: host.lineCap(), lineJoin: host.lineJoin(),
       ...(host.dash()?.length ? { dash: host.dash() } : {}),
       ...(cls === 'Arrow' ? { fill: host.fill(), pointerLength: host.pointerLength(), pointerWidth: host.pointerWidth() } : {}),
@@ -761,8 +969,26 @@ const CanvasView = forwardRef(function CanvasView(
     setImageLocked(!!node.attrs.isLocked)
     setShowColorPicker(false)
     setSelectedColor(!isImage && node.getClassName() !== 'Text' ? getNodeColor(node) : null)
+    const isWall = isWallSegment(node)
+    // Nog niet vastgelegde dakveld-bewerking van de vórige muur alsnog als één
+    // undo-punt wegschrijven voordat we van doelwit wisselen.
+    if (roofDirtyRef.current) {
+      roofDirtyRef.current = false
+      history.pushState()
+    }
+    setIsWallToolbarTarget(isWall)
+    setShowRoofPanel(false)
+    if (isWall) {
+      setWallBoundary(resolveWallBoundary(node))
+      setWallIsAux(!!node.attrs.isAux)
+      setWallRoofBaseHeight(
+        node.attrs.roofBaseHeightM == null || node.attrs.roofBaseHeightM === ''
+          ? '' : String(node.attrs.roofBaseHeightM)
+      )
+      setWallRoofCourses(readRoofCourses(node))
+    }
     // Walls get a custom gizmo instead of the transformer.
-    if (isWallSegment(node)) {
+    if (isWall) {
       tr?.nodes([])
       setGizmoNode(node)
       setSegmentGizmo(null)
@@ -803,6 +1029,7 @@ const CanvasView = forwardRef(function CanvasView(
     setSelectedColor(null)
     setShowColorPicker(false)
     setImageLocked(false)
+    setIsWallToolbarTarget(false)
     setGizmoNode(null)
     setSegmentGizmo(null)
     if (toolbarDivRef.current) toolbarDivRef.current.style.display = 'none'
@@ -810,6 +1037,15 @@ const CanvasView = forwardRef(function CanvasView(
     const tr = transformerRef.current
     if (tr) tr.rotateEnabled(true)
   }, [])
+
+  // Een al geselecteerde muur (gizmo actief) staat in de weg van de
+  // referentiepunt-koppeling hieronder (findWallEndpointNear wordt pas bereikt
+  // als er geen gizmo actief is, zie de wallDraw-pointerup-afhandeling) —
+  // bij het starten van "Koppel" dus meteen alle muur-hiërarchieën
+  // deselecteren zodat de gebruiker direct een hoekpunt kan aanklikken.
+  useEffect(() => {
+    if (linkingFloorId && lineGizmoNodeRef.current) hideToolbar()
+  }, [linkingFloorId, hideToolbar])
 
   // Toolbar boven de transformer bounding box voor multi-selectie.
   const positionToolbarAtTransformer = useCallback(() => {
@@ -821,6 +1057,7 @@ const CanvasView = forwardRef(function CanvasView(
     setSelectedType('multi')
     setImageLocked(false)
     setShowColorPicker(false)
+    setIsWallToolbarTarget(false)
     const firstColored = tr.nodes().find(n => !n.attrs.isImage && n.getClassName() !== 'Text')
     setSelectedColor(firstColored ? getNodeColor(firstColored) : null)
     tr.rotateEnabled(true) // multi-selection keeps the rotation handle
@@ -2658,7 +2895,7 @@ const CanvasView = forwardRef(function CanvasView(
             wd.moved = true
             wd.previewLine = new Konva.Line({
               points: [wd.startPt.x, wd.startPt.y, wd.startPt.x, wd.startPt.y],
-              stroke: penColorRef.current, strokeWidth: penSizeRef.current * 2,
+              stroke: WALL_STROKE_COLOR, strokeWidth: penSizeRef.current * 2,
               opacity: opacityRef.current / 100, lineCap: 'round',
               listening: false, perfectDrawEnabled: false,
             })
@@ -2863,6 +3100,21 @@ const CanvasView = forwardRef(function CanvasView(
         drawingLayer.batchDraw()
 
         if (!wd.moved) {
+          // Referentiepunt-koppeling (Gebouweigenschappen-sidebar, "Koppel"):
+          // een tik op/nabij een hoekpunt raakt vrijwel altijd de muur zelf
+          // (via hitStrokeWidth), dus die tik komt hier terecht — vóór en
+          // i.p.v. de normale "tik = edit mode activeren"-afhandeling
+          // hieronder, anders opent een poging om te koppelen per ongeluk de
+          // gizmo. Een TREFFER verlaat de koppel-modus altijd (geslaagd
+          // gekoppeld, óf een conflict — zie commitLinkedEndpoint); alleen
+          // een misser (geen hoekpunt binnen snap-afstand) laat de modus
+          // actief zodat opnieuw geprobeerd kan worden.
+          if (linkingFloorIdRef.current) {
+            const epSnapDist = WALL_EP_SNAP_SCREEN_PX / stage.scaleX()
+            const found = findWallEndpointNear(mainLayer, wd.startPt.x, wd.startPt.y, epSnapDist)
+            if (found) commitLinkedEndpoint(found)
+            return
+          }
           // Tik zonder sleep: selecteert de muur waarop de tik begon (edit-toestand);
           // een tik op leeg canvas of een andere muur legt de selectie elders/leeg.
           if (wd.hitNodeAtDown) {
@@ -2882,7 +3134,7 @@ const CanvasView = forwardRef(function CanvasView(
         const newNode = new Konva.Line({
           id: generateId(),
           points: [wd.startPt.x, wd.startPt.y, endPt.x, endPt.y],
-          stroke: penColorRef.current, strokeWidth: sw * 2,
+          stroke: WALL_STROKE_COLOR, strokeWidth: sw * 2,
           hitStrokeWidth: Math.max(sw * 4, HIT_MARGIN),
           opacity: opacityRef.current / 100, lineCap: 'round',
           listening: true, draggable: false, perfectDrawEnabled: false,
@@ -3068,6 +3320,21 @@ const CanvasView = forwardRef(function CanvasView(
 
       if (tool === 'wall' && justExitedEditModeRef.current) {
         justExitedEditModeRef.current = false
+        return
+      }
+
+      // Referentiepunt-koppeling (Gebouweigenschappen-sidebar, "Koppel") —
+      // gaat vóór ruimte-toewijzing hieronder: een klik in deze modus
+      // koppelt een hoekpunt, niet een vlak. (Dit vangt de zeldzame tik op
+      // écht leeg canvas op — de gewone corner-tik loopt via de
+      // wallDraw-pointerup-afhandeling hierboven, want die raakt vrijwel
+      // altijd de muur zelf.)
+      if (linkingFloorIdRef.current && tool === 'wall' && hit === stage) {
+        if (wallEditActiveRef.current || lineGizmoNodeRef.current) return
+        const pos = stagePos()
+        const epSnapDist = WALL_EP_SNAP_SCREEN_PX / stage.scaleX()
+        const found = findWallEndpointNear(mainLayer, pos.x, pos.y, epSnapDist)
+        if (found) commitLinkedEndpoint(found)
         return
       }
 
@@ -3780,6 +4047,7 @@ const CanvasView = forwardRef(function CanvasView(
     else positionToolbarAtTransformer()
     mainLayer.batchDraw()
     carryRoomAssignments(oldFacesForDuplicate, idMap)
+    carryFaceAttributes(oldFacesForDuplicate, idMap)
     history.pushState()
     scheduleSnapshot()
   }
@@ -3805,6 +4073,109 @@ const CanvasView = forwardRef(function CanvasView(
     setSelectedColor(hex)
     history.pushState()
     scheduleSnapshot()
+  }
+
+  function handleBoundaryChange(value) {
+    const node = toolbarTargetRef.current
+    const mainLayer = mainLayerRef.current
+    if (!node || !mainLayer) return
+    node.setAttr('boundary', value)
+    setWallBoundary(value)
+    mainLayer.batchDraw()
+    history.pushState()
+    scheduleSnapshot()
+  }
+
+  function handleAuxToggle() {
+    const node = toolbarTargetRef.current
+    const mainLayer = mainLayerRef.current
+    if (!node || !mainLayer) return
+    const next = !wallIsAux
+    node.setAttr('isAux', next || undefined)
+    // Visueel als streepjeslijn (zelfde verhouding als de "dashed"-penstijl
+    // elders in het bestand: dash = [strokeWidth*2, strokeWidth*3], daar
+    // uitgedrukt t.o.v. de halve strokeWidth) — zodat een hulplijn er ook
+    // uitziet als "geen echte muur", niet alleen data-matig zo behandeld
+    // wordt. Ook: begrenzingskleur negeert een hulplijn al (WallBoundaryOverlay
+    // slaat isAux-muren over), dus die twee visuele signalen bijten elkaar niet.
+    node.dash(next ? [node.strokeWidth() * 2, node.strokeWidth() * 3] : [])
+    setWallIsAux(next)
+    mainLayer.batchDraw()
+    history.pushState()
+    scheduleSnapshot()
+  }
+
+  // ─── Object toolbar: dak boven een gevel ───────────────────────────────────
+  // Zie "Dak per muur" in BLENDER_EXPORT_PLAN.md. Twee attrs op de muur-node:
+  //   roofBaseHeightM  — goothoogte boven het vloerpeil van die verdieping
+  //   roofCourses      — geordende daklagen [{ angleDeg, riseM }], onderste
+  //                      eerst; riseM null (alleen laatste) = "tot de nok".
+  // Lege lijst = geen gootlijn. Geen canvas-visualisatie (dat is Blender-kant),
+  // dus geen batchDraw/overlay hier — alleen data + save.
+  function readRoofCourses(node) {
+    const raw = Array.isArray(node.attrs.roofCourses) ? node.attrs.roofCourses : []
+    return raw.map(c => ({
+      angleDeg: c?.angleDeg == null ? '' : String(c.angleDeg),
+      riseM: c?.riseM == null ? '' : String(c.riseM),
+    }))
+  }
+
+  // baseHeightStr + courses (strings) → attrs. commit=true zet een undo-punt;
+  // tijdens typen (commit=false) alleen de dirty-vlag, zodat blur/selectiewissel
+  // één undo-punt maakt i.p.v. één per toetsaanslag.
+  function applyRoof(node, baseHeightStr, courses, { commit }) {
+    const cleaned = courses.map(c => ({
+      angleDeg: c.angleDeg === '' ? 0 : Number(c.angleDeg) || 0,
+      riseM: c.riseM === '' ? null : Number(c.riseM),
+    }))
+    node.setAttr('roofCourses', cleaned.length ? cleaned : undefined)
+    const bh = baseHeightStr === '' ? 0 : Number(baseHeightStr) || 0
+    node.setAttr('roofBaseHeightM', bh ? bh : undefined)
+    scheduleSnapshot()
+    if (commit) {
+      roofDirtyRef.current = false
+      history.pushState()
+    } else {
+      roofDirtyRef.current = true
+    }
+  }
+
+  function handleRoofBaseHeightInput(value) {
+    const node = toolbarTargetRef.current
+    if (!node) return
+    setWallRoofBaseHeight(value)
+    applyRoof(node, value, wallRoofCourses, { commit: false })
+  }
+
+  function handleRoofCourseInput(index, field, value) {
+    const node = toolbarTargetRef.current
+    if (!node) return
+    const next = wallRoofCourses.map((c, i) => (i === index ? { ...c, [field]: value } : c))
+    setWallRoofCourses(next)
+    applyRoof(node, wallRoofBaseHeight, next, { commit: false })
+  }
+
+  function commitRoofEdit() {
+    if (!roofDirtyRef.current) return
+    roofDirtyRef.current = false
+    history.pushState()
+  }
+
+  function handleAddRoofCourse() {
+    const node = toolbarTargetRef.current
+    if (!node) return
+    const next = [...wallRoofCourses, { angleDeg: '45', riseM: '' }]
+    setWallRoofCourses(next)
+    setShowRoofPanel(true)
+    applyRoof(node, wallRoofBaseHeight, next, { commit: true })
+  }
+
+  function handleRemoveRoofCourse(index) {
+    const node = toolbarTargetRef.current
+    if (!node) return
+    const next = wallRoofCourses.filter((_, i) => i !== index)
+    setWallRoofCourses(next)
+    applyRoof(node, wallRoofBaseHeight, next, { commit: true })
   }
 
   // ─── Expose API via ref ─────────────────────────────────────────────────────
@@ -3923,6 +4294,7 @@ const CanvasView = forwardRef(function CanvasView(
       }
       mainLayer.batchDraw()
       carryRoomAssignments(oldFacesForPaste, idMap)
+      carryFaceAttributes(oldFacesForPaste, idMap)
       history.pushState()
       scheduleSnapshot()
     },
@@ -3961,6 +4333,11 @@ const CanvasView = forwardRef(function CanvasView(
         mainLayerRef={mainLayerRef}
         editModeActive={!!lineGizmoNode}
         visible={showHinges}
+      />
+
+      <WallBoundaryOverlay
+        stageRef={stageRef}
+        mainLayerRef={mainLayerRef}
       />
 
       <MeasurementLabels
@@ -4021,6 +4398,17 @@ const CanvasView = forwardRef(function CanvasView(
                 </div>
               )
             })}
+            <div className="room-assign-row">
+              <span className="room-assign-label">Eigenschap</span>
+              <select
+                value={faceAttributes[assignPopup.hash]?.aard ?? FACE_AARD_OPTIONS[0].value}
+                onChange={e => updateFaceAttribute(assignPopup.hash, e.target.value)}
+              >
+                {FACE_AARD_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
         )
       })()}
@@ -4123,7 +4511,7 @@ const CanvasView = forwardRef(function CanvasView(
           </>
         )}
 
-        {selectedColor !== null && (
+        {selectedColor !== null && !isWallToolbarTarget && (
           <div className="object-toolbar-color-wrap">
             <button
               className="object-toolbar-color-btn"
@@ -4144,6 +4532,99 @@ const CanvasView = forwardRef(function CanvasView(
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {isWallToolbarTarget && (
+          <div className="object-toolbar-boundary-wrap">
+            {WALL_BOUNDARY_OPTIONS.map(opt => (
+              <button
+                key={opt.value}
+                className={`object-toolbar-boundary-swatch${wallBoundary === opt.value ? ' active' : ''}`}
+                style={{ background: opt.color }}
+                title={opt.label}
+                onClick={() => handleBoundaryChange(opt.value)}
+              />
+            ))}
+            <button
+              className={`object-toolbar-btn object-toolbar-aux-btn${wallIsAux ? ' active' : ''}`}
+              title={wallIsAux ? 'Hulplijn (geen echte muur) — klik om weer een muur te maken' : 'Markeer als hulplijn (geen echte muur, telt niet mee als gevel bij export)'}
+              onClick={handleAuxToggle}
+            >
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 10h14" strokeDasharray="2.5 2.5" />
+              </svg>
+            </button>
+            <div className="object-toolbar-roof-wrap">
+              <button
+                className={`object-toolbar-btn object-toolbar-roof-btn${wallRoofCourses.length ? ' active' : ''}`}
+                title={wallRoofCourses.length ? 'Dak boven deze gevel — klik om te bewerken' : 'Dak boven deze gevel instellen (goothoogte + hellingshoek)'}
+                onClick={() => setShowRoofPanel(v => !v)}
+              >
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 11 L10 4 L18 11" />
+                  <path d="M4.5 9.2 V16 H15.5 V9.2" />
+                </svg>
+              </button>
+              {showRoofPanel && (
+                <div className="object-toolbar-roof-panel">
+                  {wallRoofCourses.length === 0 ? (
+                    <div className="roof-panel-hint">Geen dak boven deze gevel.</div>
+                  ) : (
+                    <div className="roof-panel-row">
+                      <label>Goothoogte</label>
+                      <input
+                        type="number" step="0.1" inputMode="decimal"
+                        value={wallRoofBaseHeight}
+                        placeholder="0"
+                        onFocus={e => e.target.select()}
+                        onChange={e => handleRoofBaseHeightInput(e.target.value)}
+                        onBlur={commitRoofEdit}
+                      />
+                      <span className="roof-panel-suffix">m</span>
+                    </div>
+                  )}
+                  {wallRoofCourses.map((c, i) => (
+                    <div className="roof-panel-course" key={i}>
+                      <div className="roof-panel-field">
+                        <label>Hoek</label>
+                        <div className="roof-panel-input">
+                          <input
+                            type="number" step="1" inputMode="decimal"
+                            value={c.angleDeg}
+                            placeholder="45"
+                            onFocus={e => e.target.select()}
+                            onChange={e => handleRoofCourseInput(i, 'angleDeg', e.target.value)}
+                            onBlur={commitRoofEdit}
+                          />
+                          <span className="roof-panel-suffix">°</span>
+                        </div>
+                      </div>
+                      <div className="roof-panel-field">
+                        <label>Eind</label>
+                        <div className="roof-panel-input">
+                          <input
+                            type="number" step="0.1" inputMode="decimal"
+                            value={c.riseM}
+                            placeholder="auto"
+                            onFocus={e => e.target.select()}
+                            onChange={e => handleRoofCourseInput(i, 'riseM', e.target.value)}
+                            onBlur={commitRoofEdit}
+                          />
+                          <span className="roof-panel-suffix">m</span>
+                        </div>
+                      </div>
+                      <button
+                        className="roof-panel-remove"
+                        title="Hellend dak verwijderen"
+                        onClick={() => handleRemoveRoofCourse(i)}
+                      >×</button>
+                    </div>
+                  ))}
+                  <button className="roof-panel-add" onClick={handleAddRoofCourse}>+ hellend dak</button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

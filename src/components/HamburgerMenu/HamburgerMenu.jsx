@@ -5,6 +5,7 @@ export default function HamburgerMenu({
   activeNote,
   onExportPdf,
   onExportJnote,
+  onExportBlender,
   onExportAll,
   onSaveAsTemplate,
   onOpenSettings,
@@ -54,6 +55,8 @@ export default function HamburgerMenu({
           <div className="hamburger-sep" />
           {item('Exporteren als PDF', () => onExportPdf(), !activeNote)}
           {item('Exporteren als .zip', () => onExportJnote(), !activeNote)}
+          <div className="hamburger-sep" />
+          {item('Exporteren voor Blender', () => onExportBlender(), !activeNote)}
           <div className="hamburger-sep" />
           {item('Opslaan als template', () => onSaveAsTemplate(activeNote), !activeNote)}
           <div className="hamburger-sep" />

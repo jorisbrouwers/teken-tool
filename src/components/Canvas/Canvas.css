@@ -221,6 +221,170 @@
   border-width: 2.5px;
 }
 
+/* ── Object toolbar: muurbegrenzing + hulplijn-toggle (vervangt de vrije
+   kleurkeuze zodra een muur geselecteerd is — zie isWallToolbarTarget) ── */
+.object-toolbar-boundary-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 4px;
+}
+
+.object-toolbar-boundary-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(0,0,0,0.15);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.1s, border-color 0.1s;
+}
+
+.object-toolbar-boundary-swatch:hover {
+  transform: scale(1.15);
+}
+
+.object-toolbar-boundary-swatch.active {
+  border-color: #1971c2;
+  border-width: 2.5px;
+}
+
+.object-toolbar-aux-btn.active {
+  color: var(--color-accent);
+  background: var(--color-item-active);
+}
+
+/* ── Object toolbar: dak-per-gevel-paneel (zie handleRoofCourseInput /
+   BLENDER_EXPORT_PLAN.md) ── */
+.object-toolbar-roof-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.object-toolbar-roof-btn.active {
+  color: var(--color-accent);
+  background: var(--color-item-active);
+}
+
+.object-toolbar-roof-panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08);
+  padding: 8px 10px;
+  width: 214px;
+  z-index: 10;
+}
+
+.roof-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+
+.roof-panel-course {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 3px 0;
+}
+
+.roof-panel-row > label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.roof-panel-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.roof-panel-field > label {
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.roof-panel-input {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.roof-panel-row input,
+.roof-panel-input input {
+  min-width: 0;
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 12px;
+  border: 1px solid var(--color-sidebar-border);
+  border-radius: var(--radius);
+}
+
+.roof-panel-row input {
+  width: 60px;
+  flex: none;
+}
+
+.roof-panel-suffix {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.roof-panel-hint {
+  padding: 4px 0 2px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--color-text-muted);
+}
+
+.roof-panel-remove {
+  width: 20px;
+  height: 20px;
+  margin-bottom: 3px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.roof-panel-remove:hover {
+  background: var(--color-item-hover);
+  color: #e03131;
+}
+
+.roof-panel-add {
+  margin-top: 6px;
+  width: 100%;
+  padding: 5px 0;
+  font-size: 12px;
+  border: 1px dashed var(--color-sidebar-border);
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.roof-panel-add:hover {
+  background: var(--color-item-hover);
+  color: var(--color-text);
+}
+
 .measurement-label-global {
   position: fixed;
   background: #1971c2;
@@ -234,6 +398,65 @@
   transform: translate(-50%, -50%);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
   z-index: 101;
+}
+
+/* Tweede pill, direct onder de maat-pill: nokhoogte + dakhelling(en) van het
+   dak boven het muursegment (zie MeasurementLabels.jsx). Vaste opmaak —
+   bewust NIET gekoppeld aan de pillStyle-instelling. Alleen tekst: geen fill,
+   geen rand; leesbaarheid komt volledig van de schaduw (donkere drop +
+   witte halo, zodat 't ook boven een afbeelding leesbaar blijft). */
+.measurement-label-roof {
+  position: fixed;
+  background: transparent;
+  color: #5eaf07;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.05), 0 0 2px rgba(255, 255, 255, 0.9);
+  z-index: 101;
+}
+
+/* ── Floaty toast — zie floatyText.js ──────────────────────────────────── */
+@keyframes floaty-text-fall {
+  0%   { opacity: 0; transform: translate(-50%, -6px); }
+  10%  { opacity: 1; transform: translate(-50%, 0); }
+  70%  { opacity: 1; transform: translate(-50%, 4px); }
+  100% { opacity: 0; transform: translate(-50%, 32px); }
+}
+
+.floaty-text {
+  position: fixed;
+  z-index: 200;
+  pointer-events: none;
+  background: #1971c2;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  animation: floaty-text-fall 2.6s ease-out forwards;
+}
+
+.floaty-text-error {
+  background: #e03131;
+}
+
+/* Links uitgelijnde variant (x = linkerkant i.p.v. midden) — zelfde val/fade,
+   maar zonder de horizontale -50%-centrering. Zie spawnFloatyText(anchor). */
+@keyframes floaty-text-fall-left {
+  0%   { opacity: 0; transform: translateY(-6px); }
+  10%  { opacity: 1; transform: translateY(0); }
+  70%  { opacity: 1; transform: translateY(4px); }
+  100% { opacity: 0; transform: translateY(32px); }
+}
+
+.floaty-text-left {
+  animation-name: floaty-text-fall-left;
 }
 
 .line-gizmo-measure-label {

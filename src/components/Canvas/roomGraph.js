@@ -67,15 +67,13 @@ function makeUnionFind() {
   return { find, union }
 }
 
-// walls: [{ id, x0, y0, x1, y1, conns0, conns1 }] — conns0/conns1 zijn
-// lijsten van {id, ep} (zelfde vorm als wallGraph.getConns levert), en
-// verwijzen naar de peer-eindpunten waarmee eindpunt 0 resp. 1 van deze muur
-// verbonden is. Coördinaten zijn absoluut (stage-space).
-//
-// Retourneert [{ vertices: [{x,y}, ...], edgeIds: [wallId, ...] }] — één
-// entry per gedetecteerd binnenvlak (het buitenvlak/de buitenvlakken worden
-// er automatisch uitgefilterd, zie hierboven).
-export function computeFacesFromWalls(walls) {
+// Kern-traversal: bouwt de planaire graaf en loopt álle randlussen af
+// (binnenvlakken én buitenvlak(ken)). Retourneert per lus de geordende
+// vertex-posities plus de geordende wall-ids (edgeWallIds[i] = de muur tussen
+// vertices[i] en vertices[i+1]) en de ondertekende oppervlakte. Gedeeld door
+// computeFacesFromWalls (filtert op negatieve oppervlakte = binnenvlak) en
+// computeEnvelopeFromWalls (positieve oppervlakte = buitenomtrek).
+function computeLoops(walls) {
   if (walls.length === 0) return []
 
   const uf = makeUnionFind()
@@ -156,22 +154,59 @@ export function computeFacesFromWalls(walls) {
     loops.push(loopHeIdx)
   }
 
-  const faces = []
-  for (const loopHeIdx of loops) {
+  return loops.map(loopHeIdx => {
     const vertices = loopHeIdx.map(idx => vertexPos.get(halfEdges[idx].from))
-    if (signedArea(vertices) >= -AREA_EPSILON) continue // buitenvlak of degeneraat, zie boven
-    const edgeIds = [...new Set(loopHeIdx.map(idx => halfEdges[idx].wallId))].sort()
-    faces.push({ vertices, edgeIds })
+    return {
+      vertices,
+      edgeWallIds: loopHeIdx.map(idx => halfEdges[idx].wallId),
+      area: signedArea(vertices),
+    }
+  })
+}
+
+// walls: [{ id, x0, y0, x1, y1, conns0, conns1 }] — conns0/conns1 zijn
+// lijsten van {id, ep} (zelfde vorm als wallGraph.getConns levert), en
+// verwijzen naar de peer-eindpunten waarmee eindpunt 0 resp. 1 van deze muur
+// verbonden is. Coördinaten zijn absoluut (stage-space).
+//
+// Retourneert [{ vertices: [{x,y}, ...], edgeIds: [wallId, ...] }] — één
+// entry per gedetecteerd binnenvlak (het buitenvlak/de buitenvlakken worden
+// er automatisch uitgefilterd, zie hierboven).
+export function computeFacesFromWalls(walls) {
+  const faces = []
+  for (const loop of computeLoops(walls)) {
+    if (loop.area >= -AREA_EPSILON) continue // buitenvlak of degeneraat, zie boven
+    const edgeIds = [...new Set(loop.edgeWallIds)].sort()
+    faces.push({ vertices: loop.vertices, edgeIds })
   }
   return faces
 }
 
-// Dunne adapter: leest de platte walldata uit een lijst Konva-nodes en levert
-// die aan computeFacesFromWalls(). Los van detectFaces() getrokken zodat
-// vlak-detectie ook op een SUBSET van nodes kan draaien (bv. alleen de
-// nodes die gedupliceerd worden), i.p.v. altijd de volledige laag.
-export function facesFromNodes(nodes) {
-  const walls = nodes
+// Buitenomtrek (envelope) van het muurnetwerk: de lus met POSITIEVE
+// ondertekende oppervlakte. Voor één samenhangende muur-hiërarchie — wat
+// walkHierarchy() oplevert, en wat een energielabel-thermische zone altijd is
+// (één geheel, geen losstaande delen) — is dat er precies één; bij meerdere
+// wordt de grootste gekozen. Retourneert { polygon: [{x,y},...], wallIds:
+// [wallId,...] } waar wallIds[i] de muur is tussen polygon[i] en
+// polygon[(i+1) % n], of null als er geen gesloten omtrek is.
+//
+// De winding-richting is niet genormaliseerd (valt uit de traversal) — de
+// consument (Blender-export → straight skeleton) normaliseert zelf op teken
+// van de oppervlakte. Doodlopende muurstukken (open uiteinden) worden in de
+// omtrek heen-en-terug gelopen; bij een net gesloten getekende plattegrond
+// speelt dat niet.
+export function computeEnvelopeFromWalls(walls) {
+  const outer = computeLoops(walls)
+    .filter(loop => loop.area > AREA_EPSILON)
+    .sort((a, b) => b.area - a.area)
+  if (outer.length === 0) return null
+  return { polygon: outer[0].vertices, wallIds: outer[0].edgeWallIds }
+}
+
+// Platte walldata uit een lijst Konva-nodes (zelfde vorm die
+// computeFacesFromWalls/computeEnvelopeFromWalls verwachten).
+export function wallsFromNodes(nodes) {
+  return nodes
     .filter(isWallNode)
     .map(node => {
       const pts = node.points()
@@ -183,7 +218,30 @@ export function facesFromNodes(nodes) {
         conns1: getConns(node, 1),
       }
     })
-  return computeFacesFromWalls(walls)
+}
+
+// Dunne adapter: leest de platte walldata uit een lijst Konva-nodes en levert
+// die aan computeFacesFromWalls(). Los van detectFaces() getrokken zodat
+// vlak-detectie ook op een SUBSET van nodes kan draaien (bv. alleen de
+// nodes die gedupliceerd worden), i.p.v. altijd de volledige laag.
+export function facesFromNodes(nodes) {
+  return computeFacesFromWalls(wallsFromNodes(nodes))
+}
+
+// Idem, maar voor de buitenomtrek — gebruikt door de Blender-export per
+// verdieping (subset = walkHierarchy vanaf het referentiepunt).
+//
+// isAux-muren (hulplijnen: <1,5m-lijn, begrenzing-splitmarkering,
+// referentiepunt-anker) tellen NIET mee voor de omtrek. Ze zijn geen gevel, en
+// een hulplijn met een vrij uiteinde zou anders heen-en-terug meegelopen worden
+// en als nul-oppervlak-spike in de polygoon belanden. Ze blijven wél meedoen
+// voor facesFromNodes hierboven, waar ze juist een ruimte moeten splitsen.
+// Een hulplijn die op een echte muur T-splitst laat die muur heel: de twee
+// helften zijn onderling direct verbonden (T-punt = complete kliek, zie
+// wallGraph.js), dus de omtrek loopt na het weglaten van de hulplijn gewoon
+// rechtdoor door het splitspunt.
+export function envelopeFromNodes(nodes) {
+  return computeEnvelopeFromWalls(wallsFromNodes(nodes.filter(n => !n.attrs?.isAux)))
 }
 
 // mainLayer = Konva.Layer met de muur-nodes.

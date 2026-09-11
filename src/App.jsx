@@ -10,11 +10,15 @@ import { updateNoteSettings, getAppSettings, saveAppSettings, generateUUID } fro
 import Calculator from './components/Calculator/Calculator.jsx'
 import { exportJnote } from './export/exportJnote.js'
 import { exportPdf } from './export/exportPdf.js'
+import { exportBlender } from './export/exportBlender.js'
+import { spawnFloatyText } from './components/Canvas/floatyText.js'
 import { parseJnote } from './import/importJnote.js'
 import SettingsPanel from './components/Settings/SettingsPanel.jsx'
 import FabButton from './components/Sidebar/FabButton.jsx'
 import LeftSidebar from './components/Sidebar/LeftSidebar.jsx'
 import InstallationsSidebar from './components/Installations/InstallationsSidebar.jsx'
+import BuildingSidebar, { seedFloors, DEFAULT_NORTH_ANGLE, DEFAULT_FRONT_FACADE_SCREEN_ANGLE } from './components/Building/BuildingSidebar.jsx'
+import { GRID_SIZE } from './components/Canvas/useGrid.js'
 import './App.css'
 
 export default function App() {
@@ -41,7 +45,12 @@ export default function App() {
   const [projectsOpen, setProjectsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [installationsOpen, setInstallationsOpen] = useState(false)
-  const [showPills, setShowPills] = useState(false)
+  const [buildingPropsOpen, setBuildingPropsOpen] = useState(false)
+  // Verdieping die wacht op een hoekpunt-tik op canvas ("Koppel" geklikt,
+  // nog geen hoek geraakt) — null = niet aan het koppelen. Zie
+  // handleStartLinking/handleEndpointLinked hieronder.
+  const [linkingFloorId, setLinkingFloorId] = useState(null)
+  const [showPills, setShowPills] = useState(true)
   const [showPillsInPdf, setShowPillsInPdf] = useState(false)
   const [showZonesInPdf, setShowZonesInPdf] = useState(false)
   const [showHinges, setShowHinges] = useState(true)
@@ -104,13 +113,18 @@ export default function App() {
     else if (type === 'pen-eraser') setActiveTool('eraser')
   }, [])
 
-  // Sluit zwevende UI (installaties-sidebar) bij élke canvas-interactie —
-  // muis, pen of vinger, inclusief navigeren. CanvasView roept dit ongefilterd
-  // aan bij elke pointerdown (zie onCanvasPointerDownRef aldaar); i.t.t.
+  // Sluit zwevende UI (sidebars) bij élke canvas-interactie — muis, pen of
+  // vinger, inclusief navigeren. CanvasView roept dit ongefilterd aan bij
+  // elke pointerdown (zie onCanvasPointerDownRef aldaar); i.t.t.
   // onInputDetected hierboven is dit NIET gededupliceerd op input-type, dus
   // het blijft ook werken bij herhaalde aanrakingen van hetzelfde type.
+  // Een actieve koppel-modus (linkingFloorId) overleeft dit bewust — die
+  // hoort onafhankelijk van de sidebar te blijven staan zodat de gebruiker
+  // ook na het sluiten van het paneel nog kan pannen/zoomen/de hoek
+  // aantikken; zie handleStartLinking/handleEndpointLinked.
   const handleCanvasPointerDown = useCallback(() => {
     setInstallationsOpen(false)
+    setBuildingPropsOpen(false)
   }, [])
 
   const [penColor, setPenColor] = useState('#1d1d1d')
@@ -127,6 +141,9 @@ export default function App() {
     ?? null
   const showGrid = activeNote?.settings?.background === 'grid'
   const installations = activeNote?.settings?.installations ?? []
+  const floors = activeNote?.settings?.floors ?? []
+  const northAngle = activeNote?.settings?.northAngle ?? DEFAULT_NORTH_ANGLE
+  const frontFacadeScreenAngle = activeNote?.settings?.frontFacadeScreenAngle ?? DEFAULT_FRONT_FACADE_SCREEN_ANGLE
 
   const handleToggleGrid = useCallback(async () => {
     if (!activeNote) return
@@ -135,13 +152,33 @@ export default function App() {
     await refreshNotes()
   }, [activeNote, showGrid, refreshNotes])
 
-  // Zero-setup default: een verse notitie krijgt automatisch één CV-ketel,
-  // zodat alle ruimtes zonder verdere actie tot "Zone 1" behoren.
+  // Zero-setup defaults voor een verse notitie: één CV-ketel (zodat alle
+  // ruimtes zonder verdere actie tot "Zone 1" behoren) + de verdiepingenlijst
+  // (6 vaste rijen, alle met heightM: null zolang niet ingevuld — zie
+  // BuildingSidebar voor waarom een lege hoogte "genegeerd" betekent i.p.v.
+  // een losse verwijderknop te vereisen).
+  //
+  // Bewust in ÉÉN effect samengevoegd i.p.v. twee losse: twee effects die elk
+  // onafhankelijk `{...activeNote.settings, eigenVeld: ...}` berekenen en
+  // wegschrijven, race elkaar zodra beide in dezelfde render-pass draaien —
+  // `activeNote.settings` is dan voor allebei nog de staleoude waarde (van
+  // vóór de eerste write), dus de tweede `patchNoteSettings`/
+  // `updateNoteSettings`-aanroep overschrijft stilletjes wat de eerste er net
+  // aan toevoegde. Vandaar één gecombineerde newSettings-berekening hier.
   useEffect(() => {
     if (!activeNote) return
-    if (activeNote.settings?.installations !== undefined) return
-    const seeded = [{ id: generateUUID(), kind: 'verwarming', type: 'cv_ketel' }]
-    const newSettings = { ...activeNote.settings, installations: seeded, defaultHeatingInstallationId: seeded[0].id }
+    const needsInstallations = activeNote.settings?.installations === undefined
+    const needsFloors = activeNote.settings?.floors === undefined
+    if (!needsInstallations && !needsFloors) return
+    const newSettings = { ...activeNote.settings }
+    if (needsInstallations) {
+      const seeded = [{ id: generateUUID(), kind: 'verwarming', type: 'cv_ketel' }]
+      newSettings.installations = seeded
+      newSettings.defaultHeatingInstallationId = seeded[0].id
+    }
+    if (needsFloors) {
+      newSettings.floors = seedFloors()
+    }
     patchNoteSettings(activeNote.id, newSettings)
     updateNoteSettings(activeNote.id, newSettings)
   }, [activeNote?.id])
@@ -155,6 +192,59 @@ export default function App() {
     patchNoteSettings(activeNote.id, newSettings)
     updateNoteSettings(activeNote.id, newSettings)
   }, [activeNote, patchNoteSettings])
+
+  const handleFloorsChange = useCallback((newFloors) => {
+    if (!activeNote) return
+    const newSettings = { ...activeNote.settings, floors: newFloors }
+    patchNoteSettings(activeNote.id, newSettings)
+    updateNoteSettings(activeNote.id, newSettings)
+  }, [activeNote, patchNoteSettings])
+
+  const handleNorthAngleChange = useCallback((angle) => {
+    if (!activeNote) return
+    const newSettings = { ...activeNote.settings, northAngle: angle }
+    patchNoteSettings(activeNote.id, newSettings)
+    updateNoteSettings(activeNote.id, newSettings)
+  }, [activeNote, patchNoteSettings])
+
+  const handleFrontFacadeScreenAngleChange = useCallback((angle) => {
+    if (!activeNote) return
+    const newSettings = { ...activeNote.settings, frontFacadeScreenAngle: angle }
+    patchNoteSettings(activeNote.id, newSettings)
+    updateNoteSettings(activeNote.id, newSettings)
+  }, [activeNote, patchNoteSettings])
+
+  // "Koppel" geklikt: zet de koppel-modus aan voor deze verdieping en
+  // schakelt meteen naar de muur-tool — de eerstvolgende hoek die de
+  // gebruiker op canvas aantikt wordt automatisch aan déze verdieping
+  // gekoppeld (zie handleEndpointLinked), ook als de sidebar inmiddels
+  // gesloten is (auto-close bij canvas-interactie, net als Installaties).
+  const handleStartLinking = useCallback((floorId) => {
+    setLinkingFloorId(floorId)
+    handleToolSelect('wall')
+  }, [])
+
+  // Callback vanuit CanvasView zodra de koppel-modus afgehandeld is — met een
+  // punt bij een geslaagde koppeling (schrijft het weg als referentiepunt),
+  // of zonder punt (`null`) als CanvasView zelf al besloot te stoppen (bv. de
+  // hiërarchie is al aan een andere verdieping gekoppeld). In beide gevallen
+  // verlaat de koppel-modus meteen — anders blijft de gebruiker "vastzitten"
+  // in een modus zonder zichtbare manier om 'm te verlaten, zeker met de
+  // sidebar dicht.
+  const handleEndpointLinked = useCallback((point) => {
+    if (!activeNote || !linkingFloorId) return
+    if (point) {
+      const newFloors = floors.map(f => f.id === linkingFloorId
+        ? { ...f, referencePoint: { wallId: point.wallId, ep: point.ep, x: Math.round(point.x / GRID_SIZE), y: Math.round(point.y / GRID_SIZE) } }
+        : f)
+      handleFloorsChange(newFloors)
+    }
+    setLinkingFloorId(null)
+  }, [activeNote, linkingFloorId, floors, handleFloorsChange])
+
+  const handleResetReferencePoint = useCallback((floorId) => {
+    handleFloorsChange(floors.map(f => f.id === floorId ? { ...f, referencePoint: null } : f))
+  }, [floors, handleFloorsChange])
 
   // Default aan: alleen expliciet uitgezet (showZones === false) telt als uit.
   const showZones = activeNote?.settings?.showZones !== false
@@ -177,6 +267,33 @@ export default function App() {
     const mainLayer = canvasViewRef.current?.getMainLayer()
     if (!mainLayer || !activeNote) return
     exportJnote(activeNote, mainLayer)
+  }, [activeNote])
+
+  const handleExportBlender = useCallback(() => {
+    const mainLayer = canvasViewRef.current?.getMainLayer()
+    if (!mainLayer || !activeNote) return
+    // Een verdieping met een hoogte maar zonder (nog langer geldig)
+    // referentiepunt wordt door exportBlender.js stilzwijgend overgeslagen
+    // (zie buildBlenderExport) — dat is prima voor de export zelf, maar de
+    // gebruiker moet wél weten dat 'ie ontbreekt in het resultaat. Een
+    // ontbrekend referencePoint kan ook komen doordat de gekoppelde muur
+    // inmiddels stilzwijgend "verbroken" is (zie pruneInvalidReferencePoints
+    // in CanvasView.jsx) door een merge/split/verwijdering.
+    const missing = (activeNote.settings?.floors ?? [])
+      .filter(f => f.heightM != null && f.heightM !== '' && !f.referencePoint)
+    if (missing.length) {
+      // Linksboven, net rechts van de Eigenschappen/Installaties-FAB-stack —
+      // i.p.v. midden-boven, waar 'ie makkelijk gemist wordt.
+      const fabRect = document.querySelector('.sidebar-fab-stack')?.getBoundingClientRect()
+      spawnFloatyText(
+        fabRect ? fabRect.right + 12 : 64,
+        fabRect ? fabRect.top + 6 : 96,
+        `Geen referentiepunt, overgeslagen: ${missing.map(f => f.name).join(', ')}`,
+        'error',
+        'left',
+      )
+    }
+    exportBlender(activeNote, mainLayer)
   }, [activeNote])
 
   const handleExportAll = useCallback(async () => {
@@ -284,6 +401,7 @@ export default function App() {
       activeNote={activeNote}
       onExportPdf={handleExportPdf}
       onExportJnote={handleExportJnote}
+      onExportBlender={handleExportBlender}
       onExportAll={handleExportAll}
       onSaveAsTemplate={handleSaveAsTemplate}
       onOpenSettings={() => setSettingsOpen(true)}
@@ -341,6 +459,8 @@ export default function App() {
               showHinges={showHinges}
               showZones={showZones}
               showMinimap={showMinimap}
+              linkingFloorId={linkingFloorId}
+              onEndpointLinked={handleEndpointLinked}
             />
             <StylePanel
               activeTool={activeTool}
@@ -390,6 +510,18 @@ export default function App() {
 
             <div className="sidebar-fab-stack">
               <FabButton
+                title="Eigenschappen"
+                active={buildingPropsOpen}
+                onClick={() => setBuildingPropsOpen(v => !v)}
+                icon={
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 17V9l7-5 7 5v8" />
+                    <path d="M3 17h14" />
+                    <path d="M8 17v-5h4v5" />
+                  </svg>
+                }
+              />
+              <FabButton
                 title="Installaties"
                 active={installationsOpen}
                 onClick={() => setInstallationsOpen(v => !v)}
@@ -403,6 +535,24 @@ export default function App() {
                 }
               />
             </div>
+
+            <LeftSidebar
+              open={buildingPropsOpen}
+              onClose={() => setBuildingPropsOpen(false)}
+              title="Gebouweigenschappen"
+            >
+              <BuildingSidebar
+                floors={floors}
+                onFloorsChange={handleFloorsChange}
+                northAngle={northAngle}
+                onNorthAngleChange={handleNorthAngleChange}
+                frontFacadeScreenAngle={frontFacadeScreenAngle}
+                onFrontFacadeScreenAngleChange={handleFrontFacadeScreenAngleChange}
+                linkingFloorId={linkingFloorId}
+                onStartLinking={handleStartLinking}
+                onResetReferencePoint={handleResetReferencePoint}
+              />
+            </LeftSidebar>
 
             <LeftSidebar
               open={installationsOpen}

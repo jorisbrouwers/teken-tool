@@ -5,6 +5,10 @@ import { getPillCssStyle } from './pillStyle.js'
 export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, suppressRef, onPillClick, showPills = true, pillStyle, editModeActive = false }) {
   const containerRef    = useRef(null)
   const labelMapRef     = useRef(new Map())
+  // Tweede pill onder de maat-pill: dakhelling(en) van het dak boven dit
+  // segment. Eigen vaste opmaak (zie .measurement-label-roof) — bewust NIET
+  // gekoppeld aan de pillStyle-instelling van de maat-pill.
+  const roofLabelMapRef = useRef(new Map())
   const rafRef          = useRef(null)
   const onPillClickRef  = useRef(onPillClick)
   onPillClickRef.current = onPillClick
@@ -28,6 +32,7 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
       const stage = stageRef.current
       if (suppressRef?.current || !showPillsRef.current) {
         labelMapRef.current.forEach(el => { el.style.visibility = 'hidden' })
+        roofLabelMapRef.current.forEach(el => { el.style.visibility = 'hidden' })
         rafRef.current = requestAnimationFrame(tick)
         return
       }
@@ -90,12 +95,54 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
           // naar de muur eronder (body-drag) i.p.v. door de pill zelf
           // afgevangen te worden.
           el.style.pointerEvents = editModeActiveRef.current ? 'none' : 'auto'
+
+          // Dak-pill: alleen bij een muur met dak (roofCourses). Toont de
+          // goothoogte + de helling(en): "2.60m, 45°" of "2.60m, 70°, 25°"
+          // (gebroken kap). Goothoogte is het roofBaseHeightM-veld zoals
+          // ingevuld — geen nok-berekening (die volgt pas uit het skeleton in
+          // Blender). Vaste opmaak, display-only (geen pointer-events).
+          const courses = Array.isArray(node.attrs.roofCourses) ? node.attrs.roofCourses : null
+          let rel = roofLabelMapRef.current.get(id)
+          if (courses && courses.length) {
+            if (!rel) {
+              rel = document.createElement('span')
+              rel.className = 'measurement-label-roof'
+              container.appendChild(rel)
+              roofLabelMapRef.current.set(id, rel)
+            }
+            const baseM = Number(node.attrs.roofBaseHeightM) || 0
+            const parts = courses.map(c => `${c?.angleDeg ?? 0}°`)
+            if (baseM > 0) parts.unshift(`${baseM.toFixed(2)}m`)  // goothoogte 0 = niets tonen
+            rel.textContent    = parts.join(', ')
+            // Van de muuras af verschuiven i.p.v. bovenop de zwarte lijn (de
+            // pill heeft geen fill → overlap = onleesbaar). Loodrechte normaal,
+            // consistent naar onderen gekanteld (en bij een bijna-verticale
+            // muur naar rechts), plus een extra omlaag-duw die groeit naarmate
+            // de muur verticaler staat — zo blijft 'ie bij een horizontale muur
+            // netjes eronder en gaat 'ie bij een verticale muur schuin
+            // rechtsonder, niet pal naast (op hoogte van de maat-pill).
+            let nX = -(pts[3] - pts[1]) / lengthPx
+            let nY =  (pts[2] - pts[0]) / lengthPx
+            if (nY < -1e-6 || (Math.abs(nY) < 1e-6 && nX < 0)) { nX = -nX; nY = -nY }
+            rel.style.left     = (x + nX * 18) + 'px'
+            rel.style.top      = (y + nY * 18 + (1 - nY) * 16) + 'px'
+            rel.style.visibility = ''
+          } else if (rel) {
+            rel.remove()
+            roofLabelMapRef.current.delete(id)
+          }
         }
 
         for (const [id, el] of [...labelMapRef.current]) {
           if (!seenIds.has(id)) {
             el.remove()
             labelMapRef.current.delete(id)
+          }
+        }
+        for (const [id, el] of [...roofLabelMapRef.current]) {
+          if (!seenIds.has(id)) {
+            el.remove()
+            roofLabelMapRef.current.delete(id)
           }
         }
       }
@@ -107,6 +154,8 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
       cancelAnimationFrame(rafRef.current)
       labelMapRef.current.forEach(el => el.remove())
       labelMapRef.current.clear()
+      roofLabelMapRef.current.forEach(el => el.remove())
+      roofLabelMapRef.current.clear()
     }
   }, [mainLayerRef, stageRef, skipNodeId])
 

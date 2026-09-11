@@ -47,6 +47,11 @@ Een browser-gebaseerde notitie-app als intern alternatief voor Microsoft OneNote
 | `src/components/Canvas/LineGizmo.jsx` | Bewerkings-gizmo voor het lijnsysteem: endpoint-handles, fan-knoppen (extrude), snapping, maatinvoer |
 | `src/components/Canvas/MeasurementLabels.jsx` | Maat-pills (DOM-overlay) op alle lijnsegmenten, rAF-loop |
 | `src/components/Canvas/HingeDecorations.jsx` | Scharnier-stippen op lijn-eindpunten, eigen Konva-layer, rAF-loop met change-detectie |
+| `src/components/Canvas/WallBoundaryOverlay.jsx` | Muurbegrenzing-kleur als dunne overlay bovenop de (altijd zwarte) muurlijn, zelfde rAF+signature-patroon als `HingeDecorations.jsx` |
+| `src/components/Canvas/wallGraph.js` | Verbindingsmodel van het lijnsysteem (`_ep0conns`/`_ep1conns`, `walkHierarchy`, snapping-helpers), muurbegrenzing-opties (`WALL_BOUNDARY_OPTIONS`) |
+| `src/components/Canvas/roomGraph.js` | Automatische ruimte-/vlakdetectie uit de muurgraaf (DCEL-achtige half-edge-traversal), klimatiseringszones (`deriveZones`) |
+| `src/components/Canvas/floatyText.js` | Korte, vervagende DOM-feedbacktekst (`spawnFloatyText`) bij een scherm-positie — bv. koppel-bevestiging/-foutmelding; generiek herbruikbaar |
+| `src/components/Building/BuildingSidebar.jsx` (+ `NorthWheel.jsx`) | "Gebouweigenschappen"-sidebar: hoogte per verdieping, referentiepunt-koppeling, oriëntatie — t.b.v. de Blender-export, zie `BLENDER_EXPORT_PLAN.md` |
 | `src/components/Canvas/usePersistence.js` | Debounced/idle-geplande volledige snapshot-save naar IndexedDB + in-memory `liveSnapshotCache` |
 | `src/components/Canvas/useHistory.js` | Snapshot-gebaseerde undo/redo (max 50), exclusief Images |
 | `src/components/Canvas/konvaSerialize.js` | (De)serialisatie van de mainLayer; centrale plek voor wat wél/niet wordt opgeslagen |
@@ -55,6 +60,7 @@ Een browser-gebaseerde notitie-app als intern alternatief voor Microsoft OneNote
 | `src/components/Minimap/Minimap.jsx` | Thumbnail-navigatie; idle-gedeferde regeneratie |
 | `src/db/db.js` | Alle Dexie/IndexedDB-toegang (notes, app_settings, prullenbak, templates) |
 | `src/export/exportJnote.js` / `exportPdf.js` | Export; `src/import/importJnote.js` import |
+| `src/export/exportBlender.js` | Export t.b.v. de Blender-plugin (los project, zie `BLENDER_EXPORT_PLAN.md`) |
 | `src/platform/inputConfig.js` | Platform-specifieke peninstellingen (iOS vs. Windows: druk-exponent, streamline, predicted events) |
 
 ### Canvas-opbouw (van onder naar boven)
@@ -68,7 +74,17 @@ Een browser-gebaseerde notitie-app als intern alternatief voor Microsoft OneNote
 
 ### Lijnsysteem (plattegronden)
 
-Een "muur" is een 2-punts `Konva.Line`/`Arrow`. Segmenten zijn geketend via attrs `_ep0conn`/`_ep1conn` = `{id, ep}` (bidirectioneel). Hiërarchie-traversal = recursieve walk over deze verwijzingen. Maten: lengte in px / `GRID_SIZE` = meters.
+Een "muur" is een 2-punts `Konva.Line`/`Arrow` met `isWall: true`. Segmenten zijn
+geketend via attrs `_ep0conns`/`_ep1conns` = lijst van `{id, ep}` (bidirectioneel,
+graad-N zodat T-splitsingen kunnen). Hiërarchie-traversal = recursieve walk over deze
+verwijzingen (`walkHierarchy` in `wallGraph.js`). Maten: lengte in px / `GRID_SIZE` =
+meters.
+
+Muren worden altijd zwart getekend (`WALL_STROKE_COLOR` in `CanvasView.jsx`), ongeacht
+de actieve penkleur — geen vrije kleurkeuze meer voor muren. Optionele attrs:
+`boundary` (`buiten`/`buren`/`aor`/`sgr`, default `buiten`; visualisatie via
+`WallBoundaryOverlay.jsx`) en `isAux` (hulplijn — telt mee voor vlak-detectie, niet als
+gevel; visueel een streepjeslijn). Zie `BLENDER_EXPORT_PLAN.md` voor de achtergrond.
 
 ---
 
@@ -84,7 +100,7 @@ Kerninvarianten:
 4. **Peninvoer is heilig.** O(notitie)-taken (persistence-save, minimap-render) wachten via `penActivityRef` (timestamp) tot de pen ≥1,5 s stil is. Pen-events altijd via `getCoalescedEvents()` consumeren — gecoalescede punten weggooien maakt snelle rondingen hoekig.
 5. **Navigatie via frozen canvas**: tijdens pan/zoom wordt de mainLayer-bitmap ge-CSS-transformeerd (`startNav`/`endNav`/`applyNavTransform`); geen Konva-redraws tijdens de gesture. Nieuwe navigatie-animaties via `animateNav`, niet met eigen `batchDraw`-loops.
 6. **Stage-transform nooit muteren terwijl de Transformer nodes heeft** — elke `stage.scale()/position()` triggert per attached node een O(N) transformer-update → O(N²)-freeze (dit wás de bulk-move-freeze; zie Minimap voor het detach/re-attach-patroon).
-7. **rAF-loops (pills, hinges, grid, gizmo) alleen werk laten doen bij verandering** (signature/key-vergelijking), nooit onvoorwaardelijk tekenen.
+7. **rAF-loops (pills, hinges, grid, gizmo, muurbegrenzing-overlay) alleen werk laten doen bij verandering** (signature/key-vergelijking), nooit onvoorwaardelijk tekenen.
 8. Undo/redo is snapshot-gebaseerd; persistence is een **volledige** save van de hele notitie als één IndexedDB-record (geen diff) — houd daar rekening mee bij feature-werk dat saves triggert.
 
 ---
@@ -102,6 +118,12 @@ Kerninvarianten:
 - Lijn tekenen → stap voor stap uitbouwen via fan-knoppen (LineGizmo), endpoint-drag met endpoint/uitlijn/hoek-snapping
 - Maat-pills op segmenten (tik = maat numeriek aanpassen), opmaak instelbaar, ook in PDF-export
 - Scharnier-stippen op verbindingen (toggle in instellingen)
+- Automatische ruimte-/vlakdetectie (`roomGraph.js`), klimatiseringszones: installatie-toewijzing per vlak (popup bij tik met muur-tool) + onafhankelijke vlak-eigenschap ("Eigenschap": gebruiksruimte/plat dak/niet berekend/<1,5m)
+- Muurbegrenzing (buiten/buren/AOR/SGR) en hulplijn-markering, instelbaar in de object-toolbar van een geselecteerde muur
+
+### Gebouweigenschappen (t.b.v. Blender-export)
+- Losse FAB-sidebar ("Eigenschappen"), zie `src/components/Building/` — hoogte per verdieping, referentiepunt-koppeling tussen verdiepingen (voor XY-uitlijning bij stapeling), noord-oriëntatie
+- Volledige achtergrond, exportformaat en de Blender-kant van dit alles: `BLENDER_EXPORT_PLAN.md`
 
 ### Tekst, afbeeldingen, notities
 - Tekstvakken met ingebouwde rekenmachine (math.js); dubbelklik om te bewerken
@@ -114,6 +136,7 @@ Kerninvarianten:
 - Alles lokaal via Dexie (`notes`, `app_settings`), per apparaat, geen sync
 - **PDF**: automatisch kader om inhoud + marge, optioneel grid en maat-pills
 - **`.jnote`**: zip met `note.json` — import accepteert ook oude plain-JSON-bestanden; versie 1.0 (Fabric-era) wordt expliciet geweigerd
+- **Blender-export**: `exportBlender.js`, los JSON-bestand t.b.v. een aparte Blender-plugin-repo — zie `BLENDER_EXPORT_PLAN.md`
 
 ---
 

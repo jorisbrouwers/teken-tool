@@ -1,0 +1,197 @@
+.building-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Bewust ondergeschikt aan de rest — dit is een teken-app, geen Blender-tool;
+   de meeste gebruikers zullen dit paneel nooit hoeven in te vullen. */
+.building-disclaimer {
+  padding: 8px 12px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+  font-style: italic;
+  border-bottom: 1px solid var(--color-sidebar-border);
+}
+
+.building-section {
+  padding: 12px;
+  border-bottom: 1px solid var(--color-sidebar-border);
+}
+
+.building-section:last-child {
+  border-bottom: none;
+}
+
+.building-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 8px;
+}
+
+.building-floor-row,
+.building-ref-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.building-floor-name,
+.building-ref-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.building-floor-height {
+  width: 72px;
+  padding: 5px 6px;
+  font-size: 12px;
+  border: 1px solid var(--color-sidebar-border);
+  border-radius: var(--radius);
+  text-align: right;
+  /* geen spinner-pijltjes op het hoogte-veld */
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.building-floor-height::-webkit-inner-spin-button,
+.building-floor-height::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.building-floor-height-unit {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  width: 14px;
+}
+
+.building-add-floor-btn {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.building-ref-link-btn {
+  font-size: 12px;
+  padding: 5px 10px;
+  min-height: 28px;
+  white-space: nowrap;
+}
+
+.building-ref-link-btn.active {
+  background: var(--color-accent);
+  color: white;
+}
+
+.building-ref-value {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.building-ref-reset-btn {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.building-ref-reset-btn:hover {
+  background: var(--color-item-hover);
+  color: var(--color-danger);
+}
+
+.building-ref-hint,
+.building-ref-empty {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  padding: 4px 0 8px;
+}
+
+/* Twee wielen naast elkaar: links het noorden, rechts de voorgevel. Smaller
+   dan het losse wiel (160px) zodat ze samen in de sidebar passen. */
+.orientation-wheels {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.orientation-wheel-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.orientation-wheels .north-wheel-svg {
+  width: 132px;
+  height: 132px;
+}
+
+.orientation-wheel-caption {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+/* Oriëntatie-wiel — bewust gedempte, eigen kleuren i.p.v. de volle
+   accent/danger-kleuren elders in de app: dit is een klein, rustig
+   instrument, geen call-to-action. */
+.north-wheel-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  filter: drop-shadow(0 3px 8px rgba(15, 23, 42, 0.12));
+}
+
+.north-wheel-svg {
+  width: 160px;
+  height: 160px;
+}
+
+.north-wheel-wedge {
+  fill: #f3f4f6;
+  stroke: #e3e5e9;
+  stroke-width: 0.5;
+  cursor: pointer;
+  transition: fill 0.15s ease;
+}
+
+.north-wheel-wedge:hover {
+  fill: #e7e9ee;
+}
+
+.north-wheel-wedge.active {
+  fill: #8a96c2;
+}
+
+.north-wheel-label {
+  font-size: 8px;
+  fill: #6b7280;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+.north-wheel-pointer {
+  fill: #6d7ab0;
+}
+
+.north-wheel-pivot {
+  fill: #fff;
+  stroke: #d7dae1;
+  stroke-width: 1;
+}

@@ -81,6 +81,20 @@ export function isWallNode(node) {
   return (cls === 'Line' || cls === 'Arrow') && node.points().length === 4
 }
 
+// Muurbegrenzing: wat een muur begrenst — bepaalt de kleur van de dunne
+// vulling die WallBoundaryOverlay.jsx over de (altijd zwarte) muurlijn heen
+// tekent. Afwezig attribuut = impliciet 'buiten' (zie resolveWallBoundary).
+export const WALL_BOUNDARY_OPTIONS = [
+  { value: 'buiten', label: 'Buiten', color: '#1d1d1d' },
+  { value: 'buren', label: 'Buren', color: '#e8590c' },
+  { value: 'aor', label: 'Aangrenzende onverwarmde ruimte', color: '#1864ab' },
+  { value: 'sgr', label: 'Sterk geventileerde ruimte', color: '#74c0fc' },
+]
+
+export function resolveWallBoundary(node) {
+  return node.attrs.boundary ?? 'buiten'
+}
+
 // Volledige hiërarchie (verbonden component) vanaf startNode.
 export function walkHierarchy(startNode, layer) {
   const visited = new Set()
