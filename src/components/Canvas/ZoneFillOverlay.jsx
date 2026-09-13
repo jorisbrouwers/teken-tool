@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import Konva from 'konva'
 import { detectFaces, deriveZones, faceHash } from './roomGraph.js'
-import { installationNumber } from '../Installations/InstallationsSidebar.jsx'
+import { colorForZone } from './zoneColors.js'
 
 const FILL_OPACITY = 0.20
 const FILL_OPACITY_HOVER = 0.3
@@ -10,46 +10,6 @@ const FILL_OPACITY_HOVER = 0.3
 // visuele hover-feedback, want een niet-toegewezen vlak krijgt normaal
 // gesproken geen polygoon getekend).
 const HOVER_COLOR = '#adb5bd'
-
-// Losse, warme/koude paletten (i.p.v. de algemene StylePanel-COLORS) zodat
-// verwarming altijd warm en koeling altijd koud oogt. De eerste 4
-// installaties van elke soort krijgen een handmatig gekozen, goed van elkaar
-// te onderscheiden kleur (installatie 1 → index 0, enz. — zelfde volgnummer
-// als de "Verwarming N"-labels in InstallationsSidebar). Pas vanaf de 5e
-// installatie van dezelfde soort (zeldzaam) valt het terug op een
-// hash-gebaseerde kleur uit een ruimer, minder zorgvuldig gekozen palet —
-// nog steeds deterministisch per installatie-id (stabiel), maar niet meer
-// gegarandeerd goed te onderscheiden van de andere.
-const WARM_COLORS_FIXED = ['#e8590c', '#e03131', '#f08c00', '#7c2d12']
-const COOL_COLORS_FIXED = ['#1971c2', '#0c8599', '#4263eb', '#0ca678']
-const WARM_COLORS_OVERFLOW = ['#d9480f', '#e64980', '#c92a2a', '#f76707', '#a61e4d']
-const COOL_COLORS_OVERFLOW = ['#3b5bdb', '#099268', '#1864ab', '#5f3dc4', '#0b7285']
-const FALLBACK_COLOR = '#868e96' // zou niet moeten voorkomen — deriveZones filtert lege zones al
-
-function hashToIndex(str, mod) {
-  let h = 0
-  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0
-  return Math.abs(h) % mod
-}
-
-function colorForInstallation(inst, installations, fixedColors, overflowColors) {
-  const number = installationNumber(installations, inst) // 1-based
-  if (number <= fixedColors.length) return fixedColors[number - 1]
-  return overflowColors[hashToIndex(inst.id, overflowColors.length)]
-}
-
-// Koeling bepaalt de kleur wanneer aanwezig (koud), anders verwarming (warm).
-function colorForZone(zone, installations) {
-  if (zone.coolingInstallationId) {
-    const inst = installations.find(i => i.id === zone.coolingInstallationId)
-    if (inst) return colorForInstallation(inst, installations, COOL_COLORS_FIXED, COOL_COLORS_OVERFLOW)
-  }
-  if (zone.heatingInstallationId) {
-    const inst = installations.find(i => i.id === zone.heatingInstallationId)
-    if (inst) return colorForInstallation(inst, installations, WARM_COLORS_FIXED, WARM_COLORS_OVERFLOW)
-  }
-  return FALLBACK_COLOR
-}
 
 // Kleurt de gedetecteerde klimatiseringszones in op canvas (toggle). Volgt
 // exact het rAF+signature-patroon van HingeDecorations.jsx: eigen, lazy

@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import { GRID_SIZE } from './useGrid.js'
 import { getPillCssStyle } from './pillStyle.js'
-import { getConns, walkHierarchy, collectSnapVertices, collectMeasureAffected, findWallBodyNear } from './wallGraph.js'
+import { getConns, walkHierarchy, collectSnapVertices, collectMeasureAffected, findWallBodyNear, closestPointOnSegment } from './wallGraph.js'
+import { collectTechnicalGuideSegments } from './roofGuides.js'
 
 const SNAP_RAD = 3 * Math.PI / 180
 
 const EP_SNAP_SCREEN_PX    = 10  // screen pixels within which endpoint-to-endpoint snapping kicks in
 const BODY_SNAP_SCREEN_PX  = 10  // screen pixels within which endpoint-onto-wall-body snapping (auto-split) kicks in
 const ALIGN_SNAP_SCREEN_PX = 8  // screen pixels within which vertex alignment snapping kicks in
+const GUIDE_SNAP_SCREEN_PX = 10  // screen pixels within which snapping onto a technical guide line (roofGuides.js) kicks in — onafhankelijk van snapEnabledRef, zie applyMove
 
 // Endpoint-handle (bol) straal: schaalt mee met zoom (HANDLE_RADIUS_BASE / zoom),
 // geklemd tussen MIN en MAX zodat hij nooit te klein (onbruikbaar) of te groot wordt.
@@ -22,7 +24,7 @@ const HANDLE_RADIUS_MAX  = 8
 const HANDLE_HIT_STROKE_WIDTH = 16
 
 // eslint-disable-next-line no-unused-vars
-export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onEndpointBodySnap, onEndpointCollapse, onMeasureConfirm, onMeasureDelete, snapEnabledRef, version, autoEditRef, showPills = true, pillStyle }) {
+export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onEndpointBodySnap, onEndpointCollapse, onMeasureConfirm, onMeasureDelete, snapEnabledRef, showTechnicalGuidesRef, floorsRef, faceAttributesRef, version, autoEditRef, showPills = true, pillStyle }) {
   const [, setVersion] = useState(0)
   const [editing, setEditing] = useState(false)
   const [inputValue, setInputValue] = useState('')
@@ -201,6 +203,9 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
       let startStagePt = null
       let startCirclePt = null
       let lastAbsPos = null
+      // Eén keer berekend bij het starten van deze drag (niet per move) — zie
+      // de toelichting bij stap 1.5 in applyMove hieronder.
+      let cachedGuideSegments = null
 
       function applyMove(rawAbsX, rawAbsY) {
         const currentPts = targetNode.points().slice()
@@ -249,7 +254,9 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
           // ── 2. Vertex alignment snapping (pink guides) ────────────────────
           // Eigen hiërarchie altijd (ook off-screen), andere hiërarchieën alleen
           // hun on-screen hoekpunten (5.1) — voorkomt dat bijv. een andere
-          // verdieping op dezelfde plek constant meesnapt.
+          // verdieping op dezelfde plek constant meesnapt. Draait altijd (ook
+          // als de hulplijn-snap hieronder toeslaat) — de twee moeten tegelijk
+          // kunnen werken, zie de toelichting bij stap 2.5.
           const alignSnapDist = ALIGN_SNAP_SCREEN_PX / (stage?.scaleX() ?? 1)
           const excludeList = [{ id: targetNode.id(), ep: i }, ...currentConns]
           const vertices = collectSnapVertices(layer, stage, targetNode, excludeList)
@@ -298,9 +305,56 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
             yAlignIndicatorRef.current = null
           }
 
-          // ── 3. Angle snapping (blue guide) ───────────────────────────────────
+          // ── 2.5 Technische-hulplijn-snap ───────────────────────────────────
+          // Onafhankelijk van snapEnabledRef (net als las-/uitlijn-/lichaam-
+          // snap). Combineert met uitlijning hierboven i.p.v. die te vervangen:
+          // is één as al vastgezet op een hoekpunt, dan schuift dit punt over
+          // de hulplijn tot het snijpunt met die as (net zoals hoek-snap
+          // hieronder een al vastgezette as combineert met 45°). Zijn beide
+          // assen al vastgezet (het punt ligt al exact op een hoekpunt), dan
+          // wint dat hoekpunt. cachedGuideSegments is één keer bij pointerdown
+          // berekend. Zie roofGuides.js.
+          let guideSnapped = false
           const bothAxesLocked = snapX !== null && snapY !== null
-          if (!bothAxesLocked && snapEnabledRef?.current) {
+          if (!bothAxesLocked && cachedGuideSegments?.length) {
+            const guideSnapDist = GUIDE_SNAP_SCREEN_PX / (stage?.scaleX() ?? 1)
+            const targetAbsX = targetNode.x() + cx, targetAbsY = targetNode.y() + cy
+            let bestD = guideSnapDist, bestSeg = null
+            for (const seg of cachedGuideSegments) {
+              const proj = closestPointOnSegment(targetAbsX, targetAbsY, seg.x1, seg.y1, seg.x2, seg.y2)
+              const d = Math.hypot(proj.x - targetAbsX, proj.y - targetAbsY)
+              if (d < bestD) { bestD = d; bestSeg = seg }
+            }
+            if (bestSeg) {
+              const dxSeg = bestSeg.x2 - bestSeg.x1, dySeg = bestSeg.y2 - bestSeg.y1
+              let finalAbsX = null, finalAbsY = null
+              if (snapX !== null) {
+                if (Math.abs(dxSeg) > 1e-6) {
+                  const t = Math.max(0, Math.min(1, (snapX - bestSeg.x1) / dxSeg))
+                  finalAbsX = snapX; finalAbsY = bestSeg.y1 + t * dySeg
+                } // anders: hulplijn evenwijdig aan de vastgezette as — uitlijning blijft leidend
+              } else if (snapY !== null) {
+                if (Math.abs(dySeg) > 1e-6) {
+                  const t = Math.max(0, Math.min(1, (snapY - bestSeg.y1) / dySeg))
+                  finalAbsX = bestSeg.x1 + t * dxSeg; finalAbsY = snapY
+                }
+              } else {
+                const proj = closestPointOnSegment(targetAbsX, targetAbsY, bestSeg.x1, bestSeg.y1, bestSeg.x2, bestSeg.y2)
+                finalAbsX = proj.x; finalAbsY = proj.y
+              }
+              if (finalAbsX !== null) {
+                cx = finalAbsX - targetNode.x()
+                cy = finalAbsY - targetNode.y()
+                guideSnapped = true
+                snapTargetRef.current = { kind: 'guide' }
+                removeSnapIndicator(layer)
+              }
+            }
+          }
+
+          // ── 3. Angle snapping (blue guide) ───────────────────────────────────
+          // Niet meer zinvol zodra de hulplijn-snap hierboven al toesloeg.
+          if (!guideSnapped && !bothAxesLocked && snapEnabledRef?.current) {
             const dx = (targetNode.x() + cx) - anchorAbsX
             const dy = (targetNode.y() + cy) - anchorAbsY
             const angle = Math.atan2(dy, dx)
@@ -396,6 +450,9 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
         startCirclePt = { x: circle.x(), y: circle.y() }
         lastAbsPos    = { x: circle.x(), y: circle.y() }
         activeDragRef.current = { nodeId: targetNode.id(), ep: i }
+        cachedGuideSegments = showTechnicalGuidesRef?.current
+          ? collectTechnicalGuideSegments(layer, floorsRef?.current ?? [], faceAttributesRef?.current)
+          : []
 
         function onMove(ev) {
           const active = activeDragRef.current

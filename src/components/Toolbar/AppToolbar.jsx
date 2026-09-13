@@ -118,6 +118,12 @@ const Icons = {
       <circle cx="16" cy="16" r="1.3" fill={S} stroke="none" />
     </svg>
   ),
+  roofGuide: (
+    <svg {...ICON}>
+      <path d="M3 16l7-12 7 12" />
+      <line x1="6.5" y1="10" x2="13.5" y2="10" strokeDasharray="2 2" />
+    </svg>
+  ),
 }
 
 const DRAW_TOOLS = [
@@ -147,6 +153,8 @@ export default function AppToolbar({
   onTogglePills,
   showZones,
   onToggleZones,
+  showTechnicalGuides,
+  onToggleTechnicalGuides,
   onRename,
   onImportImage,
   onUndo,
@@ -439,6 +447,15 @@ export default function AppToolbar({
         onClick={onToggleZones}
       >
         {Icons.zonesFill}
+      </button>
+
+      {/* Technische hulplijnen (dak) */}
+      <button
+        className={`toolbar-btn${showTechnicalGuides ? ' active' : ''}`}
+        title={showTechnicalGuides ? 'Technische hulplijnen (nu aan)' : 'Technische hulplijnen (nu uit)'}
+        onClick={onToggleTechnicalGuides}
+      >
+        {Icons.roofGuide}
       </button>
 
       {/* Camera modal */}

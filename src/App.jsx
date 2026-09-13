@@ -55,6 +55,10 @@ export default function App() {
   const [showZonesInPdf, setShowZonesInPdf] = useState(false)
   const [showHinges, setShowHinges] = useState(true)
   const [showMinimap, setShowMinimap] = useState(true)
+  // Technische hulplijnen (dak-gerelateerd, zie roofGuides.js) — default uit:
+  // specialistische hulp voor wie de Blender-export gebruikt, geen ruis voor
+  // bestaande gebruikers die dit niet nodig hebben.
+  const [showTechnicalGuides, setShowTechnicalGuides] = useState(false)
   const [pillColor, setPillColor] = useState('#1971c2')
   const [pillOpacity, setPillOpacity] = useState(100)
   const [pillFontSize, setPillFontSize] = useState(10)
@@ -68,6 +72,7 @@ export default function App() {
       if (s.showZonesInPdf !== undefined) setShowZonesInPdf(s.showZonesInPdf)
       if (s.showHinges !== undefined) setShowHinges(s.showHinges)
       if (s.showMinimap !== undefined) setShowMinimap(s.showMinimap)
+      if (s.showTechnicalGuides !== undefined) setShowTechnicalGuides(s.showTechnicalGuides)
       if (s.pillColor !== undefined) setPillColor(s.pillColor)
       if (s.pillOpacity !== undefined) setPillOpacity(s.pillOpacity)
       if (s.pillFontSize !== undefined) setPillFontSize(s.pillFontSize)
@@ -78,8 +83,8 @@ export default function App() {
 
   useEffect(() => {
     if (!settingsLoadedRef.current) return
-    saveAppSettings({ showPills, showPillsInPdf, showZonesInPdf, showHinges, showMinimap, pillColor, pillOpacity, pillFontSize, pillTextColor })
-  }, [showPills, showPillsInPdf, showZonesInPdf, showHinges, showMinimap, pillColor, pillOpacity, pillFontSize, pillTextColor])
+    saveAppSettings({ showPills, showPillsInPdf, showZonesInPdf, showHinges, showMinimap, showTechnicalGuides, pillColor, pillOpacity, pillFontSize, pillTextColor })
+  }, [showPills, showPillsInPdf, showZonesInPdf, showHinges, showMinimap, showTechnicalGuides, pillColor, pillOpacity, pillFontSize, pillTextColor])
 
   const pillStyle = { pillColor, pillOpacity, pillFontSize, pillTextColor }
   const [clipboardData, setClipboardData] = useState(null)
@@ -423,6 +428,8 @@ export default function App() {
               onTogglePills={() => setShowPills(v => !v)}
               showZones={showZones}
               onToggleZones={handleToggleZones}
+              showTechnicalGuides={showTechnicalGuides}
+              onToggleTechnicalGuides={() => setShowTechnicalGuides(v => !v)}
               onRename={renameNote}
               onImportImage={handleImportImage}
               onUndo={() => canvasViewRef.current?.undo()}
@@ -459,6 +466,7 @@ export default function App() {
               showHinges={showHinges}
               showZones={showZones}
               showMinimap={showMinimap}
+              showTechnicalGuides={showTechnicalGuides}
               linkingFloorId={linkingFloorId}
               onEndpointLinked={handleEndpointLinked}
             />

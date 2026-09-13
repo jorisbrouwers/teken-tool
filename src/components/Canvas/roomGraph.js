@@ -32,7 +32,7 @@ const AREA_EPSILON = 1e-6
 // rand die de aftakking overslaat en zo de hele buitenomtrek aframt
 // duidelijk het buitenvlak, en die kreeg in de simulatie steevast het
 // positieve teken, de twee echte kamers steevast het negatieve.
-function signedArea(vertices) {
+export function signedArea(vertices) {
   let sum = 0
   for (let i = 0; i < vertices.length; i++) {
     const a = vertices[i]
@@ -169,15 +169,20 @@ function computeLoops(walls) {
 // verwijzen naar de peer-eindpunten waarmee eindpunt 0 resp. 1 van deze muur
 // verbonden is. Coördinaten zijn absoluut (stage-space).
 //
-// Retourneert [{ vertices: [{x,y}, ...], edgeIds: [wallId, ...] }] — één
-// entry per gedetecteerd binnenvlak (het buitenvlak/de buitenvlakken worden
-// er automatisch uitgefilterd, zie hierboven).
+// Retourneert [{ vertices: [{x,y}, ...], edgeIds: [wallId, ...], orderedEdgeIds }]
+// — één entry per gedetecteerd binnenvlak (het buitenvlak/de buitenvlakken
+// worden er automatisch uitgefilterd, zie hierboven). `edgeIds` is gededupliceerd/
+// gesorteerd (stabiele sleutel, zie faceHash); `orderedEdgeIds` behoudt de
+// muur-volgorde zodat orderedEdgeIds[i] de muur is tussen vertices[i] en
+// vertices[(i+1) % n] — nodig voor bewerkingen die de buurmuur van een rand
+// moeten kennen (bv. roofGuides.js, die bij het intekenen van 1,5m-lijnen de
+// aangrenzende muur van een hoek moet vinden om tegenaan te snijden/lassen).
 export function computeFacesFromWalls(walls) {
   const faces = []
   for (const loop of computeLoops(walls)) {
     if (loop.area >= -AREA_EPSILON) continue // buitenvlak of degeneraat, zie boven
     const edgeIds = [...new Set(loop.edgeWallIds)].sort()
-    faces.push({ vertices: loop.vertices, edgeIds })
+    faces.push({ vertices: loop.vertices, edgeIds, orderedEdgeIds: loop.edgeWallIds })
   }
   return faces
 }

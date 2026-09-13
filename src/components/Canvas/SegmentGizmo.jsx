@@ -221,8 +221,7 @@ export default function SegmentGizmo({ node, stageRef, mainLayerRef, snapEnabled
     // draggable-systeem (dat staat overal uit, zie computeDraggable) en van
     // het generieke gizmo-bbox-slepen (dat vereist zichtbare Transformer-
     // anchors om zijn hit-box te berekenen — hier bewust niet aanwezig) —
-    // dus net als bij een muur-body (wallBodyDrag) een eigen, simpele
-    // pointer-gebaseerde translatie van node.x()/y().
+    // dus een eigen, simpele pointer-gebaseerde translatie van node.x()/y().
     let bodyStartStagePt = null
     let bodyStartNodePt  = null
 

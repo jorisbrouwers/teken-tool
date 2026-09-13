@@ -15,19 +15,14 @@ const WALL_ALIGN_SNAP_SCREEN_PX = 20
 const WALL_BODY_SNAP_SCREEN_PX = 15
 // Muur-tool: hoek-snap-tolerantie (45°-veelvouden), zelfde als lijn/pijl-tool.
 const SNAP_RAD_WALL = 3 * Math.PI / 180
+// Muur-tool: schermpixels waarbinnen een eindpunt snapt op een technische
+// hulplijn (roofGuides.js) — onafhankelijk van de Snap-knop, zie computeWallEndpoint.
+const GUIDE_SNAP_SCREEN_PX = 18
 // Muur-tool: tolerantie voor het automatisch ongedaan maken van een mid-
 // segment-aftakking (splitWallAt) zodra de aftakking zelf verwijderd wordt —
 // zie tryMergeCollinearJoint. Iets ruimer dan SNAP_RAD_WALL omdat een muur
 // na eerdere bewerkingen niet meer perfect 180° hoeft te zijn.
 const WALL_MERGE_COLLINEAR_TOL_RAD = 8 * Math.PI / 180
-// Muur-body-slepen: precisie-rem. Onder SLOW_PXMS schermpixels/ms komt maar
-// MIN_SENSITIVITY van de ruwe pointerbeweging door (fijn positioneren tot op
-// enkele cm); boven FAST_PXMS is het gewoon 1:1 (huidig gedrag). Ertussenin
-// lineair geïnterpoleerd. Gebruikt schermpixel-snelheid (i.p.v. stage-
-// eenheden) zodat de rem op elk zoomniveau even sterk aanvoelt.
-const WALL_DRAG_MIN_SENSITIVITY = 0.08
-const WALL_DRAG_SLOW_PXMS = 0.05
-const WALL_DRAG_FAST_PXMS = 0.6
 // Muur-tool: wereld-afstand (stage-eenheden, zoom-onafhankelijk) die overschreden
 // moet worden voordat pointerdown→pointerup als "tekenen" geldt i.p.v. een tik
 // (selecteren/deselecteren). 0,5 m voorkomt dat pen-jitter bij een tik per ongeluk
@@ -49,12 +44,17 @@ const WALL_STROKE_COLOR = '#1d1d1d'
 
 // Vlak-aard: onafhankelijk van installatie-toewijzing (zie faceAttributes
 // hieronder) — bepaalt hoe een vlak bij de latere Blender-export behandeld
-// wordt (gebruiksoppervlak, dakvlak, buiten de berekening, of beperkte
-// stahoogte). Default (geen entry in note.settings.faceAttributes) = eerste
-// waarde hier.
+// wordt (gebruiksoppervlak, buiten de berekening, of beperkte stahoogte).
+// Default (geen entry in note.settings.faceAttributes) = eerste waarde hier.
+// "Plat dak" zat hier ooit ook in, maar is losgetrokken naar een eigen
+// booleaanse eigenschap (faceAttributes[hash].platDak, zie de "Heeft plat
+// dak"-toggle in de popup) — een schuin dak is een eigenschap van muren
+// (roofCourses), een plat dak een eigenschap van een VLAK, en een vlak met
+// een plat dak erboven is heel normaal gewoon nog een verwarmde
+// gebruiksruimte. Eén aard-waarde kon dat onderscheid niet tegelijk maken;
+// zie BLENDER_EXPORT_PLAN.md, blok "Vlak-eigenschap".
 const FACE_AARD_OPTIONS = [
   { value: 'gebruiksruimte', label: 'Gebruiksruimte' },
-  { value: 'plat dak', label: 'Plat dak' },
   { value: 'niet berekend', label: 'Niet berekend' },
   { value: '<1.5m', label: '<1,5m' },
 ]
@@ -144,13 +144,16 @@ import SegmentGizmo from './SegmentGizmo.jsx'
 import MeasurementLabels from './MeasurementLabels.jsx'
 import HingeDecorations from './HingeDecorations.jsx'
 import ZoneFillOverlay from './ZoneFillOverlay.jsx'
+import AgPanel from './AgPanel.jsx'
+import RoofGuideOverlay from './RoofGuideOverlay.jsx'
+import { collectTechnicalGuideSegments, collectHeightGuideChainsForHierarchy } from './roofGuides.js'
 import { detectFaces, facesFromNodes, computeFacesFromWalls, pointInFace, faceHash, resolveRoomAssignment, shrinkPolygon } from './roomGraph.js'
 import { dropdownLabel } from '../Installations/InstallationsSidebar.jsx'
 import { COLORS } from '../StylePanel/StylePanel.jsx'
 import './Canvas.css'
 
 const CanvasView = forwardRef(function CanvasView(
-  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, onCanvasPointerDown, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true, showZones = false, showMinimap = true, patchNoteSettings, linkingFloorId = null, onEndpointLinked },
+  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, onCanvasPointerDown, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true, showZones = false, showMinimap = true, showTechnicalGuides = false, patchNoteSettings, linkingFloorId = null, onEndpointLinked },
   ref
 ) {
   // ─── DOM + Konva refs ───────────────────────────────────────────────────────
@@ -217,6 +220,10 @@ const CanvasView = forwardRef(function CanvasView(
   const [wallRoofCourses, setWallRoofCourses] = useState([])
   const [showRoofPanel, setShowRoofPanel] = useState(false)
   const roofDirtyRef = useRef(false)
+  // Kebab-menu in de object-toolbar (bv. "1,5m-lijnen intekenen", zie
+  // handleInsertHeightGuides) — apart van het dak-paneel omdat het geen
+  // formulier is, gewoon een lijst acties.
+  const [showWallMenu, setShowWallMenu] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [deleteHolding, setDeleteHolding] = useState(false)
   const deleteTimerRef = useRef(null)
@@ -243,7 +250,6 @@ const CanvasView = forwardRef(function CanvasView(
   const lineGizmoNodeRef = useRef(null)
   const [lineGizmoVersion, setLineGizmoVersion] = useState(0)
   const suppressMeasureRef  = useRef(false)
-  const bodyXAlignRef       = useRef(null)   // blue rechte-lijn-richting-guide tijdens muur-body-slepen
   const gizmoAutoEditRef    = useRef(false)  // when true, LineGizmo opens edit mode on mount
 
   // ─── Segment gizmo state (losse lijn/pijl/L-vorm, zie isEditableLinear) ─────
@@ -323,6 +329,17 @@ const CanvasView = forwardRef(function CanvasView(
   // wordt gecontroleerd of een verdieping alsnog gekoppeld is (zie
   // App.jsx/handleExportBlender), dáár komt de floaty-toast.
   //
+  // Reparatie vóór het wissen: bij een T-splitsing (splitWallAt) krijgen BEIDE
+  // helften altijd een nieuwe id, maar de buitenhoek (het niet-gesplitste
+  // uiteinde) blijft exact op zijn plek bestaan op één van de twee — alleen de
+  // node-id verandert, de positie niet. Een muur-eindpunt zoeken op de bij het
+  // koppelen opgeslagen positie (referencePoint.x/y, grid-eenheden) vindt 'm
+  // dus terug, en de koppeling kan stilzwijgend naar die nieuwe id/ep worden
+  // omgebogen i.p.v. verloren te gaan — geen handmatig "Koppel" opnieuw nodig
+  // na elke muur die op deze hoek aftakt. Alleen een échte verwijdering (geen
+  // enkel eindpunt meer op die plek, binnen een kleine tolerantie) faalt hier
+  // terecht en valt door naar het wissen.
+  //
   // Aangeroepen vanuit scheduleSnapshot() — dat is al de centrale plek die na
   // vrijwel elke structurele wijziging aangeroepen wordt, dus dit vangt elke
   // muur-vernietigende actie op zonder dat elke afzonderlijke plek (merge,
@@ -340,6 +357,26 @@ const CanvasView = forwardRef(function CanvasView(
       if (!f.referencePoint) return f
       const node = mainLayer.findOne(`#${f.referencePoint.wallId}`)
       if (node && isWallSegment(node)) return f
+
+      if (f.referencePoint.x != null && f.referencePoint.y != null) {
+        const found = findWallEndpointNear(
+          mainLayer,
+          f.referencePoint.x * GRID_SIZE,
+          f.referencePoint.y * GRID_SIZE,
+          GRID_SIZE, // tolerantie: dekt de afronding naar hele grid-eenheden bij het koppelen
+        )
+        if (found) {
+          changed = true
+          return {
+            ...f,
+            referencePoint: {
+              wallId: found.node.id(), ep: found.ep,
+              x: Math.round(found.x / GRID_SIZE), y: Math.round(found.y / GRID_SIZE),
+            },
+          }
+        }
+      }
+
       changed = true
       return { ...f, referencePoint: null }
     })
@@ -392,13 +429,8 @@ const CanvasView = forwardRef(function CanvasView(
   // vrijwel altijd nee: afbeeldingen/vormen/streken bewegen uitsluitend via
   // ons eigen gizmo-bbox-systeem (dragNodeOrigins), nooit via Konva-native
   // dragging — zo kan niets versleept worden zonder het eerst te selecteren.
-  // Muren waren lange tijd de uitzondering (een echte Konva-drag op het
-  // geselecteerde segment), maar dat bleek net als bij afbeeldingen/vormen
-  // niet betrouwbaar met pen-input: Konva's dragend vuurde soms niet af,
-  // waardoor de muur "vast" bleef hangen in Konva's interne drag-state en bij
-  // de eerstvolgende drag ergens anders alsnog meesprong. Body-slepen van een
-  // muur loopt daarom nu ook via het handmatige pointer-systeem (wallBodyDrag
-  // in Effect 3), dus hier altijd false.
+  // Muren zijn niet zelf (als geheel) sleepbaar — alleen de eindpunten
+  // (scharnieren) zijn via LineGizmo te verplaatsen.
   function computeDraggable(node, tool) {
     if (node.getClassName() === 'Transformer') return false
     if (node.attrs.isLocked) return false
@@ -413,9 +445,11 @@ const CanvasView = forwardRef(function CanvasView(
   // patchNoteSettings erbij zodat App.jsx's eigen `notes`-state meteen
   // meeloopt (zie updateRoomAssignment/carryRoomAssignments hieronder).
   const [roomAssignments, setRoomAssignments] = useState(() => note.settings?.roomAssignments ?? {})
-  // Vlak-aard: onafhankelijk van installatie-toewijzing (zie BLENDER_EXPORT_PLAN.md —
-  // een vlak kan zowel "geen installatie" als "niet berekend" zijn, of "geen
-  // installatie" + "plat dak"). Default (geen entry) = 'gebruiksruimte'.
+  // Vlak-eigenschappen: onafhankelijk van installatie-toewijzing (zie
+  // BLENDER_EXPORT_PLAN.md, blok "Vlak-eigenschap") — een vlak kan zowel
+  // "geen installatie" als "niet berekend" zijn, en `platDak` staat helemaal
+  // los van `aard`: een gebruiksruimte kan gewoon een plat dak erboven hebben.
+  // Defaults (geen entry) = aard 'gebruiksruimte', platDak false.
   const [faceAttributes, setFaceAttributes] = useState(() => note.settings?.faceAttributes ?? {})
   const [assignPopup, setAssignPopup] = useState(null) // { hash, left, top } | null
   const hoveredFaceKeyRef = useRef(null)
@@ -473,8 +507,12 @@ const CanvasView = forwardRef(function CanvasView(
     updateNoteSettings(note.id, newSettings)
   }
 
-  function updateFaceAttribute(hash, aard) {
-    const next = { ...faceAttributes, [hash]: { aard } }
+  // patch = { aard } en/of { platDak } — merget bovenop de bestaande entry
+  // (net als updateRoomAssignment hierboven) zodat het wijzigen van de ene
+  // eigenschap de andere niet stilzwijgend wist.
+  function updateFaceAttribute(hash, patch) {
+    const current = faceAttributes[hash] ?? {}
+    const next = { ...faceAttributes, [hash]: { ...current, ...patch } }
     setFaceAttributes(next)
     const newSettings = { ...note.settings, faceAttributes: next }
     patchNoteSettings?.(note.id, newSettings)
@@ -530,6 +568,16 @@ const CanvasView = forwardRef(function CanvasView(
   onSelectionChangeRef.current = onSelectionChange
   const snapEnabledRef = useRef(snapEnabled)
   snapEnabledRef.current = snapEnabled
+  const showTechnicalGuidesRef = useRef(showTechnicalGuides)
+  showTechnicalGuidesRef.current = showTechnicalGuides
+  // Losse refs (i.p.v. via noteRef) zodat LineGizmo — dat geen note-prop kent —
+  // ze rechtstreeks kan krijgen voor de hulplijn-snap-cascade. faceAttributes
+  // is nodig om bij een muur die aan twee vlakken grenst de kant met
+  // aard "gebruiksruimte" te kiezen, zie roofGuides.js/findInteriorNormal.
+  const floorsRef = useRef(note?.settings?.floors ?? [])
+  floorsRef.current = note?.settings?.floors ?? []
+  const faceAttributesRef = useRef(faceAttributes)
+  faceAttributesRef.current = faceAttributes
   const pillStyleRef = useRef(pillStyle)
   pillStyleRef.current = pillStyle
   useEffect(() => { onSelectionChangeRef.current?.(selectedType !== null) }, [selectedType])
@@ -596,8 +644,11 @@ const CanvasView = forwardRef(function CanvasView(
       perfectDrawEnabled: false, shadowForStrokeEnabled: false, isWall: true,
       // Begrenzing/hulplijn-status van de twee samengevoegde helften (die
       // horen normaliter overeen te komen — afkomstig van dezelfde
-      // oorspronkelijke muur) gaan anders verloren bij het samenvoegen.
+      // oorspronkelijke muur) gaan anders verloren bij het samenvoegen. Idem
+      // voor een eventueel dak (zie applyRoof/exportRoof) — anders verdwijnt
+      // dakdata stilzwijgend zodra een T-splitsing weer wordt opgeheven.
       boundary: node.attrs.boundary, isAux: node.attrs.isAux,
+      roofBaseHeightM: node.attrs.roofBaseHeightM, roofCourses: node.attrs.roofCourses,
       lineCap: node.lineCap(), lineJoin: node.lineJoin(),
       ...(node.dash()?.length ? { dash: node.dash() } : {}),
       ...(cls === 'Arrow' ? { fill: node.fill(), pointerLength: node.pointerLength(), pointerWidth: node.pointerWidth() } : {}),
@@ -676,8 +727,11 @@ const CanvasView = forwardRef(function CanvasView(
       hitStrokeWidth: host.hitStrokeWidth(), listening: true, draggable: false,
       perfectDrawEnabled: false, shadowForStrokeEnabled: false, isWall: true,
       // Begrenzing/hulplijn-status van de host gaat naar beide helften —
-      // zaten niet in de rest van deze lijst en gingen anders verloren.
+      // zaten niet in de rest van deze lijst en gingen anders verloren. Idem
+      // voor een eventueel dak (zie applyRoof/exportRoof) — anders verdwijnt
+      // dakdata stilzwijgend zodra een muur mid-segment wordt afgetakt.
       boundary: host.attrs.boundary, isAux: host.attrs.isAux,
+      roofBaseHeightM: host.attrs.roofBaseHeightM, roofCourses: host.attrs.roofCourses,
       lineCap: host.lineCap(), lineJoin: host.lineJoin(),
       ...(host.dash()?.length ? { dash: host.dash() } : {}),
       ...(cls === 'Arrow' ? { fill: host.fill(), pointerLength: host.pointerLength(), pointerWidth: host.pointerWidth() } : {}),
@@ -718,7 +772,6 @@ const CanvasView = forwardRef(function CanvasView(
     const node = layer.findOne(`#${nodeId}`)
     if (!node) return
     // Only pull the directly connected endpoints — no chain propagation.
-    // Body drag (dragmove on the line itself) handles full-chain propagation.
     let moved = false
     for (const conn of getConns(node, endpointIndex)) {
       const connNode = layer.findOne(`#${conn.id}`)
@@ -978,6 +1031,7 @@ const CanvasView = forwardRef(function CanvasView(
     }
     setIsWallToolbarTarget(isWall)
     setShowRoofPanel(false)
+    setShowWallMenu(false)
     if (isWall) {
       setWallBoundary(resolveWallBoundary(node))
       setWallIsAux(!!node.attrs.isAux)
@@ -2069,14 +2123,6 @@ const CanvasView = forwardRef(function CanvasView(
     let wallAlignX = null      // pink vertical guide (drawingLayer)
     let wallAlignY = null      // pink horizontal guide (drawingLayer)
     let wallSnapIndicator = null // blue 45°-snap guide (drawingLayer)
-    // Sleep van het BODY van de al-geselecteerde muur (edit mode) — handmatig
-    // via onze eigen pointer-events i.p.v. Konva's native draggable(true), om
-    // dezelfde reden als bij selectie-drag (zie computeDraggable): Konva's
-    // eigen drag-lifecycle bleek niet betrouwbaar met pen-input (dragend
-    // vuurde soms niet af, waardoor de muur in Konva's interne drag-state
-    // "vast" bleef hangen — de eerstvolgende drag ergens anders trok hem dan
-    // alsnog mee naar het nieuwe startpunt).
-    let wallBodyDrag = null    // { node, originPos, originNodeX, originNodeY, moved, axis: 'x'|'y'|null, virtualOffset, lastAxisCoord, lastTime }
 
     function createWallPillEl() {
       const el = document.createElement('div')
@@ -2124,7 +2170,15 @@ const CanvasView = forwardRef(function CanvasView(
         return { x: weld.x, y: weld.y, weldConn: { id: weld.node.id(), ep: weld.ep }, splitHost: null }
       }
 
-      // 2. Uitlijn-snap (roze gidslijnen), onafhankelijk per as.
+      const sc = stage.scaleX()
+      const left   = (-stage.x()) / sc, right  = (stage.width()  - stage.x()) / sc
+      const top    = (-stage.y()) / sc, bottom = (stage.height() - stage.y()) / sc
+
+      // 2. Uitlijn-snap (roze gidslijnen), onafhankelijk per as. Draait altijd
+      // (ook als de technische-hulplijn-snap hieronder toeslaat) — de twee
+      // moeten tegelijk kunnen werken: de hulplijn legt de ene as vast (loodrecht
+      // op de gevel), uitlijning mag de andere as (langs de hulplijn) nog
+      // vastzetten op een bestaand hoekpunt.
       const alignDist = WALL_ALIGN_SNAP_SCREEN_PX / stage.scaleX()
       const ownStartNode = wd.startConn ? mainLayer.findOne(`#${wd.startConn.id}`) : null
       const vertices = collectSnapVertices(mainLayer, stage, ownStartNode, [])
@@ -2136,10 +2190,6 @@ const CanvasView = forwardRef(function CanvasView(
       }
       if (snapX !== null) cx = snapX
       if (snapY !== null) cy = snapY
-
-      const sc = stage.scaleX()
-      const left   = (-stage.x()) / sc, right  = (stage.width()  - stage.x()) / sc
-      const top    = (-stage.y()) / sc, bottom = (stage.height() - stage.y()) / sc
 
       if (snapX !== null) {
         if (!wallAlignX) {
@@ -2156,10 +2206,52 @@ const CanvasView = forwardRef(function CanvasView(
         wallAlignY.points([left, snapY, right, snapY])
       } else if (wallAlignY) { wallAlignY.destroy(); wallAlignY = null }
 
-      // 3. Hoek-snap (45°), gecombineerd met een eventueel al vastgelegde as.
-      let isAngleSnapping = false, snappedAngle = 0
+      // 2.5. Technische-hulplijn-snap — onafhankelijk van de Snap-knop (net als
+      // las-/uitlijn-/lichaam-snap). Combineert met uitlijning hierboven i.p.v.
+      // die te vervangen: is één as al vastgezet op een hoekpunt, dan schuift
+      // dit punt over de hulplijn tot het snijpunt met die as (net zoals
+      // hoek-snap hieronder een al vastgezette as combineert met 45°). Zijn
+      // beide assen al vastgezet (het punt ligt al exact op een hoekpunt), dan
+      // wint dat hoekpunt — geen hulplijn-aanpassing meer nodig. wd.guideSegments
+      // is één keer bij het starten van deze muur berekend (pointer-down), niet
+      // opnieuw per move. Zie roofGuides.js.
+      let guideSnapped = false
       const bothAxesLocked = snapX !== null && snapY !== null
-      if (!bothAxesLocked && snapEnabledRef.current) {
+      if (!bothAxesLocked && wd.guideSegments?.length) {
+        const guideSnapDist = GUIDE_SNAP_SCREEN_PX / stage.scaleX()
+        let bestD = guideSnapDist, bestSeg = null
+        for (const seg of wd.guideSegments) {
+          const proj = closestPointOnSegment(cx, cy, seg.x1, seg.y1, seg.x2, seg.y2)
+          const d = Math.hypot(proj.x - cx, proj.y - cy)
+          if (d < bestD) { bestD = d; bestSeg = seg }
+        }
+        if (bestSeg) {
+          const dxSeg = bestSeg.x2 - bestSeg.x1, dySeg = bestSeg.y2 - bestSeg.y1
+          if (snapX !== null) {
+            if (Math.abs(dxSeg) > 1e-6) {
+              const t = Math.max(0, Math.min(1, (snapX - bestSeg.x1) / dxSeg))
+              cy = bestSeg.y1 + t * dySeg
+              guideSnapped = true
+            } // anders: hulplijn evenwijdig aan de vastgezette as — geen zinvol snijpunt, uitlijning blijft leidend
+          } else if (snapY !== null) {
+            if (Math.abs(dySeg) > 1e-6) {
+              const t = Math.max(0, Math.min(1, (snapY - bestSeg.y1) / dySeg))
+              cx = bestSeg.x1 + t * dxSeg
+              guideSnapped = true
+            }
+          } else {
+            const proj = closestPointOnSegment(cx, cy, bestSeg.x1, bestSeg.y1, bestSeg.x2, bestSeg.y2)
+            cx = proj.x; cy = proj.y
+            guideSnapped = true
+          }
+        }
+      }
+      if (guideSnapped && wallSnapIndicator) { wallSnapIndicator.destroy(); wallSnapIndicator = null }
+
+      // 3. Hoek-snap (45°), gecombineerd met een eventueel al vastgelegde as —
+      // niet meer zinvol zodra de hulplijn-snap hierboven al toesloeg.
+      let isAngleSnapping = false, snappedAngle = 0
+      if (!guideSnapped && !bothAxesLocked && snapEnabledRef.current) {
         const dx = cx - anchorX, dy = cy - anchorY
         const angle = Math.atan2(dy, dx)
         snappedAngle = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4)
@@ -2580,26 +2672,15 @@ const CanvasView = forwardRef(function CanvasView(
 
       if (tool === 'wall') {
         const hit = e.target
-        // Al geselecteerd (gizmo open) en de pen raakt precies dát segment:
-        // start het handmatige body-slepen (zie wallBodyDrag hierboven).
-        if (isWallSegment(hit) && hit === lineGizmoNodeRef.current) {
-          wallBodyDrag = { node: hit, originPos: pos, originNodeX: hit.x(), originNodeY: hit.y(), moved: false, axis: null }
-          wallEditActiveRef.current = true
-          return
-        }
         if (hit?.name?.()?.startsWith('lineGizmoHandle')) return
 
-        // Al in edit mode (een andere muur al geselecteerd/gizmo open) en de
-        // pen raakt het BODY van een ANDERE muur: dat betekent "verplaats
-        // deze muur", niet de aftakking/extrude-flow hieronder (die is
-        // bedoeld voor buiten edit mode). Selecteer 'm meteen en start het
-        // slepen in dezelfde gesture — anders zou hier een nieuwe muur uit
-        // aftakken, en moest de gebruiker eerst apart tikken-om-te-selecteren
-        // vóór hij kon slepen.
+        // Al in edit mode (gizmo open) en de pen raakt het BODY van een muur
+        // (de eigen geselecteerde of een andere): selecteer 'm i.p.v. de
+        // aftakking/extrude-flow hieronder te starten (die is bedoeld voor
+        // buiten edit mode). Muren zijn niet zelf sleepbaar — alleen de
+        // eindpunten (scharnieren) via LineGizmo.
         if (lineGizmoNodeRef.current && isWallSegment(hit)) {
-          positionAndShowToolbar(hit)
-          wallBodyDrag = { node: hit, originPos: pos, originNodeX: hit.x(), originNodeY: hit.y(), moved: false, axis: null }
-          wallEditActiveRef.current = true
+          if (hit !== lineGizmoNodeRef.current) positionAndShowToolbar(hit)
           return
         }
 
@@ -2650,6 +2731,11 @@ const CanvasView = forwardRef(function CanvasView(
           previewLine: null, pillEl: null,
           hitNodeAtDown: isWallSegment(hit) ? hit : null,
           moved: false,
+          // Eén keer berekend bij het starten van deze muur (niet per move) —
+          // zie de toelichting bij stap 1.5 in computeWallEndpoint hieronder.
+          guideSegments: showTechnicalGuidesRef.current
+            ? collectTechnicalGuideSegments(mainLayer, noteRef.current?.settings?.floors ?? [], faceAttributesRef.current)
+            : [],
         }
         return
       }
@@ -2730,15 +2816,15 @@ const CanvasView = forwardRef(function CanvasView(
 
         // Cursor volgt de hover-context (zie WALL_CURSOR_* bovenaan het bestand):
         // vlak → toewijzing, lijn/hoekpunt buiten edit mode → edit mode activeren,
-        // lijn/hoekpunt van de bewerkte hiërarchie in edit mode → verplaatsen,
-        // daarbuiten in edit mode → default (signaleert "klik = edit mode verlaten").
+        // handle (eindpunt) van de bewerkte hiërarchie in edit mode → verplaatsen,
+        // muur-body in edit mode → selecteren, daarbuiten → default (signaleert
+        // "klik = edit mode verlaten").
         if (wallEditActiveRef.current) {
           stage.container().style.cursor = WALL_CURSOR_MOVE
         } else if (editMode) {
           const hit = e.target
           const isHandle = hit?.name?.()?.startsWith('lineGizmoHandle')
-          const inHierarchy = isHandle || (isWallSegment(hit) && walkHierarchy(lineGizmoNodeRef.current, mainLayer).includes(hit))
-          stage.container().style.cursor = inHierarchy ? WALL_CURSOR_MOVE : 'default'
+          stage.container().style.cursor = isHandle ? WALL_CURSOR_MOVE : (isWallSegment(hit) ? WALL_CURSOR_ACTIVATE : 'default')
         } else {
           const hit = e.target
           const epSnapDist = WALL_EP_SNAP_SCREEN_PX / stage.scaleX()
@@ -2751,92 +2837,6 @@ const CanvasView = forwardRef(function CanvasView(
             stage.container().style.cursor = WALL_CURSOR_DRAW
           }
         }
-      }
-
-      if (wallBodyDrag) {
-        const wb = wallBodyDrag
-        const target = wb.node
-        if (!target.getLayer()) { wallBodyDrag = null; return } // node destroyed mid-drag (shouldn't happen, safety net)
-
-        const dx = pos.x - wb.originPos.x
-        const dy = pos.y - wb.originPos.y
-        if (!wb.moved && Math.hypot(dx, dy) <= 3) return
-
-        // Muur-body-slepen: geen vertex-snap, geen hoek-wiskunde — gewoon een
-        // vaste as. Op het moment dat de sleepdrempel overschreden wordt, kiest
-        // hij ÉÉN keer horizontaal of verticaal (welke van dx/dy op dat moment
-        // groter is) en blijft daaraan vasthouden voor de rest van de sleep. De
-        // andere as staat strikt vast op de startpositie — geen losbreken, geen
-        // diagonaal, dus ook geen paar pixels afwijking meer door heen-en-weer-
-        // wisselende snap-beslissingen elk frame.
-        const nowTs = performance.now()
-        if (!wb.moved) {
-          wb.axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y'
-          wb.moved = true
-          // Startpunt van de virtuele (mogelijk afgeremde) positie — begint bij
-          // de al gemaakte sleepafstand zodat er geen sprongetje ontstaat zodra
-          // de as net gekozen is.
-          wb.virtualOffset = wb.axis === 'x' ? dx : dy
-          wb.lastAxisCoord = wb.axis === 'x' ? pos.x : pos.y
-          wb.lastTime = nowTs
-        } else {
-          // ── Precisie-rem: hoe langzamer de pointer beweegt, hoe minder van
-          // die beweging doorkomt (WALL_DRAG_*) — zo kan je op een tablet met
-          // een trage penstreek nog op de cm nauwkeurig positioneren, terwijl
-          // een gewone vlotte sleep zich gedraagt als voorheen (1:1).
-          const axisCoord = wb.axis === 'x' ? pos.x : pos.y
-          const stepStage = axisCoord - wb.lastAxisCoord
-          const dt = Math.max(1, nowTs - wb.lastTime)
-          const speedPxMs = (Math.abs(stepStage) * stage.scaleX()) / dt
-          const t = Math.min(1, Math.max(0, (speedPxMs - WALL_DRAG_SLOW_PXMS) / (WALL_DRAG_FAST_PXMS - WALL_DRAG_SLOW_PXMS)))
-          const sensitivity = WALL_DRAG_MIN_SENSITIVITY + (1 - WALL_DRAG_MIN_SENSITIVITY) * t
-          wb.virtualOffset += stepStage * sensitivity
-          wb.lastAxisCoord = axisCoord
-          wb.lastTime = nowTs
-        }
-
-        const newX = wb.axis === 'x' ? wb.originNodeX + wb.virtualOffset : wb.originNodeX
-        const newY = wb.axis === 'y' ? wb.originNodeY + wb.virtualOffset : wb.originNodeY
-
-        target.position({ x: newX, y: newY })
-
-        {
-          const sc = stage.scaleX()
-          const stageLeft   = (-stage.x()) / sc
-          const stageRight  = (stage.width()  - stage.x()) / sc
-          const stageTop    = (-stage.y()) / sc
-          const stageBottom = (stage.height() - stage.y()) / sc
-          if (!bodyXAlignRef.current) {
-            bodyXAlignRef.current = new Konva.Line({
-              stroke: '#1971c2', strokeWidth: 1, strokeScaleEnabled: false,
-              dash: [6, 5], opacity: 0.55, listening: false, perfectDrawEnabled: false,
-            })
-            mainLayer.add(bodyXAlignRef.current)
-          }
-          bodyXAlignRef.current.points(
-            wb.axis === 'x'
-              ? [stageLeft, wb.originPos.y, stageRight, wb.originPos.y]
-              : [wb.originPos.x, stageTop, wb.originPos.x, stageBottom]
-          )
-        }
-
-        // ── Verbonden eindpunten meetrekken (alleen directe buren, geen ketting) ──
-        const updatedPts = target.points()
-        for (let i = 0; i < 2; i++) {
-          const newAbsX = target.x() + updatedPts[i * 2]
-          const newAbsY = target.y() + updatedPts[i * 2 + 1]
-          for (const conn of getConns(target, i)) {
-            const connNode = mainLayer.findOne(`#${conn.id}`)
-            if (!connNode) continue
-            const connPts = connNode.points().slice()
-            connPts[conn.ep * 2]     = newAbsX - connNode.x()
-            connPts[conn.ep * 2 + 1] = newAbsY - connNode.y()
-            connNode.points(connPts)
-          }
-        }
-
-        mainLayer.batchDraw()
-        return
       }
 
       if (draggingNodes) {
@@ -3028,19 +3028,6 @@ const CanvasView = forwardRef(function CanvasView(
     function onPointerUp(e) {
       if (e.evt.pointerType === 'touch') return
       const tool = activeToolRef.current
-
-      if (wallBodyDrag) {
-        const wb = wallBodyDrag
-        wallBodyDrag = null
-        wallEditActiveRef.current = false
-        removeBodyAlignIndicators(mainLayer)
-        if (wb.moved) {
-          historyPushRef.current?.()
-          scheduleSnapshot()
-        }
-        if (toolbarTargetRef.current === wb.node) positionAndShowToolbar(wb.node)
-        return
-      }
 
       if (draggingNodes) {
         draggingNodes = false
@@ -3491,16 +3478,6 @@ const CanvasView = forwardRef(function CanvasView(
       const target = toolbarTargetRef.current
       if (target) positionAndShowToolbar(target)
     })
-    // Muur-body-slepen loopt sinds kort volledig via het handmatige
-    // wallBodyDrag-systeem in onPointerDown/onPointerMove/onPointerUp
-    // hierboven (i.p.v. Konva's native draggable) — zie computeDraggable
-    // voor de reden. removeBodyAlignIndicators blijft hier staan, wordt
-    // door dat systeem gebruikt.
-    function removeBodyAlignIndicators(layer) {
-      if (bodyXAlignRef.current) { bodyXAlignRef.current.destroy(); bodyXAlignRef.current = null }
-      layer?.batchDraw()
-    }
-
     // pointerrawupdate fires at native device rate (~240 Hz on Surface Pen),
     // before the browser coalesces events into pointermove. Chromium-only.
     // Collecting points here and skipping pointermove gives maximum input fidelity.
@@ -4178,6 +4155,101 @@ const CanvasView = forwardRef(function CanvasView(
     applyRoof(node, wallRoofBaseHeight, next, { commit: true })
   }
 
+  // ─── Object toolbar: "1,5m-lijnen intekenen" (kebab-menu) ──────────────────
+  // Zet de berekende, gemiterde <1,5m-hoogtelijnen (roofGuides.js) om in
+  // echte, met de hiërarchie verbonden hulplijn-muren — zodat alleen de
+  // maat-pill per segment nog gecorrigeerd hoeft te worden i.p.v. zelf na te
+  // tekenen. Scope: alleen de hiërarchie van de geselecteerde muur, niet de
+  // hele notitie — een verdieping die al met de hand is uitgewerkt blijft
+  // dan met rust.
+  function handleInsertHeightGuides() {
+    setShowWallMenu(false)
+    const mainLayer = mainLayerRef.current
+    const startNode = toolbarTargetRef.current
+    if (!mainLayer || !startNode) return
+
+    const segments = collectHeightGuideChainsForHierarchy(mainLayer, startNode, faceAttributes)
+    if (!segments.length) {
+      const stage = stageRef.current
+      if (stage) {
+        const pts = startNode.points()
+        const clientPos = stageToClient(stage, startNode.x() + pts[0], startNode.y() + pts[1])
+        spawnFloatyText(clientPos.x, clientPos.y, 'Geen 1,5m-lijnen gevonden voor deze hiërarchie', 'error')
+      }
+      return
+    }
+
+    // Fase 1: alle nieuwe hulplijn-muren aanmaken (nog los, geen connectiviteit).
+    const newNodes = segments.map(seg => {
+      // Hoek-diagonalen (seg.type === 'corner') hebben zelf geen wallId — pak
+      // dan de muur waar de start-kant tegenaan gelast wordt, voor een
+      // strokeWidth die past bij de rest van deze hoek.
+      const sourceWall = mainLayer.findOne(`#${seg.wallId ?? seg.startWeldWallId}`)
+      const sw = sourceWall ? sourceWall.strokeWidth() : penSizeRef.current * 2
+      const node = new Konva.Line({
+        id: generateId(),
+        points: [seg.x1, seg.y1, seg.x2, seg.y2],
+        stroke: WALL_STROKE_COLOR, strokeWidth: sw,
+        dash: [sw * 2, sw * 3],
+        hitStrokeWidth: Math.max(sw * 4, HIT_MARGIN),
+        lineCap: 'round',
+        listening: true, draggable: false, perfectDrawEnabled: false,
+        shadowForStrokeEnabled: false, isWall: true, isAux: true,
+      })
+      mainLayer.add(node)
+      return { node, seg }
+    })
+
+    // Fase 2: eindpunten die gemiterd zijn (startWeldWallId/endWeldWallId ===
+    // null) delen exact dezelfde positie met het buursegment — groeperen op
+    // positie en in één keer aan elkaar lassen (connectAllPairs, ook als er
+    // toevallig meer dan 2 in hetzelfde punt samenkomen).
+    const groups = new Map() // "x,y" (afgerond) -> [{id, ep}]
+    function addToGroup(x, y, id, ep) {
+      const key = `${Math.round(x)},${Math.round(y)}`
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push({ id, ep })
+    }
+    newNodes.forEach(({ node, seg }) => {
+      if (seg.startWeldWallId == null) addToGroup(seg.x1, seg.y1, node.id(), 0)
+      if (seg.endWeldWallId == null) addToGroup(seg.x2, seg.y2, node.id(), 1)
+    })
+    for (const members of groups.values()) {
+      if (members.length > 1) connectAllPairs(mainLayer, members)
+    }
+
+    // De rest snijdt tegen een BESTAANDE muur — T-splitsing daarop. Zoekt de
+    // host opnieuw op positie (i.p.v. de opgeslagen wallId) omdat een eerdere
+    // splitsing in dezelfde batch die host al door twee helften vervangen kan
+    // hebben.
+    const newNodeIds = newNodes.map(({ node }) => node.id())
+    function weldAgainstExistingWall(x, y, nodeId, ep) {
+      const node = mainLayer.findOne(`#${nodeId}`)
+      if (!node) return
+      const tol = GRID_SIZE * 0.5
+      const bodyHit = findWallBodyNear(mainLayer, x, y, tol, 1, newNodeIds)
+      if (bodyHit) {
+        const { halfA, halfB } = splitWallAt(bodyHit.node, bodyHit.x, bodyHit.y, mainLayer)
+        addConn(halfA, 1, node, ep)
+        addConn(halfB, 0, node, ep)
+        return
+      }
+      // Toch (bijna) op een bestaand hoekpunt beland — daar dan tegenaan lassen.
+      const epHit = findWallEndpointNear(mainLayer, x, y, tol)
+      if (epHit) weldAllAt(mainLayer, node, ep, epHit.node, epHit.ep)
+      // Anders: geen host gevonden — dit eindpunt bewust los laten (zeldzaam
+      // randgeval, bv. een net afgekeurde mitering vlak bij een T-punt).
+    }
+    newNodes.forEach(({ node, seg }) => {
+      if (seg.startWeldWallId != null) weldAgainstExistingWall(seg.x1, seg.y1, node.id(), 0)
+      if (seg.endWeldWallId != null) weldAgainstExistingWall(seg.x2, seg.y2, node.id(), 1)
+    })
+
+    mainLayer.batchDraw()
+    history.pushState()
+    scheduleSnapshot()
+  }
+
   // ─── Expose API via ref ─────────────────────────────────────────────────────
   useImperativeHandle(ref, () => ({
     getStage: () => stageRef.current,
@@ -4340,6 +4412,14 @@ const CanvasView = forwardRef(function CanvasView(
         mainLayerRef={mainLayerRef}
       />
 
+      <RoofGuideOverlay
+        stageRef={stageRef}
+        mainLayerRef={mainLayerRef}
+        floors={note.settings?.floors ?? []}
+        faceAttributes={faceAttributes}
+        visible={showTechnicalGuides}
+      />
+
       <MeasurementLabels
         mainLayerRef={mainLayerRef}
         stageRef={stageRef}
@@ -4359,6 +4439,13 @@ const CanvasView = forwardRef(function CanvasView(
         defaultHeatingInstallationId={note.settings?.defaultHeatingInstallationId}
         visible={showZones}
         hoveredFaceKeyRef={hoveredFaceKeyRef}
+        suppressRef={wallEditActiveRef}
+      />
+
+      <AgPanel
+        mainLayerRef={mainLayerRef}
+        noteRef={noteRef}
+        visible={showTechnicalGuides}
         suppressRef={wallEditActiveRef}
       />
 
@@ -4402,12 +4489,24 @@ const CanvasView = forwardRef(function CanvasView(
               <span className="room-assign-label">Eigenschap</span>
               <select
                 value={faceAttributes[assignPopup.hash]?.aard ?? FACE_AARD_OPTIONS[0].value}
-                onChange={e => updateFaceAttribute(assignPopup.hash, e.target.value)}
+                onChange={e => updateFaceAttribute(assignPopup.hash, { aard: e.target.value })}
               >
                 {FACE_AARD_OPTIONS.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>
+            </div>
+            {/* Los van "Eigenschap": een plat dak is een eigenschap van dit
+                vlak, niet van "aard" — de ruimte eronder blijft gewoon
+                bijvoorbeeld een gebruiksruimte. Zie BLENDER_EXPORT_PLAN.md,
+                blok "Vlak-eigenschap". */}
+            <div className="room-assign-row">
+              <span className="room-assign-label">Heeft plat dak</span>
+              <button
+                className={`room-assign-toggle${faceAttributes[assignPopup.hash]?.platDak ? ' on' : ''}`}
+                onClick={() => updateFaceAttribute(assignPopup.hash, { platDak: !faceAttributes[assignPopup.hash]?.platDak })}
+                aria-label={faceAttributes[assignPopup.hash]?.platDak ? 'Uitschakelen' : 'Inschakelen'}
+              />
             </div>
           </div>
         )
@@ -4426,6 +4525,9 @@ const CanvasView = forwardRef(function CanvasView(
           onMeasureConfirm={handleMeasureConfirm}
           onMeasureDelete={handleMeasureDelete}
           snapEnabledRef={snapEnabledRef}
+          showTechnicalGuidesRef={showTechnicalGuidesRef}
+          floorsRef={floorsRef}
+          faceAttributesRef={faceAttributesRef}
           version={lineGizmoVersion}
           autoEditRef={gizmoAutoEditRef}
           showPills={showPills}
@@ -4622,6 +4724,27 @@ const CanvasView = forwardRef(function CanvasView(
                     </div>
                   ))}
                   <button className="roof-panel-add" onClick={handleAddRoofCourse}>+ hellend dak</button>
+                </div>
+              )}
+            </div>
+
+            <div className="object-toolbar-roof-wrap">
+              <button
+                className="object-toolbar-btn"
+                title="Meer opties"
+                onClick={() => setShowWallMenu(v => !v)}
+              >
+                <svg viewBox="0 0 20 20" fill="currentColor" stroke="none">
+                  <circle cx="10" cy="4.5" r="1.4" />
+                  <circle cx="10" cy="10" r="1.4" />
+                  <circle cx="10" cy="15.5" r="1.4" />
+                </svg>
+              </button>
+              {showWallMenu && (
+                <div className="object-toolbar-roof-panel object-toolbar-kebab-menu">
+                  <button className="wall-menu-item" onClick={handleInsertHeightGuides}>
+                    1,5m-lijnen intekenen
+                  </button>
                 </div>
               )}
             </div>

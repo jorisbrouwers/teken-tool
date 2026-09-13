@@ -8,6 +8,12 @@
   gap: 4px;
   flex-shrink: 0;
   overflow-x: auto;
+  /* Zonder eigen position+z-index verliest een statisch element altijd van
+     elk position:fixed-element verderop in de DOM (zoals de measurement-
+     pills), ongeacht diens z-index — vandaar hier expliciet een stacking
+     context die hoger ligt dan die pills (zie Canvas.css). */
+  position: relative;
+  z-index: 100;
 }
 
 .toolbar-title {

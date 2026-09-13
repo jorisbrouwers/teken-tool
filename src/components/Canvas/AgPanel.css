@@ -1,0 +1,72 @@
+.ag-panel {
+  /* top wordt op basis van de werkelijke hoogte van .style-panel bepaald
+     (zie AgPanel.jsx) — deze waarde is alleen het fallback-startpunt vóór
+     die meting klaar is. */
+  position: fixed;
+  top: calc(var(--toolbar-height) + 260px);
+  right: 12px;
+  z-index: 10;
+  width: 190px;
+  max-height: calc(100vh - var(--toolbar-height) - 280px);
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #1d1d1d;
+  user-select: none;
+}
+
+.ag-panel-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.ag-panel-empty {
+  color: #868e96;
+  font-style: italic;
+}
+
+.ag-panel-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.ag-panel-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 1px 0;
+}
+
+.ag-panel-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ag-panel-row-value {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ag-panel-total {
+  margin-top: 2px;
+  padding-top: 3px;
+  border-top: 1px solid rgba(0, 0, 0, 0.15);
+  font-weight: 600;
+}
+
+.ag-panel-zone {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.ag-panel-zone-label {
+  font-weight: 600;
+  margin-bottom: 2px;
+}

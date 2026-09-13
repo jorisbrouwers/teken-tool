@@ -12,7 +12,10 @@
 //   (selectExportedWallIds). Collineaire omtrekranden met dezelfde boundary +
 //   hetzelfde dak zijn samengevoegd tot één rand (mergeCollinearEnvelopeEdges),
 //   zodat een door T-splitsingen geknipte gevel één lengte heeft. Zie
-//   BLENDER_EXPORT_PLAN.md, blok "Binnenmuren".
+//   BLENDER_EXPORT_PLAN.md, blok "Binnenmuren". Later additief bijgekomen,
+//   nog steeds format 2: per rooms[]-vlak `color` en `platDak` (plat dak is
+//   een eigenschap van het vlak, los van `aard` — zie de rooms-map in
+//   buildBlenderExport hieronder).
 //
 // Elke verdieping in note.settings.floors zonder heightM of zonder
 // referencePoint wordt overgeslagen — die twee zijn de randvoorwaarde om een
@@ -31,12 +34,20 @@
 // "Geen zone"-representatie (open punt uit BLENDER_EXPORT_PLAN.md): elk
 // gedetecteerd vlak komt altijd in rooms[] terecht, ook zonder installatie —
 // heatingInstallationId/coolingInstallationId zijn dan null, en `aard` draagt
-// het semantische onderscheid (plat dak / niet berekend / <1,5m /
-// gebruiksruimte). Dat is informatiever dan zulke vlakken weglaten, en laat
-// de Blender-kant zelf beslissen wat "geen zone" in elk geval betekent.
+// het semantische onderscheid (niet berekend / <1,5m / gebruiksruimte). Dat
+// is informatiever dan zulke vlakken weglaten, en laat de Blender-kant zelf
+// beslissen wat "geen zone" in elk geval betekent.
+//
+// `platDak` (los van `aard`, zie BLENDER_EXPORT_PLAN.md blok "Vlak-
+// eigenschap"): een schuin dak is een eigenschap van muren (roofCourses),
+// een plat dak een eigenschap van een VLAK — en een vlak met een plat dak
+// erboven is heel normaal gewoon nog een verwarmde gebruiksruimte. Vandaar
+// een eigen boolean i.p.v. een aard-waarde "plat dak" (die kon dat
+// onderscheid niet maken).
 import { GRID_SIZE } from '../components/Canvas/useGrid.js'
 import { walkHierarchy, getConns, resolveWallBoundary } from '../components/Canvas/wallGraph.js'
 import { facesFromNodes, faceHash, resolveRoomAssignment, envelopeFromNodes } from '../components/Canvas/roomGraph.js'
+import { colorForZone } from '../components/Canvas/zoneColors.js'
 import { DEFAULT_NORTH_ANGLE, DEFAULT_FRONT_FACADE_SCREEN_ANGLE } from '../components/Building/buildingDefaults.js'
 
 const norm360 = (a) => ((a % 360) + 360) % 360
@@ -271,12 +282,21 @@ export function buildBlenderExport(note, mainLayer) {
       const hash = faceHash(face)
       const { heatingInstallationId, coolingInstallationId } =
         resolveRoomAssignment(hash, roomAssignments, installations, defaultHeatingId)
+      // color = dezelfde kleur als het vlak in de tekentool krijgt
+      // (ZoneFillOverlay.jsx, via colorForZone in zoneColors.js) — null voor
+      // een onbepaald vlak, want dat wordt in de tekentool ook niet gekleurd
+      // (zie deriveZones()).
+      const color = heatingInstallationId || coolingInstallationId
+        ? colorForZone({ heatingInstallationId, coolingInstallationId }, installations)
+        : null
       return {
         id: hash,
         polygon: face.vertices.map(v => [toM(v.x - originPx.x), toM(v.y - originPx.y)]),
         heatingInstallationId,
         coolingInstallationId,
+        color,
         aard: faceAttributes[hash]?.aard ?? 'gebruiksruimte',
+        platDak: !!faceAttributes[hash]?.platDak,
       }
     })
 
