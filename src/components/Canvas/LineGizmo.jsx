@@ -532,6 +532,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
       stroke: '#929aa1',
       strokeWidth: node.strokeWidth(),
       lineCap: node.lineCap(),
+      dash: node.dash() ?? [],  // hulplijn (isAux) → ook de highlight gestreept
       listening: false,
       perfectDrawEnabled: false,
       name: 'lineGizmoHandle_selectedLine',
@@ -601,6 +602,9 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
       if (pts && pts.length >= 4) {
         highlightLineRef.current.points(pts)
         highlightLineRef.current.position({ x: node.x(), y: node.y() })
+        // Volgt de hulplijn-toggle in de object-toolbar (handleAuxToggle zet
+        // node.dash) — die rendert de parent opnieuw, dus deze effect loopt mee.
+        highlightLineRef.current.dash(node.dash() ?? [])
         mainDirty = true
       }
     }

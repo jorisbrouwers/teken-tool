@@ -21,6 +21,13 @@ export default function BuildingSidebar({
     onFloorsChange(floors.map(f => f.id === id ? { ...f, heightM } : f))
   }
 
+  // Vrije opmerking bij de hoogte ("nok", "plat dak", "incl vloer") — puur
+  // context voor de gebruiker; exportBlender.js kiest zijn velden expliciet
+  // en neemt dit dus niet mee.
+  function handleNoteChange(id, value) {
+    onFloorsChange(floors.map(f => f.id === id ? { ...f, heightNote: value } : f))
+  }
+
   function handleAddFloor() {
     // De eerste 3 rijen (kelder/souterrain/begane grond) tellen niet mee in de
     // nummering — dit gaat ervan uit dat de 6 standaardrijen nooit verwijderd
@@ -41,9 +48,16 @@ export default function BuildingSidebar({
 
       <div className="building-section">
         <div className="building-section-title">Hoogte per verdieping</div>
-        {floors.map(f => (
-          <div className="building-floor-row" key={f.id}>
-            <span className="building-floor-name">{f.name}</span>
+        {floors.map((f, i) => (
+          // Divider tussen de ondergrondse rijen (kelder/souterrain) en de
+          // begane grond — index-gebaseerd, zelfde aanname als handleAddFloor.
+          <div
+            className={`building-floor-row${i === 2 ? ' building-floor-row--ground' : ''}`}
+            key={f.id}
+          >
+            <span className={`building-floor-name${f.heightM == null || f.heightM === '' ? ' empty' : ''}`}>
+              {f.name}
+            </span>
             <input
               type="number"
               step="0.01"
@@ -54,6 +68,13 @@ export default function BuildingSidebar({
               onFocus={e => e.target.select()}
             />
             <span className="building-floor-height-unit">m</span>
+            <input
+              type="text"
+              placeholder="opmerking"
+              className="building-floor-note"
+              value={f.heightNote ?? ''}
+              onChange={e => handleNoteChange(f.id, e.target.value)}
+            />
           </div>
         ))}
         <button className="btn btn-secondary building-add-floor-btn" onClick={handleAddFloor}>

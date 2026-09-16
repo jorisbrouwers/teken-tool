@@ -192,6 +192,12 @@ function collectFloorDepthGuideSegments(faces, mainLayer, floors, faceAttributes
 // gootgevel-buur laat de lijn gewoon doorlopen tot de ANDERE (niet-verschoven)
 // muur.
 //
+// Werkt op een dakregio (zie mergeFacesIntoRoofRegions): één of meer
+// aaneengesloten gebruiksruimte-vlakken als één omtrek, zodat bv. een
+// aanbouw die via een hulplijn/binnenmuur aan het hoofdgebouw grenst zijn
+// 1,5m-lijn doorloopt tot die van het hoofdgebouw (met een kilkeper-diagonaal
+// vanuit de binnenhoek) i.p.v. tegen de scheidingslijn af te kappen.
+//
 // Retourneert twee soorten segmenten:
 // - `type: 'edge'` — het eigen verschoven stuk van één muur. Voor elk eindpunt
 //   ofwel `null` (gemiterd met het buursegment/de hoek-diagonaal — die
@@ -202,10 +208,12 @@ function collectFloorDepthGuideSegments(faces, mainLayer, floors, faceAttributes
 //   hoekpunt (moet aan de bestaande hiërarchie gelast worden, zie
 //   `startWeldWallId`) naar het mitering-snijpunt (deelt dat punt met de twee
 //   aangrenzende edge-segmenten). Dit is de "hip"-lijn — puur visueel/ter
-//   referentie, geen eigen dakberekening.
-function computeHeightGuideChainForFace(face, mainLayer, targetHeightM) {
-  const n = face.vertices.length
-  const wallIds = face.orderedEdgeIds
+//   referentie, geen eigen dakberekening. Ook gebruikt voor de korte
+//   verbindingsstukken bij twee in elkaars verlengde liggende gevels (zie
+//   hieronder).
+function computeHeightGuideChainForRegion(region, mainLayer, targetHeightM) {
+  const n = region.vertices.length
+  const wallIds = region.orderedEdgeIds
   if (!wallIds || wallIds.length !== n || n < 3) return []
 
   const runs = wallIds.map(id => {
@@ -220,19 +228,35 @@ function computeHeightGuideChainForFace(face, mainLayer, targetHeightM) {
   // Per rand met een geldige afstand: de verschoven (oneindige) lijn als
   // punt + genormaliseerde richting, plus de eenheidsnormaal (voor het label/
   // metadata, zie collectHeightGuideSegments-stijl).
-  const offsetLines = wallIds.map((wallId, i) => {
-    const run = runs[i]
-    if (run == null) return null
-    const a = face.vertices[i], b = face.vertices[(i + 1) % n]
+  // Binnenkant uit de omloopzin i.p.v. een point-in-polygon-test: vlakken uit
+  // computeFacesFromWalls hebben altijd een negatieve ondertekende oppervlakte
+  // (zie roomGraph.js), en een samengevoegde regio erft die omloopzin per rand
+  // — dus "binnen" ligt voor elke rand aan dezelfde kant, ook bij gaten.
+  const edgeDirs = region.vertices.map((a, i) => {
+    const b = region.vertices[(i + 1) % n]
     const dx = b.x - a.x, dy = b.y - a.y
     const len = Math.hypot(dx, dy)
-    if (len < 1e-6) return null
-    const midX = (a.x + b.x) / 2, midY = (a.y + b.y) / 2
-    let nx = -dy / len, ny = dx / len
-    if (!pointInFace(face, midX + nx, midY + ny)) { nx = -nx; ny = -ny }
-    const offPx = run * GRID_SIZE
-    return { px: midX + nx * offPx, py: midY + ny * offPx, dx: dx / len, dy: dy / len, nx, ny }
+    return len < 1e-6 ? null : { dx: dx / len, dy: dy / len }
   })
+  const offsetLines = wallIds.map((wallId, i) => {
+    const run = runs[i]
+    const dir = edgeDirs[i]
+    if (run == null || !dir) return null
+    const a = region.vertices[i]
+    const nx = dir.dy, ny = -dir.dx
+    const offPx = run * GRID_SIZE
+    return { px: a.x + nx * offPx, py: a.y + ny * offPx, dx: dir.dx, dy: dir.dy, nx, ny, offPx }
+  })
+  // Twee randen in elkaars verlengde (bv. een gevel die door een T-splitsing
+  // van een binnenmuur in twee stukken is geknipt) — daar bestaat geen
+  // snijpunt, dus projecteren i.p.v. snijden.
+  function parallel(i, j) {
+    const a = edgeDirs[i], b = edgeDirs[j]
+    return !!a && !!b && Math.abs(a.dx * b.dy - a.dy * b.dx) < 1e-6
+  }
+  function offsetPoint(vertex, line) {
+    return { x: vertex.x + line.nx * line.offPx, y: vertex.y + line.ny * line.offPx }
+  }
 
   function intersectLines(l1, l2) {
     const denom = l1.dx * l2.dy - l1.dy * l2.dx
@@ -262,7 +286,36 @@ function computeHeightGuideChainForFace(face, mainLayer, targetHeightM) {
   for (let i = 0; i < n; i++) {
     if (!offsetLines[i]) continue
     const prev = (i - 1 + n) % n
-    const vertex = face.vertices[i]
+    const vertex = region.vertices[i]
+
+    if (parallel(prev, i)) {
+      const pB = offsetPoint(vertex, offsetLines[i])
+      startPoint[i] = pB
+      if (offsetLines[prev]) {
+        // Beide gevels hebben een eigen afstand: elk loodrecht op het
+        // gedeelde punt; verschillen de afstanden, dan een verbindingsstukje.
+        const pA = offsetPoint(vertex, offsetLines[prev])
+        endPoint[prev] = pA
+        if (Math.hypot(pA.x - pB.x, pA.y - pB.y) > 0.5) {
+          cornerSegments.push({
+            type: 'corner', wallId: wallIds[i],
+            x1: pA.x, y1: pA.y, x2: pB.x, y2: pB.y,
+            startWeldWallId: null, endWeldWallId: null,
+          })
+        } else {
+          startPoint[i] = pA
+        }
+      } else {
+        // Vorige gevel (zelfde lijn) heeft geen dak: lijn loodrecht terug
+        // naar het echte hoekpunt.
+        cornerSegments.push({
+          type: 'corner', wallId: wallIds[i],
+          x1: vertex.x, y1: vertex.y, x2: pB.x, y2: pB.y,
+          startWeldWallId: wallIds[prev], endWeldWallId: null,
+        })
+      }
+      continue
+    }
 
     let miterPoint = null
     if (offsetLines[prev]) {
@@ -287,7 +340,7 @@ function computeHeightGuideChainForFace(face, mainLayer, targetHeightM) {
     } else {
       // Rand i begint waar 'ie de ORIGINELE vorige muur snijdt (geen buur met
       // een eigen afstand, of de mitering was onzinnig).
-      const hit = intersectLines(offsetLines[i], lineFromSegment(face.vertices[prev], vertex))
+      const hit = intersectLines(offsetLines[i], lineFromSegment(region.vertices[prev], vertex))
       if (hit) { startPoint[i] = hit; startWeldWallId[i] = wallIds[prev] }
     }
   }
@@ -297,7 +350,20 @@ function computeHeightGuideChainForFace(face, mainLayer, targetHeightM) {
   for (let i = 0; i < n; i++) {
     if (!offsetLines[i] || endPoint[i]) continue
     const next = (i + 1) % n
-    const hit = intersectLines(offsetLines[i], lineFromSegment(face.vertices[next], face.vertices[(next + 1) % n]))
+    const nextVertex = region.vertices[next]
+    if (parallel(i, next)) {
+      // Volgende gevel in het verlengde zonder dak (die mét dak is al in de
+      // eerste pas afgehandeld): loodrecht terug naar het hoekpunt.
+      const p = offsetPoint(nextVertex, offsetLines[i])
+      endPoint[i] = p
+      cornerSegments.push({
+        type: 'corner', wallId: wallIds[i],
+        x1: nextVertex.x, y1: nextVertex.y, x2: p.x, y2: p.y,
+        startWeldWallId: wallIds[next], endWeldWallId: null,
+      })
+      continue
+    }
+    const hit = intersectLines(offsetLines[i], lineFromSegment(nextVertex, region.vertices[(next + 1) % n]))
     if (hit) { endPoint[i] = hit; endWeldWallId[i] = wallIds[next] }
   }
 
@@ -323,11 +389,92 @@ function computeHeightGuideChainForFace(face, mainLayer, targetHeightM) {
 // (voor de overlay-diff-cache) en `kind` — 'height' voor het eigen verschoven
 // muurstuk, 'height-corner' voor de hoek-diagonaal (geen eigen label/dakdata,
 // puur de "hip"-richting).
+function hasRoofCourses(node) {
+  const courses = node?.attrs.roofCourses
+  return Array.isArray(courses) && courses.length > 0
+}
+
+// Voegt aangrenzende vlakken samen tot dakregio's: twee vlakken die een muur
+// ZONDER eigen dak delen (hulplijn, binnenmuur) liggen onder hetzelfde dak, dus
+// die muur is voor de 1,5m-lijn geen rand. Een gedeelde muur mét roofCourses
+// blijft wél een rand (bv. een kamer met een eigen kapje, zie
+// findInteriorNormal). Retourneert [{ vertices, orderedEdgeIds }] — zelfde vorm
+// als een vlak, zodat computeHeightGuideChainForRegion er direct op werkt.
+function mergeFacesIntoRoofRegions(faces, mainLayer) {
+  const facesByWall = new Map() // wallId -> [faceIdx]
+  faces.forEach((face, fi) => {
+    for (const wallId of new Set(face.orderedEdgeIds)) {
+      if (!facesByWall.has(wallId)) facesByWall.set(wallId, [])
+      facesByWall.get(wallId).push(fi)
+    }
+  })
+
+  const parent = faces.map((_, i) => i)
+  function find(i) {
+    while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i] }
+    return i
+  }
+  const internalWalls = new Set()
+  for (const [wallId, fis] of facesByWall) {
+    if (fis.length !== 2) continue
+    if (hasRoofCourses(mainLayer.findOne(`#${wallId}`))) continue
+    internalWalls.add(wallId)
+    parent[find(fis[0])] = find(fis[1])
+  }
+
+  const groups = new Map() // root -> [faceIdx]
+  faces.forEach((_, fi) => {
+    const root = find(fi)
+    if (!groups.has(root)) groups.set(root, [])
+    groups.get(root).push(fi)
+  })
+
+  const regions = []
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      const face = faces[group[0]]
+      regions.push({ vertices: face.vertices, orderedEdgeIds: face.orderedEdgeIds })
+      continue
+    }
+    // Randen van alle vlakken in de groep, minus de interne muren. Alle
+    // vlakken hebben dezelfde omloopzin, dus de overgebleven randen sluiten
+    // kop-aan-staart aan tot de omtrek (en eventuele gaten).
+    const edges = []
+    const edgesByStart = new Map() // "x,y" -> [edge]
+    for (const fi of group) {
+      const { vertices, orderedEdgeIds } = faces[fi]
+      for (let i = 0; i < vertices.length; i++) {
+        if (internalWalls.has(orderedEdgeIds[i])) continue
+        const from = vertices[i], to = vertices[(i + 1) % vertices.length]
+        const edge = { from, to, wallId: orderedEdgeIds[i], used: false }
+        edges.push(edge)
+        const key = `${from.x},${from.y}`
+        if (!edgesByStart.has(key)) edgesByStart.set(key, [])
+        edgesByStart.get(key).push(edge)
+      }
+    }
+    for (const start of edges) {
+      if (start.used) continue
+      const loop = []
+      let cur = start
+      while (cur && !cur.used) {
+        cur.used = true
+        loop.push(cur)
+        cur = (edgesByStart.get(`${cur.to.x},${cur.to.y}`) ?? []).find(e => !e.used)
+      }
+      if (loop.length >= 3) {
+        regions.push({ vertices: loop.map(e => e.from), orderedEdgeIds: loop.map(e => e.wallId) })
+      }
+    }
+  }
+  return regions
+}
+
 function collectHeightGuideChainsForFaces(faces, mainLayer, faceAttributes) {
   const usageFaces = faces.filter(f => resolveFaceAard(f, faceAttributes) === 'gebruiksruimte')
   const segments = []
-  for (const face of usageFaces) {
-    for (const seg of computeHeightGuideChainForFace(face, mainLayer, LOW_HEADROOM_HEIGHT_M)) {
+  for (const region of mergeFacesIntoRoofRegions(usageFaces, mainLayer)) {
+    for (const seg of computeHeightGuideChainForRegion(region, mainLayer, LOW_HEADROOM_HEIGHT_M)) {
       if (seg.type === 'corner') {
         segments.push({ ...seg, kind: 'height-corner', key: `hc:${Math.round(seg.x1)},${Math.round(seg.y1)}` })
       } else {

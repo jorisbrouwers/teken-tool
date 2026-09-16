@@ -45,20 +45,47 @@
   pointer-events: none;
 }
 
-/* Zwevende toolbar boven geselecteerde afbeelding */
+/* Zwevende toolbar onder de selectie. .object-toolbar is alleen de
+   (transparante) wrapper die placeToolbar positioneert; de balk zelf is
+   .object-toolbar-bar, eventueel met het dakpaneel eronder. */
 .object-toolbar {
   position: fixed;
-  z-index: 100;
+  /* Boven de LineGizmo-maatpill/-invoer (101/102), anders valt het
+     kebab-menu erachter. */
+  z-index: 103;
   display: none;
+  flex-direction: column;
+  align-items: stretch;
   transform: translateX(-50%);
+  user-select: none;
+  pointer-events: auto;
+}
+
+.object-toolbar-bar {
+  position: relative;
+  display: flex;
   background: #ffffff;
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
   padding: 4px;
   gap: 2px;
   align-items: center;
-  user-select: none;
-  pointer-events: auto;
+}
+
+/* Zachte schaduw van balk én dakpaneel als pseudo-element áchter beide
+   (z-index -1 binnen de stacking context van .object-toolbar). Met een gewone
+   box-shadow valt de schaduw van het paneel óver de balk heen, waardoor de
+   balk grijzer oogt dan het paneel. De dunne 1px-rand staat wél op de
+   elementen zelf, zodat de naad tussen balk en paneel zichtbaar blijft. */
+.object-toolbar-bar::before,
+.object-toolbar-roof-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+  pointer-events: none;
 }
 
 .object-toolbar-btn {
@@ -290,30 +317,47 @@
   background: var(--color-item-active);
 }
 
-/* ── Object toolbar: dak-per-gevel-paneel (zie handleRoofCourseInput /
-   BLENDER_EXPORT_PLAN.md) ── */
-.object-toolbar-roof-wrap {
+/* ── Object toolbar: dak-per-gevel-paneel onder de balk (zie
+   handleRoofCourseInput / BLENDER_EXPORT_PLAN.md) ── */
+.object-toolbar-menu-wrap {
   position: relative;
   display: flex;
   align-items: center;
 }
 
-.object-toolbar-roof-btn.active {
-  color: var(--color-accent);
-  background: var(--color-item-active);
+/* width:0 + min-width:100% → het paneel neemt exact de breedte van de balk
+   over en duwt de wrapper niet breder. */
+.object-toolbar-roof-panel {
+  position: relative;
+  box-sizing: border-box;
+  width: 0;
+  min-width: 100%;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+  padding: 8px 10px;
 }
 
-.object-toolbar-roof-panel {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08);
-  padding: 8px 10px;
-  width: 214px;
-  z-index: 10;
+/* Geen spinner-pijltjes in de dakvelden */
+.object-toolbar-roof-panel input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.object-toolbar-roof-panel input[type="number"]::-webkit-inner-spin-button,
+.object-toolbar-roof-panel input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.roof-panel-index {
+  flex-shrink: 0;
+  width: 12px;
+  padding-bottom: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-align: center;
 }
 
 .roof-panel-row {
@@ -368,6 +412,11 @@
   border-radius: var(--radius);
 }
 
+.roof-panel-input input.roof-panel-input-invalid {
+  border-color: #e03131;
+  box-shadow: 0 0 0 1px #e03131;
+}
+
 .roof-panel-row input {
   width: 60px;
   flex: none;
@@ -376,13 +425,6 @@
 .roof-panel-suffix {
   flex-shrink: 0;
   font-size: 11px;
-  color: var(--color-text-muted);
-}
-
-.roof-panel-hint {
-  padding: 4px 0 2px;
-  font-size: 12px;
-  line-height: 1.35;
   color: var(--color-text-muted);
 }
 
@@ -406,7 +448,7 @@
 }
 
 .roof-panel-add {
-  margin-top: 6px;
+  display: block;
   width: 100%;
   padding: 5px 0;
   font-size: 12px;
@@ -416,15 +458,38 @@
   cursor: pointer;
 }
 
+.roof-panel-course + .roof-panel-add {
+  margin-top: 6px;
+}
+
+/* Reset deelt de opmaak van .roof-panel-add, maar subtiel rood + ruimte eronder */
+.roof-panel-add.roof-panel-reset {
+  margin-bottom: 6px;
+  color: #e03131;
+  border-color: #f5b5b5;
+  background: #fff5f5;
+}
+
+.roof-panel-add.roof-panel-reset:hover {
+  color: #c92a2a;
+  background: #ffe3e3;
+}
+
 .roof-panel-add:hover {
   background: var(--color-item-hover);
   color: var(--color-text);
 }
 
 .object-toolbar-kebab-menu {
-  width: auto;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08);
   min-width: 190px;
   padding: 4px;
+  z-index: 10;
 }
 
 .wall-menu-item {

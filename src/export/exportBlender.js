@@ -52,8 +52,16 @@ import { DEFAULT_NORTH_ANGLE, DEFAULT_FRONT_FACADE_SCREEN_ANGLE } from '../compo
 
 const norm360 = (a) => ((a % 360) + 360) % 360
 
+// Alle geëxporteerde coördinaten worden op 1 mm afgerond. Hygiëne tegen
+// float-ruis (node.x() + pts[i], sin/cos bij schuine muren, maatinvoer als
+// 3.5999999999999996): gedeelde hoekpunten tussen walls[], envelope en rooms[]
+// komen zo in de praktijk exact overeen — roomGraph.js pakt per verbonden
+// hoekpunt de positie van het eerste lid, buurmuren kunnen daar net naast
+// zitten. 1 mm = 0,025 px, ver onder tekenprecisie. Alleen de export; alle
+// tussenrekenwerk (collineair-merge, faceHash) gebeurt nog exact in px.
+// Hoogtes/daklagen zijn gebruikersinvoer en worden níet afgerond.
 function toM(px) {
-  return px / GRID_SIZE
+  return Math.round((px / GRID_SIZE) * 1000) / 1000
 }
 
 // originPx = de resolved positie (in px, canvas-space) van het referentiepunt

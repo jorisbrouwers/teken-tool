@@ -87,8 +87,8 @@ export function isWallNode(node) {
 export const WALL_BOUNDARY_OPTIONS = [
   { value: 'buiten', label: 'Buiten', color: '#1d1d1d' },
   { value: 'buren', label: 'Buren', color: '#e8590c' },
-  { value: 'aor', label: 'Aangrenzende onverwarmde ruimte', color: '#1864ab' },
-  { value: 'sgr', label: 'Sterk geventileerde ruimte', color: '#74c0fc' },
+  { value: 'aor', label: 'Onverwarmd', color: '#1864ab' },
+  { value: 'sgr', label: 'Sterk geventileerd', color: '#74c0fc' },
 ]
 
 export function resolveWallBoundary(node) {

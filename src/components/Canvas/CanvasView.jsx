@@ -218,7 +218,6 @@ const CanvasView = forwardRef(function CanvasView(
   // een dakveld — zodat een blur (of selectiewissel) precies één undo-punt zet.
   const [wallRoofBaseHeight, setWallRoofBaseHeight] = useState('')
   const [wallRoofCourses, setWallRoofCourses] = useState([])
-  const [showRoofPanel, setShowRoofPanel] = useState(false)
   const roofDirtyRef = useRef(false)
   // Kebab-menu in de object-toolbar (bv. "1,5m-lijnen intekenen", zie
   // handleInsertHeightGuides) — apart van het dak-paneel omdat het geen
@@ -1030,7 +1029,6 @@ const CanvasView = forwardRef(function CanvasView(
       history.pushState()
     }
     setIsWallToolbarTarget(isWall)
-    setShowRoofPanel(false)
     setShowWallMenu(false)
     if (isWall) {
       setWallBoundary(resolveWallBoundary(node))
@@ -4058,6 +4056,13 @@ const CanvasView = forwardRef(function CanvasView(
     if (!node || !mainLayer) return
     node.setAttr('boundary', value)
     setWallBoundary(value)
+    // Begrenzing en hulplijn sluiten elkaar uit (één keuze in de toolbar):
+    // een begrenzing kiezen maakt er weer een echte muur van.
+    if (wallIsAux) {
+      node.setAttr('isAux', undefined)
+      node.dash([])
+      setWallIsAux(false)
+    }
     mainLayer.batchDraw()
     history.pushState()
     scheduleSnapshot()
@@ -4143,8 +4148,16 @@ const CanvasView = forwardRef(function CanvasView(
     if (!node) return
     const next = [...wallRoofCourses, { angleDeg: '45', riseM: '' }]
     setWallRoofCourses(next)
-    setShowRoofPanel(true)
     applyRoof(node, wallRoofBaseHeight, next, { commit: true })
+  }
+
+  // Wist goothoogte + alle daklagen in één keer (één undo-punt).
+  function handleResetRoof() {
+    const node = toolbarTargetRef.current
+    if (!node) return
+    setWallRoofBaseHeight('')
+    setWallRoofCourses([])
+    applyRoof(node, '', [], { commit: true })
   }
 
   function handleRemoveRoofCourse(index) {
@@ -4545,7 +4558,11 @@ const CanvasView = forwardRef(function CanvasView(
         />
       )}
 
+      {/* .object-toolbar is een transparante kolom-wrapper (die placeToolbar
+          meet en klemt); de zichtbare balk is .object-toolbar-bar, met bij een
+          muur het dakpaneel er direct onder als één blok. */}
       <div ref={toolbarDivRef} className="object-toolbar">
+       <div className="object-toolbar-bar">
         {selectedType === 'image' && (
           <button
             className={`object-toolbar-btn${imageLocked ? ' locked' : ''}`}
@@ -4642,7 +4659,7 @@ const CanvasView = forwardRef(function CanvasView(
             {WALL_BOUNDARY_OPTIONS.map(opt => (
               <button
                 key={opt.value}
-                className={`object-toolbar-boundary-swatch${wallBoundary === opt.value ? ' active' : ''}`}
+                className={`object-toolbar-boundary-swatch${!wallIsAux && wallBoundary === opt.value ? ' active' : ''}`}
                 style={{ background: opt.color }}
                 title={opt.label}
                 onClick={() => handleBoundaryChange(opt.value)}
@@ -4657,97 +4674,6 @@ const CanvasView = forwardRef(function CanvasView(
                 <path d="M3 10h14" strokeDasharray="2.5 2.5" />
               </svg>
             </button>
-            <div className="object-toolbar-roof-wrap">
-              <button
-                className={`object-toolbar-btn object-toolbar-roof-btn${wallRoofCourses.length ? ' active' : ''}`}
-                title={wallRoofCourses.length ? 'Dak boven deze gevel — klik om te bewerken' : 'Dak boven deze gevel instellen (goothoogte + hellingshoek)'}
-                onClick={() => setShowRoofPanel(v => !v)}
-              >
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 11 L10 4 L18 11" />
-                  <path d="M4.5 9.2 V16 H15.5 V9.2" />
-                </svg>
-              </button>
-              {showRoofPanel && (
-                <div className="object-toolbar-roof-panel">
-                  {wallRoofCourses.length === 0 ? (
-                    <div className="roof-panel-hint">Geen dak boven deze gevel.</div>
-                  ) : (
-                    <div className="roof-panel-row">
-                      <label>Goothoogte</label>
-                      <input
-                        type="number" step="0.1" inputMode="decimal"
-                        value={wallRoofBaseHeight}
-                        placeholder="0"
-                        onFocus={e => e.target.select()}
-                        onChange={e => handleRoofBaseHeightInput(e.target.value)}
-                        onBlur={commitRoofEdit}
-                      />
-                      <span className="roof-panel-suffix">m</span>
-                    </div>
-                  )}
-                  {wallRoofCourses.map((c, i) => (
-                    <div className="roof-panel-course" key={i}>
-                      <div className="roof-panel-field">
-                        <label>Hoek</label>
-                        <div className="roof-panel-input">
-                          <input
-                            type="number" step="1" inputMode="decimal"
-                            value={c.angleDeg}
-                            placeholder="45"
-                            onFocus={e => e.target.select()}
-                            onChange={e => handleRoofCourseInput(i, 'angleDeg', e.target.value)}
-                            onBlur={commitRoofEdit}
-                          />
-                          <span className="roof-panel-suffix">°</span>
-                        </div>
-                      </div>
-                      <div className="roof-panel-field">
-                        <label>Eind</label>
-                        <div className="roof-panel-input">
-                          <input
-                            type="number" step="0.1" inputMode="decimal"
-                            value={c.riseM}
-                            placeholder="auto"
-                            onFocus={e => e.target.select()}
-                            onChange={e => handleRoofCourseInput(i, 'riseM', e.target.value)}
-                            onBlur={commitRoofEdit}
-                          />
-                          <span className="roof-panel-suffix">m</span>
-                        </div>
-                      </div>
-                      <button
-                        className="roof-panel-remove"
-                        title="Hellend dak verwijderen"
-                        onClick={() => handleRemoveRoofCourse(i)}
-                      >×</button>
-                    </div>
-                  ))}
-                  <button className="roof-panel-add" onClick={handleAddRoofCourse}>+ hellend dak</button>
-                </div>
-              )}
-            </div>
-
-            <div className="object-toolbar-roof-wrap">
-              <button
-                className="object-toolbar-btn"
-                title="Meer opties"
-                onClick={() => setShowWallMenu(v => !v)}
-              >
-                <svg viewBox="0 0 20 20" fill="currentColor" stroke="none">
-                  <circle cx="10" cy="4.5" r="1.4" />
-                  <circle cx="10" cy="10" r="1.4" />
-                  <circle cx="10" cy="15.5" r="1.4" />
-                </svg>
-              </button>
-              {showWallMenu && (
-                <div className="object-toolbar-roof-panel object-toolbar-kebab-menu">
-                  <button className="wall-menu-item" onClick={handleInsertHeightGuides}>
-                    1,5m-lijnen intekenen
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
         )}
 
@@ -4780,6 +4706,101 @@ const CanvasView = forwardRef(function CanvasView(
               <path d="M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10M8 9.5v4M12 9.5v4" />
             </svg>
           </button>
+        )}
+
+        {isWallToolbarTarget && (
+          <div className="object-toolbar-menu-wrap">
+            <button
+              className="object-toolbar-btn"
+              title="Meer opties"
+              onClick={() => setShowWallMenu(v => !v)}
+            >
+              <svg viewBox="0 0 20 20" fill="currentColor" stroke="none">
+                <circle cx="10" cy="4.5" r="1.4" />
+                <circle cx="10" cy="10" r="1.4" />
+                <circle cx="10" cy="15.5" r="1.4" />
+              </svg>
+            </button>
+            {showWallMenu && (
+              <div className="object-toolbar-kebab-menu">
+                <button className="wall-menu-item" onClick={handleInsertHeightGuides}>
+                  1,5m-lijnen intekenen
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+       </div>
+
+        {/* Dak boven deze gevel — altijd zichtbaar onder de balk zolang een
+            muur geselecteerd is (zie applyRoof). */}
+        {isWallToolbarTarget && (
+          <div className="object-toolbar-roof-panel">
+            {wallRoofCourses.length > 0 && (
+              <>
+                <button
+                  className="roof-panel-add roof-panel-reset"
+                  title="Alle dakgegevens van deze gevel wissen"
+                  onClick={handleResetRoof}
+                >Reset</button>
+                <div className="roof-panel-row">
+                  <label>Goothoogte</label>
+                  <input
+                    type="number" step="0.1" inputMode="decimal"
+                    value={wallRoofBaseHeight}
+                    placeholder="0"
+                    onFocus={e => e.target.select()}
+                    onChange={e => handleRoofBaseHeightInput(e.target.value)}
+                    onBlur={commitRoofEdit}
+                  />
+                  <span className="roof-panel-suffix">m</span>
+                </div>
+                {wallRoofCourses.map((c, i) => (
+                  <div className="roof-panel-course" key={i}>
+                    <span className="roof-panel-index">{i + 1}</span>
+                    <div className="roof-panel-field">
+                      <label>Hoek</label>
+                      <div className="roof-panel-input">
+                        <input
+                          type="number" step="1" inputMode="decimal"
+                          value={c.angleDeg}
+                          placeholder="45"
+                          onFocus={e => e.target.select()}
+                          onChange={e => handleRoofCourseInput(i, 'angleDeg', e.target.value)}
+                          onBlur={commitRoofEdit}
+                        />
+                        <span className="roof-panel-suffix">°</span>
+                      </div>
+                    </div>
+                    <div className="roof-panel-field">
+                      <label>Eind</label>
+                      <div className="roof-panel-input">
+                        <input
+                          type="number" step="0.1" inputMode="decimal"
+                          value={c.riseM}
+                          placeholder="auto"
+                          // Alleen de laatste laag mag "open" (tot de nok) zijn —
+                          // een lege Eind eronder negeert alle lagen erboven.
+                          className={c.riseM === '' && i < wallRoofCourses.length - 1 ? 'roof-panel-input-invalid' : undefined}
+                          title={c.riseM === '' && i < wallRoofCourses.length - 1 ? 'Vul een eindhoogte in — alleen de bovenste laag mag doorlopen tot de nok' : undefined}
+                          onFocus={e => e.target.select()}
+                          onChange={e => handleRoofCourseInput(i, 'riseM', e.target.value)}
+                          onBlur={commitRoofEdit}
+                        />
+                        <span className="roof-panel-suffix">m</span>
+                      </div>
+                    </div>
+                    <button
+                      className="roof-panel-remove"
+                      title="Hellend dak verwijderen"
+                      onClick={() => handleRemoveRoofCourse(i)}
+                    >×</button>
+                  </div>
+                ))}
+              </>
+            )}
+            <button className="roof-panel-add" onClick={handleAddRoofCourse}>+ hellend dak</button>
+          </div>
         )}
       </div>
     </div>
