@@ -61,6 +61,7 @@ import { colorForZone } from '../components/Canvas/zoneColors.js'
 import {
   DEFAULT_NORTH_ANGLE, DEFAULT_FRONT_FACADE_SCREEN_ANGLE,
   mainGebouwdeelId, floorHasAnyHeight, computeRegionZ, getFloorHeight,
+  GROUND_FLOOR_INDEX, isEmptyHeight,
 } from '../components/Building/buildingDefaults.js'
 
 const norm360 = (a) => ((a % 360) + 360) % 360
@@ -258,9 +259,19 @@ export function buildBlenderExport(note, mainLayer) {
   // referentiepunt doet niet mee, en mag de écht bovenste verdieping zijn
   // `top` dus ook niet afpakken (die zou anders zijn platte dak of zijn
   // nokhoogte-controle verliezen). Zie BLENDER_EXPORT_PLAN.md, format 3.
-  const floors = allFloors.filter(f =>
-    floorHasAnyHeight(f) && f.referencePoint && mainLayer.findOne(`#${f.referencePoint.wallId}`))
-  const regionZ = computeRegionZ(floors, gebouwdelen)
+  // computeRegionZ krijgt wél alle rijen (met de subset als predicate), omdat
+  // Z=0 aan de begane-grond-index hangt.
+  const isExported = f =>
+    floorHasAnyHeight(f) && !!f.referencePoint && !!mainLayer.findOne(`#${f.referencePoint.wallId}`)
+  const floors = allFloors.filter(isExported)
+  const regionZ = computeRegionZ(allFloors, gebouwdelen, isExported)
+
+  // Z=0 is het vloerpeil van de begane grond. Heeft het hoofdhuis daar geen
+  // hoogte, dan klopt dat peil niet meer met een echte vloer: melden.
+  const groundFloor = allFloors[GROUND_FLOOR_INDEX]
+  if (floors.length && groundFloor && isEmptyHeight(getFloorHeight(groundFloor, mainId, gebouwdelen).heightM)) {
+    warnings.push(`${groundFloor.name} heeft geen hoogte: Z=0 ligt op een ontbrekende verdieping`)
+  }
 
   const exportedFloors = []
   for (const floor of floors) {

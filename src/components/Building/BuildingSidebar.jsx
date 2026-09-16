@@ -3,7 +3,7 @@ import NorthWheel from './NorthWheel.jsx'
 import FrontFacadeWheel from './FrontFacadeWheel.jsx'
 import { generateUUID } from '../../db/db.js'
 import {
-  getFloorHeight, setFloorHeight, floorHasAnyHeight, mainGebouwdeelId,
+  getFloorHeight, setFloorHeight, floorHasAnyHeight, mainGebouwdeelId, GROUND_FLOOR_INDEX,
 } from './buildingDefaults.js'
 import '../common/common.css'
 import './Building.css'
@@ -83,7 +83,7 @@ export default function BuildingSidebar({
     // nummering — dit gaat ervan uit dat de 6 standaardrijen nooit verwijderd
     // worden (er is bewust geen verwijderknop, zie het datamodel-idee: lege
     // hoogte = genegeerd), dus floors.length is een stabiele basis.
-    const nextNumber = floors.length - 2
+    const nextNumber = floors.length - GROUND_FLOOR_INDEX
     onFloorsChange([...floors, { id: generateUUID(), name: `${nextNumber}e verdieping`, heightM: null, referencePoint: null }])
   }
 
@@ -193,7 +193,7 @@ export default function BuildingSidebar({
             // Divider tussen de ondergrondse rijen (kelder/souterrain) en de
             // begane grond — index-gebaseerd, zelfde aanname als handleAddFloor.
             <div
-              className={`building-floor-row${i === 2 ? ' building-floor-row--ground' : ''}`}
+              className={`building-floor-row${i === GROUND_FLOOR_INDEX ? ' building-floor-row--ground' : ''}`}
               key={f.id}
             >
               <span className={`building-floor-name${heightM == null || heightM === '' ? ' empty' : ''}`}>

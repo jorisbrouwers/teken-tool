@@ -47,7 +47,7 @@ export function mainGebouwdeelId(gebouwdelen) {
 
 // Leeg = dit gebouwdeel bestaat niet op deze verdieping. Eén plek die die
 // vraag beantwoordt, zodat '' en null overal hetzelfde betekenen.
-function isEmptyHeight(h) {
+export function isEmptyHeight(h) {
   return h == null || h === ''
 }
 
@@ -84,49 +84,82 @@ export function floorHasAnyHeight(floor) {
   return Object.values(floor.partHeights ?? {}).some(e => !isEmptyHeight(e?.heightM))
 }
 
+// De begane grond is de rij op index 2 van settings.floors (na kelder en
+// souterrain, zie DEFAULT_FLOOR_NAMES). Bewust index-gebaseerd en niet op
+// naam: rijen kunnen hernoemd worden, maar worden nooit verwijderd of
+// herschikt (zie handleAddFloor in BuildingSidebar.jsx).
+export const GROUND_FLOOR_INDEX = 2
+
 // Absolute Z per (verdieping, gebouwdeel) — het rekenwerk dat de Blender-kant
 // daardoor NIET meer hoeft te doen (zelfde filosofie als de XY-uitlijning die
 // de export al doet). Retourneert een Map met sleutel `${floorId}|${gebouwdeelId}`
 // → { heightM, zBottomM, zTopM, top }.
 //
-// floors MOET hier de geëxporteerde subset zijn (verdiepingen met een geldig
-// referentiepunt), in sidebar-volgorde van onder naar boven: `top` betekent
-// "hoogste verdieping waar dit gebouwdeel bestaat" en moet kloppen met wat er
-// werkelijk geëxporteerd wordt — een hogere rij die wél een hoogte heeft maar
-// geen referentiepunt mag de echte bovenste verdieping niet zijn `top` afpakken.
+// Z=0 = vloerpeil van de begane grond (GROUND_FLOOR_INDEX). Verdiepingen erboven
+// stapelen omhoog, rijen eronder (souterrain, kelder) stapelen omlaag en krijgen
+// dus een negatieve Z.
 //
-// Stapel-fallback: bestaat een gebouwdeel op een LAGERE verdieping niet (bv.
-// een erker die pas op de 1e verdieping begint), dan telt daar de
+// floors = ALLE rijen in sidebar-volgorde (van onder naar boven), zodat de
+// begane-grond-index klopt. isIncluded bepaalt welke rijen meedoen; de export
+// geeft daar de geëxporteerde subset (geldig referentiepunt) als predicate:
+// `top` betekent "hoogste verdieping waar dit gebouwdeel bestaat" en moet
+// kloppen met wat er werkelijk geëxporteerd wordt.
+//
+// Stapel-fallback: bestaat een gebouwdeel op een verdieping niet (bv. een
+// erker die pas op de 1e verdieping begint), dan telt daar de
 // hoofdgebouwdeel-hoogte mee voor het Z-peil — er is niets anders om op te
-// stapelen. Dat is puur een stapelregel, geen verborgen default voor de
-// verdieping zelf (die blijft "bestaat niet").
-export function computeRegionZ(floors, gebouwdelen) {
+// stapelen. Geldt in beide richtingen. Dat is puur een stapelregel, geen
+// verborgen default voor de verdieping zelf (die blijft "bestaat niet").
+export function computeRegionZ(floors, gebouwdelen, isIncluded = floorHasAnyHeight) {
   const result = new Map()
   const mainId = mainGebouwdeelId(gebouwdelen)
-  const zByPart = new Map((gebouwdelen ?? []).map(g => [g.id, 0]))
-  const lastFloorByPart = new Map()
+  const all = floors ?? []
+  const parts = gebouwdelen ?? []
 
-  for (const floor of floors ?? []) {
-    for (const g of gebouwdelen ?? []) {
-      const { heightM } = getFloorHeight(floor, g.id, gebouwdelen)
-      const zBottomM = zByPart.get(g.id) ?? 0
-      if (isEmptyHeight(heightM)) {
-        // Bestaat hier niet: geen regio, maar het Z-peil moet wél doorlopen
-        // voor de verdiepingen erboven — anders zou een erker op de 1e
-        // verdieping op maaiveld beginnen.
-        const fallback = g.id === mainId ? null : getFloorHeight(floor, mainId, gebouwdelen).heightM
-        if (!isEmptyHeight(fallback)) zByPart.set(g.id, zBottomM + Number(fallback))
-        continue
+  // Eén stap in de stapel: dir = +1 omhoog (Z is de onderkant van deze rij),
+  // dir = -1 omlaag (Z is de bovenkant van deze rij).
+  const stack = (indices, dir) => {
+    const zByPart = new Map(parts.map(g => [g.id, 0]))
+    for (const i of indices) {
+      const floor = all[i]
+      if (!isIncluded(floor)) continue
+      for (const g of parts) {
+        const { heightM } = getFloorHeight(floor, g.id, gebouwdelen)
+        const z = zByPart.get(g.id) ?? 0
+        if (isEmptyHeight(heightM)) {
+          // Bestaat hier niet: geen regio, maar het Z-peil moet wél doorlopen
+          // voor de verdiepingen verderop — anders zou een erker op de 1e
+          // verdieping op maaiveld beginnen.
+          const fallback = g.id === mainId ? null : getFloorHeight(floor, mainId, gebouwdelen).heightM
+          if (!isEmptyHeight(fallback)) zByPart.set(g.id, z + dir * Number(fallback))
+          continue
+        }
+        const h = Number(heightM)
+        const next = z + dir * h
+        result.set(`${floor.id}|${g.id}`, {
+          heightM: h,
+          zBottomM: Math.min(z, next),
+          zTopM: Math.max(z, next),
+          top: false,
+        })
+        zByPart.set(g.id, next)
       }
-      const h = Number(heightM)
-      const zTopM = zBottomM + h
-      const key = `${floor.id}|${g.id}`
-      result.set(key, { heightM: h, zBottomM, zTopM, top: false })
-      zByPart.set(g.id, zTopM)
-      lastFloorByPart.set(g.id, key)
     }
   }
 
+  const ground = Math.min(GROUND_FLOOR_INDEX, all.length)
+  const range = (from, to) => Array.from({ length: Math.max(0, to - from) }, (_, k) => from + k)
+  stack(range(ground, all.length), +1)
+  stack(range(0, ground).reverse(), -1)
+
+  // `top` = hoogste meedoende rij waar dit gebouwdeel een regio heeft.
+  const lastFloorByPart = new Map()
+  for (const floor of all) {
+    for (const g of parts) {
+      const key = `${floor.id}|${g.id}`
+      if (result.has(key)) lastFloorByPart.set(g.id, key)
+    }
+  }
   for (const key of lastFloorByPart.values()) {
     result.get(key).top = true
   }
