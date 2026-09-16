@@ -51,7 +51,8 @@ Een browser-gebaseerde notitie-app als intern alternatief voor Microsoft OneNote
 | `src/components/Canvas/wallGraph.js` | Verbindingsmodel van het lijnsysteem (`_ep0conns`/`_ep1conns`, `walkHierarchy`, snapping-helpers), muurbegrenzing-opties (`WALL_BOUNDARY_OPTIONS`) |
 | `src/components/Canvas/roomGraph.js` | Automatische ruimte-/vlakdetectie uit de muurgraaf (DCEL-achtige half-edge-traversal), klimatiseringszones (`deriveZones`) |
 | `src/components/Canvas/floatyText.js` | Korte, vervagende DOM-feedbacktekst (`spawnFloatyText`) bij een scherm-positie — bv. koppel-bevestiging/-foutmelding; generiek herbruikbaar |
-| `src/components/Building/BuildingSidebar.jsx` (+ `NorthWheel.jsx`) | "Gebouweigenschappen"-sidebar: hoogte per verdieping, referentiepunt-koppeling, oriëntatie — t.b.v. de Blender-export, zie `BLENDER_EXPORT_PLAN.md` |
+| `src/components/Building/BuildingSidebar.jsx` (+ `NorthWheel.jsx`) | "Gebouweigenschappen"-sidebar: hoogte per verdieping (per gebouwdeel, als tabbladen), referentiepunt-koppeling, oriëntatie, constructie-lijst — t.b.v. de Blender-export, zie `BLENDER_EXPORT_PLAN.md` |
+| `src/components/Building/buildingDefaults.js` | DOM-vrije defaults + gebouwdeel-helpers (`getFloorHeight`, `floorHasAnyHeight`, `computeRegionZ`) — gedeeld door sidebar, export, Ag-berekening en hulplijnen |
 | `src/components/Canvas/usePersistence.js` | Debounced/idle-geplande volledige snapshot-save naar IndexedDB + in-memory `liveSnapshotCache` |
 | `src/components/Canvas/useHistory.js` | Snapshot-gebaseerde undo/redo (max 50), exclusief Images |
 | `src/components/Canvas/konvaSerialize.js` | (De)serialisatie van de mainLayer; centrale plek voor wat wél/niet wordt opgeslagen |
@@ -83,8 +84,10 @@ meters.
 Muren worden altijd zwart getekend (`WALL_STROKE_COLOR` in `CanvasView.jsx`), ongeacht
 de actieve penkleur — geen vrije kleurkeuze meer voor muren. Optionele attrs:
 `boundary` (`buiten`/`buren`/`aor`/`sgr`, default `buiten`; visualisatie via
-`WallBoundaryOverlay.jsx`) en `isAux` (hulplijn — telt mee voor vlak-detectie, niet als
-gevel; visueel een streepjeslijn). Zie `BLENDER_EXPORT_PLAN.md` voor de achtergrond.
+`WallBoundaryOverlay.jsx`), `isAux` (hulplijn — telt mee voor vlak-detectie, niet als
+gevel; visueel een streepjeslijn) en `constructieId` (afwijkende opbouw/isolatie, alleen
+een label — splitst de m²-berekening in Blender, geen geometrie). Zie
+`BLENDER_EXPORT_PLAN.md` voor de achtergrond.
 
 ---
 
@@ -120,10 +123,12 @@ Kerninvarianten:
 - Scharnier-stippen op verbindingen (toggle in instellingen)
 - Automatische ruimte-/vlakdetectie (`roomGraph.js`), klimatiseringszones: installatie-toewijzing per vlak (popup bij tik met muur-tool) + onafhankelijke vlak-eigenschap ("Eigenschap": gebruiksruimte/plat dak/niet berekend/<1,5m)
 - Muurbegrenzing (buiten/buren/AOR/SGR) en hulplijn-markering, instelbaar in de object-toolbar van een geselecteerde muur
+- Constructie per muur (huis-knop in de object-toolbar): vrije naam voor een afwijkende opbouw/isolatie, splitst alleen de m²-berekening in Blender
 
 ### Gebouweigenschappen (t.b.v. Blender-export)
 - Losse FAB-sidebar ("Eigenschappen"), zie `src/components/Building/` — hoogte per verdieping, referentiepunt-koppeling tussen verdiepingen (voor XY-uitlijning bij stapeling), noord-oriëntatie
-- Volledige achtergrond, exportformaat en de Blender-kant van dit alles: `BLENDER_EXPORT_PLAN.md`
+- **Gebouwdelen**: een aanbouw/achterhuis met eigen hoogtes is een eigen gebouwdeel (tabblad in de sidebar), toegewezen per vlak in de vlak-popup. Leeg hoogteveld = dit deel bestaat niet op die verdieping. De export rekent daaruit per `(verdieping, gebouwdeel)` een regio met absolute Z uit
+- Volledige achtergrond, exportformaat (`format: 3`) en de Blender-kant van dit alles: `BLENDER_EXPORT_PLAN.md`
 
 ### Tekst, afbeeldingen, notities
 - Tekstvakken met ingebouwde rekenmachine (math.js); dubbelklik om te bewerken
@@ -136,7 +141,7 @@ Kerninvarianten:
 - Alles lokaal via Dexie (`notes`, `app_settings`), per apparaat, geen sync
 - **PDF**: automatisch kader om inhoud + marge, optioneel grid en maat-pills
 - **`.jnote`**: zip met `note.json` — import accepteert ook oude plain-JSON-bestanden; versie 1.0 (Fabric-era) wordt expliciet geweigerd
-- **Blender-export**: `exportBlender.js`, los JSON-bestand t.b.v. een aparte Blender-plugin-repo — zie `BLENDER_EXPORT_PLAN.md`
+- **Blender-export**: `exportBlender.js`, los JSON-bestand t.b.v. een aparte Blender-plugin-repo — `format: 3` (regio's per gebouwdeel), zie `BLENDER_EXPORT_PLAN.md`
 
 ---
 

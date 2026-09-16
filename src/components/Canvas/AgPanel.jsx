@@ -73,6 +73,20 @@ export default function AgPanel({ mainLayerRef, noteRef, visible = false, suppre
             </div>
           </div>
 
+          {totals.parts?.length > 1 && (
+            <div className="ag-panel-zone">
+              <div className="ag-panel-zone-label">Per gebouwdeel</div>
+              <div className="ag-panel-rows">
+                {totals.parts.map(p => (
+                  <div className="ag-panel-row" key={p.id}>
+                    <span className="ag-panel-row-label">{p.name}</span>
+                    <span className="ag-panel-row-value">{p.areaM2.toFixed(2)} m²</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {totals.zones.length > 1 && totals.zones.map(zone => (
             <div className="ag-panel-zone" key={zone.key}>
               <div className="ag-panel-zone-label">{zone.label}</div>

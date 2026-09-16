@@ -20,7 +20,7 @@ const HOVER_COLOR = '#adb5bd'
 // omvang van een normale plattegrond is dat verwaarloosbaar werk in JS;
 // alleen de duurdere Konva-redraw zelf wordt door de signature-check
 // bewaakt (performance-invariant 7).
-export default function ZoneFillOverlay({ stageRef, mainLayerRef, installations, roomAssignments, defaultHeatingInstallationId, visible = false, hoveredFaceKeyRef, suppressRef }) {
+export default function ZoneFillOverlay({ stageRef, mainLayerRef, installations, roomAssignments, defaultHeatingInstallationId, faceAttributes, gebouwdelen, visible = false, hoveredFaceKeyRef, suppressRef }) {
   const installationsRef = useRef(installations)
   installationsRef.current = installations
   const roomAssignmentsRef = useRef(roomAssignments)
@@ -29,10 +29,15 @@ export default function ZoneFillOverlay({ stageRef, mainLayerRef, installations,
   defaultHeatingInstallationIdRef.current = defaultHeatingInstallationId
   const visibleRef = useRef(visible)
   visibleRef.current = visible
+  const faceAttributesRef = useRef(faceAttributes)
+  faceAttributesRef.current = faceAttributes
+  const gebouwdelenRef = useRef(gebouwdelen)
+  gebouwdelenRef.current = gebouwdelen
 
   useEffect(() => {
     let layer = null
     const polys = new Map() // faceHash -> Konva.Line
+    const partLabels = new Map() // faceHash -> Konva.Text (gebouwdeel-naam)
     let rafId = null
     let prevSig = null
 
@@ -117,11 +122,29 @@ export default function ZoneFillOverlay({ stageRef, mainLayerRef, installations,
       // wisselt houdt anders dezelfde hash/coördinaten, dus geen wijziging in
       // de signature, en de nieuwe kleur zou dan pas zichtbaar worden bij een
       // toevallige volgende wijziging (bv. hoveren).
+      // Gebouwdeel-naam per vlak dat NIET bij het hoofdgebouwdeel hoort — zo
+      // is op het canvas te zien welk stuk plattegrond een eigen hoogte heeft.
+      // Alleen zinvol zodra er meer dan één gebouwdeel is.
+      const gebouwdelen = gebouwdelenRef.current ?? []
+      const mainPartId = gebouwdelen[0]?.id ?? null
+      const partNameByHash = new Map()
+      if (gebouwdelen.length > 1) {
+        const nameById = new Map(gebouwdelen.map(g => [g.id, g.name]))
+        for (const face of faces) {
+          const hash = faceHash(face)
+          const partId = faceAttributesRef.current?.[hash]?.gebouwdeelId ?? mainPartId
+          if (!partId || partId === mainPartId) continue
+          const name = nameById.get(partId)
+          if (name) partNameByHash.set(hash, { name, face })
+        }
+      }
+
       const sig = `${stage.x()},${stage.y()},${stage.scaleX()}|` +
         [...facesToShow.entries()].map(([hash, f]) =>
           `${hash}@${colorByHash.get(hash) ?? ''}@${f.vertices.map(v => `${Math.round(v.x)},${Math.round(v.y)}`).join(';')}`
         ).join(',') +
-        `|${hoveredKey}`
+        `|${hoveredKey}` +
+        `|${[...partNameByHash.entries()].map(([h, v]) => `${h}:${v.name}`).join(',')}`
 
       if (sig === prevSig) {
         rafId = requestAnimationFrame(tick)
@@ -152,6 +175,34 @@ export default function ZoneFillOverlay({ stageRef, mainLayerRef, installations,
         }
       }
 
+      // Gebouwdeel-labels: klein, gedempt, op het zwaartepunt van het vlak.
+      // Tegengeschaald zodat ze bij elke zoom even groot blijven (zelfde
+      // aanpak als de labels in RoofGuideOverlay).
+      const scale = stage.scaleX() || 1
+      for (const [hash, { name, face }] of partNameByHash) {
+        let text = partLabels.get(hash)
+        if (!text) {
+          text = new Konva.Text({
+            listening: false, perfectDrawEnabled: false,
+            fontSize: 11, fontStyle: 'bold', fill: '#6b7280',
+          })
+          layer.add(text)
+          partLabels.set(hash, text)
+        }
+        const cx = face.vertices.reduce((s2, v) => s2 + v.x, 0) / face.vertices.length
+        const cy = face.vertices.reduce((s2, v) => s2 + v.y, 0) / face.vertices.length
+        text.text(name)
+        text.scale({ x: 1 / scale, y: 1 / scale })
+        text.position({ x: cx - (text.width() / 2) / scale, y: cy - (text.height() / 2) / scale })
+        text.visible(true)
+      }
+      for (const [hash, text] of [...partLabels]) {
+        if (!partNameByHash.has(hash)) {
+          text.destroy()
+          partLabels.delete(hash)
+        }
+      }
+
       layer.batchDraw()
       rafId = requestAnimationFrame(tick)
     }
@@ -162,6 +213,7 @@ export default function ZoneFillOverlay({ stageRef, mainLayerRef, installations,
       cancelAnimationFrame(rafId)
       if (layer) layer.destroy()
       polys.clear()
+      partLabels.clear()
     }
   }, [stageRef, mainLayerRef, hoveredFaceKeyRef, suppressRef])
 

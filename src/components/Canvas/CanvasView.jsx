@@ -59,6 +59,19 @@ const FACE_AARD_OPTIONS = [
   { value: '<1.5m', label: '<1,5m' },
 ]
 
+// Zet de verdwenen aard-waarde "plat dak" om naar gebruiksruimte + platDak.
+// Retourneert het originele object als er niets te migreren valt, zodat de
+// aanroeper met een identiteitscheck kan zien of er iets veranderd is.
+function migrateFaceAttributes(attrs) {
+  const stale = Object.entries(attrs).filter(([, a]) => a?.aard === 'plat dak')
+  if (!stale.length) return attrs
+  const next = { ...attrs }
+  for (const [hash, a] of stale) {
+    next[hash] = { ...a, aard: 'gebruiksruimte', platDak: true }
+  }
+  return next
+}
+
 // Muur-tool cursors. Basis = zwarte punt met witte rand (tekenen op leeg
 // canvas). De andere drie geven de hover-context weer zodat duidelijk is wat
 // een klik daar doet, vóórdat de gebruiker klikt:
@@ -153,7 +166,7 @@ import { COLORS } from '../StylePanel/StylePanel.jsx'
 import './Canvas.css'
 
 const CanvasView = forwardRef(function CanvasView(
-  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, onCanvasPointerDown, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true, showZones = false, showMinimap = true, showTechnicalGuides = false, patchNoteSettings, linkingFloorId = null, onEndpointLinked },
+  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, onCanvasPointerDown, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true, showZones = false, showMinimap = true, showTechnicalGuides = false, patchNoteSettings, linkingFloorId = null, onEndpointLinked, onConstructiesChange },
   ref
 ) {
   // ─── DOM + Konva refs ───────────────────────────────────────────────────────
@@ -212,6 +225,10 @@ const CanvasView = forwardRef(function CanvasView(
   const [isWallToolbarTarget, setIsWallToolbarTarget] = useState(false)
   const [wallBoundary, setWallBoundary] = useState('buiten')
   const [wallIsAux, setWallIsAux] = useState(false)
+  // Constructie van de geselecteerde muur (afwijkende opbouw/isolatie) — alleen
+  // een id naar note.settings.constructies, geen geometrie. Zie
+  // BLENDER_EXPORT_PLAN.md, blok "Gebouwdelen en constructies".
+  const [wallConstructieId, setWallConstructieId] = useState(null)
   // Dak boven een gevel (t.b.v. Blender-export, zie BLENDER_EXPORT_PLAN.md).
   // Velden bewerken als strings; naar attrs geschreven als getallen/null via
   // applyRoof(). roofDirtyRef: er is sinds de laatste history-push getypt in
@@ -223,6 +240,8 @@ const CanvasView = forwardRef(function CanvasView(
   // handleInsertHeightGuides) — apart van het dak-paneel omdat het geen
   // formulier is, gewoon een lijst acties.
   const [showWallMenu, setShowWallMenu] = useState(false)
+  const [showConstructiePanel, setShowConstructiePanel] = useState(false)
+  const [addingConstructie, setAddingConstructie] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [deleteHolding, setDeleteHolding] = useState(false)
   const deleteTimerRef = useRef(null)
@@ -449,7 +468,13 @@ const CanvasView = forwardRef(function CanvasView(
   // "geen installatie" als "niet berekend" zijn, en `platDak` staat helemaal
   // los van `aard`: een gebruiksruimte kan gewoon een plat dak erboven hebben.
   // Defaults (geen entry) = aard 'gebruiksruimte', platDak false.
-  const [faceAttributes, setFaceAttributes] = useState(() => note.settings?.faceAttributes ?? {})
+  //
+  // Migratie bij het laden: de aard-waarde "plat dak" bestond ooit als vierde
+  // optie en is losgetrokken naar de platDak-boolean. Bestaande tekeningen
+  // dragen 'm nog; zonder omzetting vallen die vlakken uit de Ag-som (want
+  // aard !== 'gebruiksruimte') en missen ze hun platte dak in Blender. Zie
+  // BLENDER_EXPORT_PLAN.md, blok "Plat-dak-eigenschap".
+  const [faceAttributes, setFaceAttributes] = useState(() => migrateFaceAttributes(note.settings?.faceAttributes ?? {}))
   const [assignPopup, setAssignPopup] = useState(null) // { hash, left, top } | null
   const hoveredFaceKeyRef = useRef(null)
   // true zolang een hinge (endpoint) of een hele hiërarchie wordt gesleept —
@@ -509,6 +534,18 @@ const CanvasView = forwardRef(function CanvasView(
   // patch = { aard } en/of { platDak } — merget bovenop de bestaande entry
   // (net als updateRoomAssignment hierboven) zodat het wijzigen van de ene
   // eigenschap de andere niet stilzwijgend wist.
+  // De migratie hierboven (aard "plat dak" → platDak) leeft eerst alleen in de
+  // lokale state; hier wordt 'ie eenmalig ook echt weggeschreven, zodat de
+  // export en het Ag-paneel (die uit note.settings lezen) meelopen.
+  useEffect(() => {
+    const stored = note.settings?.faceAttributes ?? {}
+    const migrated = migrateFaceAttributes(stored)
+    if (migrated === stored) return
+    const newSettings = { ...note.settings, faceAttributes: migrated }
+    patchNoteSettings?.(note.id, newSettings)
+    updateNoteSettings(note.id, newSettings)
+  }, [note.id])
+
   function updateFaceAttribute(hash, patch) {
     const current = faceAttributes[hash] ?? {}
     const next = { ...faceAttributes, [hash]: { ...current, ...patch } }
@@ -575,6 +612,8 @@ const CanvasView = forwardRef(function CanvasView(
   // aard "gebruiksruimte" te kiezen, zie roofGuides.js/findInteriorNormal.
   const floorsRef = useRef(note?.settings?.floors ?? [])
   floorsRef.current = note?.settings?.floors ?? []
+  const gebouwdelenRef = useRef(note?.settings?.gebouwdelen ?? [])
+  gebouwdelenRef.current = note?.settings?.gebouwdelen ?? []
   const faceAttributesRef = useRef(faceAttributes)
   faceAttributesRef.current = faceAttributes
   const pillStyleRef = useRef(pillStyle)
@@ -1030,9 +1069,11 @@ const CanvasView = forwardRef(function CanvasView(
     }
     setIsWallToolbarTarget(isWall)
     setShowWallMenu(false)
+    setShowConstructiePanel(false)
     if (isWall) {
       setWallBoundary(resolveWallBoundary(node))
       setWallIsAux(!!node.attrs.isAux)
+      setWallConstructieId(node.attrs.constructieId ?? null)
       setWallRoofBaseHeight(
         node.attrs.roofBaseHeightM == null || node.attrs.roofBaseHeightM === ''
           ? '' : String(node.attrs.roofBaseHeightM)
@@ -2732,7 +2773,7 @@ const CanvasView = forwardRef(function CanvasView(
           // Eén keer berekend bij het starten van deze muur (niet per move) —
           // zie de toelichting bij stap 1.5 in computeWallEndpoint hieronder.
           guideSegments: showTechnicalGuidesRef.current
-            ? collectTechnicalGuideSegments(mainLayer, noteRef.current?.settings?.floors ?? [], faceAttributesRef.current)
+            ? collectTechnicalGuideSegments(mainLayer, noteRef.current?.settings?.floors ?? [], faceAttributesRef.current, noteRef.current?.settings?.gebouwdelen ?? [])
             : [],
         }
         return
@@ -4087,6 +4128,32 @@ const CanvasView = forwardRef(function CanvasView(
     scheduleSnapshot()
   }
 
+  // Constructie = afwijkende opbouw/isolatie van déze muur; puur een label dat
+  // de m²-berekening in Blender extra opsplitst (naast zone/begrenzing), geen
+  // geometrie. Vandaar geen visualisatie op het canvas — alleen het
+  // knop-highlight in de toolbar. Zie BLENDER_EXPORT_PLAN.md.
+  function handleConstructieChange(constructieId) {
+    const node = toolbarTargetRef.current
+    if (!node) return
+    node.setAttr('constructieId', constructieId || undefined)
+    setWallConstructieId(constructieId || null)
+    setShowConstructiePanel(false)
+    setAddingConstructie(false)
+    history.pushState()
+    scheduleSnapshot()
+  }
+
+  // Nieuwe constructie aanmaken vanuit het muur-paneel: toevoegen aan de
+  // gedeelde lijst in settings én meteen op deze muur toepassen (dat is altijd
+  // de bedoeling — je maakt 'm aan omdat je 'm nu wil gebruiken).
+  function handleCreateConstructie(name) {
+    const trimmed = name.trim()
+    if (!trimmed) { setAddingConstructie(false); return }
+    const id = generateId()
+    onConstructiesChange?.([...(note.settings?.constructies ?? []), { id, name: trimmed }])
+    handleConstructieChange(id)
+  }
+
   // ─── Object toolbar: dak boven een gevel ───────────────────────────────────
   // Zie "Dak per muur" in BLENDER_EXPORT_PLAN.md. Twee attrs op de muur-node:
   //   roofBaseHeightM  — goothoogte boven het vloerpeil van die verdieping
@@ -4267,6 +4334,23 @@ const CanvasView = forwardRef(function CanvasView(
   useImperativeHandle(ref, () => ({
     getStage: () => stageRef.current,
     getMainLayer: () => mainLayerRef.current,
+    // Aangeroepen vanuit App.jsx zodra een constructie verwijderd wordt: de
+    // koppeling zit als attr op de muur-nodes, dus die moeten hier opgeruimd
+    // worden — anders wijzen muren naar een constructie die niet meer bestaat.
+    clearConstructieFromWalls: (constructieId) => {
+      const mainLayer = mainLayerRef.current
+      if (!mainLayer) return
+      let changed = false
+      for (const node of mainLayer.getChildren()) {
+        if (node.attrs?.constructieId !== constructieId) continue
+        node.setAttr('constructieId', undefined)
+        changed = true
+      }
+      if (!changed) return
+      setWallConstructieId(prev => prev === constructieId ? null : prev)
+      history.pushState()
+      scheduleSnapshot()
+    },
     undo: history.undo,
     redo: history.redo,
     copySelection: handleCopy,
@@ -4430,6 +4514,7 @@ const CanvasView = forwardRef(function CanvasView(
         mainLayerRef={mainLayerRef}
         floors={note.settings?.floors ?? []}
         faceAttributes={faceAttributes}
+        gebouwdelen={note.settings?.gebouwdelen ?? []}
         visible={showTechnicalGuides}
       />
 
@@ -4450,6 +4535,8 @@ const CanvasView = forwardRef(function CanvasView(
         installations={note.settings?.installations ?? []}
         roomAssignments={roomAssignments}
         defaultHeatingInstallationId={note.settings?.defaultHeatingInstallationId}
+        faceAttributes={faceAttributes}
+        gebouwdelen={note.settings?.gebouwdelen ?? []}
         visible={showZones}
         hoveredFaceKeyRef={hoveredFaceKeyRef}
         suppressRef={wallEditActiveRef}
@@ -4509,6 +4596,30 @@ const CanvasView = forwardRef(function CanvasView(
                 ))}
               </select>
             </div>
+            {/* Gebouwdeel: alleen zichtbaar zodra er méér dan één is — voor een
+                gewone woning zou het een lege keuze zijn. Het hoofdgebouwdeel
+                slaat bewust GEEN waarde op (undefined), zodat "geen entry" overal
+                hetzelfde betekent. Zie BLENDER_EXPORT_PLAN.md, blok "Gebouwdelen
+                en constructies". */}
+            {(note.settings?.gebouwdelen ?? []).length > 1 && (() => {
+              const gebouwdelen = note.settings.gebouwdelen
+              const mainId = gebouwdelen[0].id
+              return (
+                <div className="room-assign-row">
+                  <span className="room-assign-label">Gebouwdeel</span>
+                  <select
+                    value={faceAttributes[assignPopup.hash]?.gebouwdeelId ?? mainId}
+                    onChange={e => updateFaceAttribute(assignPopup.hash, {
+                      gebouwdeelId: e.target.value === mainId ? undefined : e.target.value,
+                    })}
+                  >
+                    {gebouwdelen.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )
+            })()}
             {/* Los van "Eigenschap": een plat dak is een eigenschap van dit
                 vlak, niet van "aard" — de ruimte eronder blijft gewoon
                 bijvoorbeeld een gebruiksruimte. Zie BLENDER_EXPORT_PLAN.md,
@@ -4541,6 +4652,7 @@ const CanvasView = forwardRef(function CanvasView(
           showTechnicalGuidesRef={showTechnicalGuidesRef}
           floorsRef={floorsRef}
           faceAttributesRef={faceAttributesRef}
+          gebouwdelenRef={gebouwdelenRef}
           version={lineGizmoVersion}
           autoEditRef={gizmoAutoEditRef}
           showPills={showPills}
@@ -4674,6 +4786,62 @@ const CanvasView = forwardRef(function CanvasView(
                 <path d="M3 10h14" strokeDasharray="2.5 2.5" />
               </svg>
             </button>
+          </div>
+        )}
+
+        {/* Constructie (afwijkende opbouw/isolatie) — paneel opent naar BOVEN,
+            net als het kebab-menu, zodat het niet botst met het dakpaneel
+            eronder. Alleen een label: geen hoogtes, geen geometrie. */}
+        {isWallToolbarTarget && (
+          <div className="object-toolbar-menu-wrap">
+            <button
+              className={`object-toolbar-btn${wallConstructieId ? ' active' : ''}`}
+              title={wallConstructieId
+                ? `Constructie: ${(note.settings?.constructies ?? []).find(c => c.id === wallConstructieId)?.name ?? '—'}`
+                : 'Constructie (afwijkende opbouw/isolatie)'}
+              onClick={() => { setShowConstructiePanel(v => !v); setAddingConstructie(false) }}
+            >
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9l7-5.5L17 9" />
+                <path d="M5 8.5V16h10V8.5" />
+              </svg>
+            </button>
+            {showConstructiePanel && (
+              <div className="object-toolbar-kebab-menu constructie-panel">
+                <button
+                  className={`wall-menu-item${!wallConstructieId ? ' active' : ''}`}
+                  onClick={() => handleConstructieChange(null)}
+                >
+                  Geen
+                </button>
+                {(note.settings?.constructies ?? []).map(c => (
+                  <button
+                    key={c.id}
+                    className={`wall-menu-item${wallConstructieId === c.id ? ' active' : ''}`}
+                    onClick={() => handleConstructieChange(c.id)}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+                {addingConstructie ? (
+                  <input
+                    autoFocus
+                    className="constructie-panel-input"
+                    type="text"
+                    placeholder="Naam, bv. 5cm steenwol"
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') handleCreateConstructie(e.currentTarget.value)
+                      if (e.key === 'Escape') setAddingConstructie(false)
+                    }}
+                    onBlur={e => handleCreateConstructie(e.currentTarget.value)}
+                  />
+                ) : (
+                  <button className="wall-menu-item constructie-panel-add" onClick={() => setAddingConstructie(true)}>
+                    + Nieuwe constructie
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 

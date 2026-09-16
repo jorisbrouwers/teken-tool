@@ -30,13 +30,15 @@ const LABEL_GAP_SCREEN_PX = 12  // constante schermafstand tussen lijn en labelm
 // niet bij pan/zoom — de content-signatuur bevat daarom bewust GEEN
 // stage-transform. Een losse, goedkope scale-check houdt alleen de
 // label-tegenschaling/-afstand (constant in schermpixels) bij tijdens zoomen.
-export default function RoofGuideOverlay({ stageRef, mainLayerRef, floors, faceAttributes, visible = false }) {
+export default function RoofGuideOverlay({ stageRef, mainLayerRef, floors, faceAttributes, gebouwdelen, visible = false }) {
   const visibleRef = useRef(visible)
   visibleRef.current = visible
   const floorsRef = useRef(floors)
   floorsRef.current = floors
   const faceAttributesRef = useRef(faceAttributes)
   faceAttributesRef.current = faceAttributes
+  const gebouwdelenRef = useRef(gebouwdelen)
+  gebouwdelenRef.current = gebouwdelen
 
   useEffect(() => {
     let layer = null
@@ -90,7 +92,9 @@ export default function RoofGuideOverlay({ stageRef, mainLayerRef, floors, faceA
         if (!pts || pts.length < 4) continue
         parts.push(`${node.id()}:${node.x()},${node.y()},${pts.join(',')},${node.attrs.roofBaseHeightM ?? 0},${JSON.stringify(courses)}`)
       }
-      const floorsSig = JSON.stringify((floorsRef.current ?? []).map(f => ({ id: f.id, heightM: f.heightM, rp: f.referencePoint })))
+      // partHeights mee in de signatuur: de hoogte van een gebouwdeel bepaalt waar
+      // zijn diepte-hulplijn ligt, net zo goed als floor.heightM.
+      const floorsSig = JSON.stringify((floorsRef.current ?? []).map(f => ({ id: f.id, heightM: f.heightM, ph: f.partHeights, rp: f.referencePoint })))
       // Een aard-wijziging (bv. een vlak van "<1,5m" naar "gebruiksruimte"
       // omzetten) kan de gekozen kant bij een gedeelde muur veranderen zonder
       // dat er iets aan de muur-geometrie zelf wijzigt — dus moet in de
@@ -102,7 +106,7 @@ export default function RoofGuideOverlay({ stageRef, mainLayerRef, floors, faceA
         prevContentSig = contentSig
 
         // Pas nu de duurdere vlak-detectie aanroepen — alleen bij een echte wijziging.
-        const segments = collectTechnicalGuideSegments(ml, floorsRef.current ?? [], faceAttributesRef.current)
+        const segments = collectTechnicalGuideSegments(ml, floorsRef.current ?? [], faceAttributesRef.current, gebouwdelenRef.current)
         const seen = new Map(segments.map(seg => [seg.key, seg]))
 
         for (const [key, seg] of seen) {

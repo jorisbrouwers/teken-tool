@@ -1,23 +1,33 @@
 // Export t.b.v. de Blender-plugin (zie BLENDER_EXPORT_PLAN.md in de repo-root
-// voor het volledige schema-ontwerp en de bredere context). format 2, additief
-// uitbreidbaar zoals .jnote — nieuwe velden komen er later bij, bestaande
-// velden veranderen niet.
+// voor het volledige schema-ontwerp en de bredere context). format 3.
 //   format 1 → 2: per verdieping een `envelope` (buitenomtrek-polygoon +
-//   geordende wallIds) + `top` (bovenste verdieping-vlag, zie hieronder); per
-//   muur `roofBaseHeightM` + `roofCourses` (dak boven de gevel, zie exportRoof
-//   en BLENDER_EXPORT_PLAN.md).
-//   Binnen format 2 (geen veld verandert van type, alleen minder/samengevatte
-//   data): walls[] bevat geen binnenmuren meer — alleen omtrekmuren, de
-//   referentiepunt-muur en binnenmuren die twee klimatiseringszones scheiden
-//   (selectExportedWallIds). Collineaire omtrekranden met dezelfde boundary +
-//   hetzelfde dak zijn samengevoegd tot één rand (mergeCollinearEnvelopeEdges),
-//   zodat een door T-splitsingen geknipte gevel één lengte heeft. Zie
-//   BLENDER_EXPORT_PLAN.md, blok "Binnenmuren". Later additief bijgekomen,
-//   nog steeds format 2: per rooms[]-vlak `color` en `platDak` (plat dak is
-//   een eigenschap van het vlak, los van `aard` — zie de rooms-map in
-//   buildBlenderExport hieronder).
+//   geordende wallIds) + `top` (bovenste verdieping-vlag); per muur
+//   `roofBaseHeightM` + `roofCourses` (dak boven de gevel, zie exportRoof).
+//   Binnen format 2: walls[] bevat geen binnenmuren meer — alleen omtrekmuren,
+//   de referentiepunt-muur en binnenmuren die twee klimatiseringszones
+//   scheiden (selectExportedWallIds). Collineaire omtrekranden met dezelfde
+//   boundary + hetzelfde dak zijn samengevoegd tot één rand
+//   (mergeCollinearEnvelopeEdges). Per rooms[]-vlak `color` en `platDak`.
 //
-// Elke verdieping in note.settings.floors zonder heightM of zonder
+//   format 2 → 3 (gebouwdelen en constructies, zie dat blok in
+//   BLENDER_EXPORT_PLAN.md): de eenheid van hoogte/stapeling/dak is niet langer
+//   de VERDIEPING maar de REGIO = (verdieping, gebouwdeel). Een aanbouw met een
+//   lagere verdiepingsvloer of een lager plat dak is een eigen gebouwdeel met
+//   eigen hoogtes, getekend in dezelfde plattegrond.
+//     - `floors[].heightM`, `.top` en `.envelope` zijn VERVALLEN; die drie
+//       zitten nu per gebouwdeel in `floors[].regions[]`, met `zBottomM`/
+//       `zTopM` al uitgerekend (zelfde filosofie als de XY-uitlijning: de
+//       Blender-kant hoeft niet meer zelf te stapelen).
+//     - `rooms[].gebouwdeelId` + `zBottomM`/`zTopM`; `walls[].constructieId`.
+//     - `project.gebouwdelen` / `project.constructies`.
+//     - selectExportedWallIds splitst nu op (zone | gebouwdeel), zodat een
+//       gebouwdeelgrens altijd in walls[] belandt — Blender heeft 'm nodig voor
+//       het gevelstuk tussen twee ongelijke regio-hoogtes.
+//   Er wordt bewust GEEN format 2 meer uitgestuurd, ook niet voor een woning
+//   met één gebouwdeel (dan simpelweg één regio per verdieping): één codepad.
+//   Afgesproken met de Blender-kant omdat de addon nog niet in productie is.
+//
+// Een verdieping zonder hoogte (op geen enkel gebouwdeel) of zonder
 // referencePoint wordt overgeslagen — die twee zijn de randvoorwaarde om een
 // verdieping zinvol te kunnen exporteren (hoogte voor de Z-extrusie,
 // referentiepunt om walkHierarchy() de juiste muur-subset te laten opleveren).
@@ -46,9 +56,12 @@
 // onderscheid niet maken).
 import { GRID_SIZE } from '../components/Canvas/useGrid.js'
 import { walkHierarchy, getConns, resolveWallBoundary } from '../components/Canvas/wallGraph.js'
-import { facesFromNodes, faceHash, resolveRoomAssignment, envelopeFromNodes } from '../components/Canvas/roomGraph.js'
+import { facesFromNodes, faceHash, resolveRoomAssignment, envelopeForFaces } from '../components/Canvas/roomGraph.js'
 import { colorForZone } from '../components/Canvas/zoneColors.js'
-import { DEFAULT_NORTH_ANGLE, DEFAULT_FRONT_FACADE_SCREEN_ANGLE } from '../components/Building/buildingDefaults.js'
+import {
+  DEFAULT_NORTH_ANGLE, DEFAULT_FRONT_FACADE_SCREEN_ANGLE,
+  mainGebouwdeelId, floorHasAnyHeight, computeRegionZ, getFloorHeight,
+} from '../components/Building/buildingDefaults.js'
 
 const norm360 = (a) => ((a % 360) + 360) % 360
 
@@ -104,6 +117,9 @@ function exportWall(node, originPx) {
     conns: { ep0: getConns(node, 0), ep1: getConns(node, 1) },
     boundary: resolveWallBoundary(node),
     isAux: !!node.attrs.isAux,
+    // Afwijkende opbouw/isolatie van deze muur; splitst alleen de
+    // m²-berekening, geen geometrie. Zie "Gebouwdelen en constructies".
+    constructieId: node.attrs.constructieId ?? null,
     ...exportRoof(node),
   }
 }
@@ -117,15 +133,20 @@ const COLLINEAR_EPS_RAD = Math.PI / 180
 // Bepaalt welke muur-ids in floors[].walls[] terechtkomen. Binnenmuren zijn
 // voor de Blender-kant (die alleen de schil van de woning modelleert)
 // irrelevant en worden weggelaten — TENZIJ ze twee vlakken met een
-// verschillende klimatiseringszone scheiden, want daar snijdt de zone-uitsnede
-// in Blender langs. "Geen zone" (vlak zonder installatie) telt daarbij mee als
-// een eigen zone-sleutel. Omtrekmuren en de referentiepunt-muur blijven altijd.
-// Zie BLENDER_EXPORT_PLAN.md, blok "Binnenmuren".
+// verschillende SPLITSINGSSLEUTEL scheiden, want daar snijdt Blender langs.
+// Die sleutel is (klimatiseringszone | gebouwdeel): "geen zone" (vlak zonder
+// installatie) telt mee als een eigen zone-waarde, en een gebouwdeelgrens komt
+// er altijd in — ook bij gelijke zone, want Blender heeft die muur nodig voor
+// het gevelstuk tussen twee ongelijke regio-hoogtes (hoofdhuis 2.73 naast
+// aanbouw 2.48). Omtrekmuren en de referentiepunt-muur blijven altijd.
+// Zie BLENDER_EXPORT_PLAN.md, blokken "Binnenmuren" en "Gebouwdelen en
+// constructies".
 //
-// Puur: faces = facesFromNodes(...), envelope = envelopeFromNodes(...) (mag
+// Puur: faces = facesFromNodes(...), envelope = de verdiepings-omtrek (mag
 // null zijn), allWallIds = alle ids in de hiërarchie (fallback bij geen omtrek).
 export function selectExportedWallIds({
   faces, envelope, referenceWallId, roomAssignments, installations, defaultHeatingId, allWallIds,
+  faceAttributes = {}, mainId = null,
 }) {
   // Geen gesloten omtrek (plattegrond nog in bewerking): niets stilzwijgend
   // weggooien, exporteer dan gewoon alles.
@@ -134,13 +155,15 @@ export function selectExportedWallIds({
   const keep = new Set(envelope.wallIds)
   if (referenceWallId) keep.add(referenceWallId)
 
-  // Zone-sleutel per vlak — zelfde (heating|cooling)-combinatie als deriveZones().
+  // Splitsingssleutel per vlak — de (heating|cooling)-combinatie van
+  // deriveZones(), plus het gebouwdeel.
   const zoneKeyByFace = new Map()
   for (const face of faces) {
     const hash = faceHash(face)
     const { heatingInstallationId, coolingInstallationId } =
       resolveRoomAssignment(hash, roomAssignments, installations, defaultHeatingId)
-    zoneKeyByFace.set(hash, `${heatingInstallationId ?? ''}|${coolingInstallationId ?? ''}`)
+    const gebouwdeelId = faceAttributes[hash]?.gebouwdeelId ?? mainId
+    zoneKeyByFace.set(hash, `${heatingInstallationId ?? ''}|${coolingInstallationId ?? ''}|${gebouwdeelId ?? ''}`)
   }
 
   // Per muur de verzameling zone-sleutels van de aangrenzende vlakken. Een
@@ -168,7 +191,11 @@ export function selectExportedWallIds({
 // wallId is een representant van de run — alle leden delen boundary/roofCourses,
 // dus elke id volstaat om die op te zoeken in walls[].
 // envelope = { polygon: [{x,y}], wallIds: [id] } (px, vóór de origin-aftrek);
-// attrsById = Map<wallId, { boundary, roofKey }>. Zie BLENDER_EXPORT_PLAN.md.
+// attrsById = Map<wallId, { boundary, roofKey, constructieId }>. De constructie
+// zit in de sleutel zodat een gevel die halverwege anders geïsoleerd is twee
+// randen blijft (dat is nu juist het punt van een constructie). Gebouwdeel
+// hoeft er niet in: een regio-omtrek loopt per definitie niet over een
+// gebouwdeelgrens heen. Zie BLENDER_EXPORT_PLAN.md.
 export function mergeCollinearEnvelopeEdges(envelope, attrsById) {
   if (!envelope) return envelope
   const src = envelope.polygon
@@ -188,6 +215,7 @@ export function mergeCollinearEnvelopeEdges(envelope, attrsById) {
   const mergeable = (idA, idB) => {
     const a = attrsById.get(idA), b = attrsById.get(idB)
     return !!a && !!b && a.boundary === b.boundary && a.roofKey === b.roofKey
+      && (a.constructieId ?? null) === (b.constructieId ?? null)
   }
 
   // Vertex (i+1) verdwijnt als rand i en rand (i+1) op één lijn liggen én hun
@@ -215,36 +243,55 @@ export function mergeCollinearEnvelopeEdges(envelope, attrsById) {
 // Puur data in, data uit (net als roomGraph.js) — geen browser-/DOM-
 // afhankelijkheden, zodat dit ook los te testen/her te gebruiken is.
 export function buildBlenderExport(note, mainLayer) {
-  const floors = note.settings?.floors ?? []
+  const allFloors = note.settings?.floors ?? []
   const installations = note.settings?.installations ?? []
   const defaultHeatingId = note.settings?.defaultHeatingInstallationId
   const roomAssignments = note.settings?.roomAssignments ?? {}
   const faceAttributes = note.settings?.faceAttributes ?? {}
+  const gebouwdelen = note.settings?.gebouwdelen ?? []
+  const constructies = note.settings?.constructies ?? []
+  const mainId = mainGebouwdeelId(gebouwdelen)
+  const warnings = []
+
+  // De geëxporteerde subset eerst bepalen, en pas daarover de Z-stapeling +
+  // `top` berekenen: een verdieping die wél een hoogte heeft maar geen (geldig)
+  // referentiepunt doet niet mee, en mag de écht bovenste verdieping zijn
+  // `top` dus ook niet afpakken (die zou anders zijn platte dak of zijn
+  // nokhoogte-controle verliezen). Zie BLENDER_EXPORT_PLAN.md, format 3.
+  const floors = allFloors.filter(f =>
+    floorHasAnyHeight(f) && f.referencePoint && mainLayer.findOne(`#${f.referencePoint.wallId}`))
+  const regionZ = computeRegionZ(floors, gebouwdelen)
 
   const exportedFloors = []
   for (const floor of floors) {
-    if (floor.heightM == null || floor.heightM === '' || !floor.referencePoint) continue
     const startNode = mainLayer.findOne(`#${floor.referencePoint.wallId}`)
-    if (!startNode) continue // gekoppelde muur bestaat niet meer (verwijderd) — verdieping overslaan
-
     const startPts = startNode.points()
     const ep = floor.referencePoint.ep
     const originPx = { x: startNode.x() + startPts[ep * 2], y: startNode.y() + startPts[ep * 2 + 1] }
 
     const wallNodes = walkHierarchy(startNode, mainLayer)
 
-    // Buitenomtrek + vlakken op de VOLLEDIGE muurhiërarchie — binnenmuren doen
-    // gewoon mee voor de vlak-detectie (rooms[]). Pas daarna filteren we walls[].
-    // envelope: de gesloten lijn waarop de Blender-kant het dak-skeleton draait
-    // en waarmee verdiepingen onderling worden afgetrokken (envelope(F) −
-    // envelope(F+1), zie BLENDER_EXPORT_PLAN.md). wallIds[i] hoort bij de rand
-    // polygon[i] → polygon[(i+1) % n], zodat elke rand zijn begrenzing/dak kan
-    // opzoeken in walls[].
-    const env = envelopeFromNodes(wallNodes)
+    // Vlakken op de VOLLEDIGE muurhiërarchie — binnenmuren doen gewoon mee voor
+    // de vlak-detectie (rooms[]). Pas daarna filteren we walls[].
     const faces = facesFromNodes(wallNodes)
 
+    // Vlakken groeperen per gebouwdeel: elke groep wordt één regio met een
+    // eigen omtrek, eigen hoogte en eigen Z. Bij één gebouwdeel is dat precies
+    // één regio = de hele verdieping, zoals vóór format 3.
+    const facesByPart = new Map()
+    for (const face of faces) {
+      const part = faceAttributes[faceHash(face)]?.gebouwdeelId ?? mainId
+      if (!facesByPart.has(part)) facesByPart.set(part, [])
+      facesByPart.get(part).push(face)
+    }
+
+    // De omtrek van de hele verdieping (alle vlakken samen) blijft nodig als
+    // basis voor walls[]: omtrekmuren moeten altijd geëxporteerd worden,
+    // ongeacht bij welk gebouwdeel ze horen.
+    const env = envelopeForFaces(faces)
+
     // Welke muren komen in walls[]? Omtrekmuren + referentiepunt-muur +
-    // binnenmuren die twee klimatiseringszones scheiden. Zie
+    // binnenmuren die twee zones óf twee gebouwdelen scheiden. Zie
     // BLENDER_EXPORT_PLAN.md, blok "Binnenmuren".
     const keepIds = selectExportedWallIds({
       faces,
@@ -254,6 +301,8 @@ export function buildBlenderExport(note, mainLayer) {
       installations,
       defaultHeatingId,
       allWallIds: wallNodes.map(n => n.id()),
+      faceAttributes,
+      mainId,
     })
     const walls = wallNodes.filter(n => keepIds.has(n.id())).map(n => exportWall(n, originPx))
     // conns die naar niet-geëxporteerde binnenmuren wijzen weglaten, zodat
@@ -263,28 +312,62 @@ export function buildBlenderExport(note, mainLayer) {
       w.conns.ep1 = w.conns.ep1.filter(c => keepIds.has(c.id))
     }
 
-    // Collineaire omtrekranden met dezelfde boundary + hetzelfde dak samenvoegen,
-    // zodat een gevel die via T-splitsingen in segmenten is geknipt één rand met
-    // één lengte wordt. attrsById uit de volledige wallNodes (alle omtrekmuren
-    // zitten daarin), vóór de px→m/origin-aftrek.
-    const envAttrsById = new Map()
-    if (env) {
-      const need = new Set(env.wallIds)
-      for (const node of wallNodes) {
-        if (!need.has(node.id())) continue
-        envAttrsById.set(node.id(), {
-          boundary: resolveWallBoundary(node),
-          roofKey: JSON.stringify(exportRoof(node)),
-        })
-      }
+    // Collineaire omtrekranden met dezelfde boundary + hetzelfde dak + dezelfde
+    // constructie samenvoegen, zodat een gevel die via T-splitsingen in
+    // segmenten is geknipt één rand met één lengte wordt. attrsById uit de
+    // volledige wallNodes, vóór de px→m/origin-aftrek.
+    const attrsById = new Map()
+    for (const node of wallNodes) {
+      attrsById.set(node.id(), {
+        boundary: resolveWallBoundary(node),
+        roofKey: JSON.stringify(exportRoof(node)),
+        constructieId: node.attrs.constructieId ?? null,
+      })
     }
-    const mergedEnv = mergeCollinearEnvelopeEdges(env, envAttrsById)
-    const envelope = mergedEnv
-      ? {
-          polygon: mergedEnv.polygon.map(v => [toM(v.x - originPx.x), toM(v.y - originPx.y)]),
-          wallIds: mergedEnv.wallIds,
-        }
-      : null
+    const toExportEnvelope = (raw) => {
+      const merged = mergeCollinearEnvelopeEdges(raw, attrsById)
+      return merged
+        ? {
+            polygon: merged.polygon.map(v => [toM(v.x - originPx.x), toM(v.y - originPx.y)]),
+            wallIds: merged.wallIds,
+          }
+        : null
+    }
+
+    // Eén regio per gebouwdeel dat op deze verdieping vlakken heeft. De
+    // hoogte komt uit het eigen tabblad in de sidebar; ontbreekt die, dan valt
+    // de regio terug op de hoofdgebouwdeel-hoogte (met een melding) zodat er
+    // nog steeds een bruikbaar model uitkomt.
+    const regions = []
+    for (const g of gebouwdelen) {
+      const partFaces = facesByPart.get(g.id)
+      // Geen vlakken = niets om te extruderen op deze verdieping. Een
+      // ingevulde hoogte zonder vlakken telt nog wel mee voor de Z-stapeling
+      // (dat zit in computeRegionZ), maar levert geen regio op.
+      if (!partFaces?.length) continue
+      const z = regionZ.get(`${floor.id}|${g.id}`)
+
+      let region = z
+      if (!region) {
+        const fallback = regionZ.get(`${floor.id}|${mainId}`)
+        if (!fallback) continue // ook het hoofdgebouwdeel bestaat hier niet
+        warnings.push(`${g.name} heeft geen hoogte op ${floor.name}`)
+        region = fallback
+      }
+
+      regions.push({
+        gebouwdeelId: g.id,
+        heightM: region.heightM,
+        // Absolute Z, al uitgerekend zodat de Blender-kant niet meer stapelt
+        // (zelfde filosofie als de XY-uitlijning hierboven).
+        zBottomM: region.zBottomM,
+        zTopM: region.zTopM,
+        // Hoogste GEËXPORTEERDE verdieping waar dit gebouwdeel bestaat — voor
+        // een aanbouw met alleen een begane grond dus die begane grond.
+        top: region.top,
+        envelope: toExportEnvelope(envelopeForFaces(partFaces)),
+      })
+    }
 
     const rooms = faces.map(face => {
       const hash = faceHash(face)
@@ -297,6 +380,8 @@ export function buildBlenderExport(note, mainLayer) {
       const color = heatingInstallationId || coolingInstallationId
         ? colorForZone({ heatingInstallationId, coolingInstallationId }, installations)
         : null
+      const gebouwdeelId = faceAttributes[hash]?.gebouwdeelId ?? mainId
+      const z = regions.find(r => r.gebouwdeelId === gebouwdeelId)
       return {
         id: hash,
         polygon: face.vertices.map(v => [toM(v.x - originPx.x), toM(v.y - originPx.y)]),
@@ -305,33 +390,29 @@ export function buildBlenderExport(note, mainLayer) {
         color,
         aard: faceAttributes[hash]?.aard ?? 'gebruiksruimte',
         platDak: !!faceAttributes[hash]?.platDak,
+        // Gebouwdeel + de Z van zijn regio, hier herhaald zodat de Blender-kant
+        // per vlak niet hoeft terug te zoeken in regions[].
+        gebouwdeelId,
+        zBottomM: z?.zBottomM ?? null,
+        zTopM: z?.zTopM ?? null,
       }
     })
 
     exportedFloors.push({
       id: floor.id,
       title: floor.name,
-      heightM: floor.heightM,
-      // top wordt na de lus op de laatste (hoogste) geëxporteerde verdieping
-      // gezet. De Blender-kant gebruikt heightM van de bovenste verdieping
-      // alléén als de omtrek geen roofCourses heeft (plat dak → afkaphoogte);
-      // mét roofCourses is de nok een skeleton-uitkomst en is heightM daar
-      // slechts de op locatie gemeten controlewaarde. Zie BLENDER_EXPORT_PLAN.md.
-      top: false,
       // Geen x/y hier — walls/rooms hierboven zijn al t.o.v. dit punt vertaald
       // (originPx), dus het referentiepunt ligt per definitie op (0, 0).
       // wallId/ep blijven staan als herleidbare referentie (welke hoek was
       // het), niet om nog een keer te vertalen.
       referencePoint: { wallId: floor.referencePoint.wallId, ep: floor.referencePoint.ep },
-      envelope,
+      // Hoogte, omtrek en de bovenste-verdieping-vlag zitten sinds format 3
+      // per gebouwdeel hierin, niet meer los op de verdieping.
+      regions,
       walls,
       rooms,
     })
   }
-
-  // De laatste geëxporteerde verdieping is de bovenste (floors staan in
-  // sidebar-volgorde kelder→boven, lege rijen zijn al overgeslagen).
-  if (exportedFloors.length) exportedFloors[exportedFloors.length - 1].top = true
 
   // northAngle = kompasrichting van "onderkant canvas". frontFacadeScreenAngle =
   // schermrichting waarin de voorgevel getekend is (0=boven, 90=rechts,
@@ -343,20 +424,29 @@ export function buildBlenderExport(note, mainLayer) {
   const frontFacadeScreenAngle = note.settings?.frontFacadeScreenAngle ?? DEFAULT_FRONT_FACADE_SCREEN_ANGLE
 
   return {
-    format: 2,
-    unit: 'm',
-    project: {
-      title: note.title,
-      northAngle,
-      frontFacadeScreenAngle,
-      frontFacadeBearing: norm360(northAngle + frontFacadeScreenAngle - 180),
+    data: {
+      format: 3,
+      unit: 'm',
+      project: {
+        title: note.title,
+        northAngle,
+        frontFacadeScreenAngle,
+        frontFacadeBearing: norm360(northAngle + frontFacadeScreenAngle - 180),
+        // Namen horen bij de export zodat het rapport aan de Blender-kant
+        // "linkergevel aanbouw" kan schrijven i.p.v. een id.
+        gebouwdelen: gebouwdelen.map(g => ({ id: g.id, name: g.name })),
+        constructies: constructies.map(c => ({ id: c.id, name: c.name })),
+      },
+      floors: exportedFloors,
     },
-    floors: exportedFloors,
+    // Niet-blokkerende meldingen voor de gebruiker (App.jsx toont ze als
+    // floaty-toast) — de export zelf gaat gewoon door.
+    warnings: [...new Set(warnings)],
   }
 }
 
 export function exportBlender(note, mainLayer) {
-  const data = buildBlenderExport(note, mainLayer)
+  const { data, warnings } = buildBlenderExport(note, mainLayer)
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -364,4 +454,5 @@ export function exportBlender(note, mainLayer) {
   a.download = `${note.title.replace(/[^a-z0-9_\-. ]/gi, '_')}_blender.json`
   a.click()
   URL.revokeObjectURL(url)
+  return warnings
 }

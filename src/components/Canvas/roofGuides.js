@@ -18,6 +18,7 @@
 import { GRID_SIZE } from './useGrid.js'
 import { isWallNode, walkHierarchy } from './wallGraph.js'
 import { facesFromNodes, pointInFace, faceHash } from './roomGraph.js'
+import { getFloorHeight, floorHasAnyHeight, mainGebouwdeelId } from '../Building/buildingDefaults.js'
 
 export const LOW_HEADROOM_HEIGHT_M = 1.5
 
@@ -141,9 +142,22 @@ function resolveReferencePointPos(referencePoint, mainLayer) {
 // tussen de twee gekoppelde referentiepunten). Ontbreekt bij F of F+1 een
 // geldige hoogte/referentiepunt, dan wordt dat paar stil overgeslagen — zelfde
 // precedent als de Blender-export (zie exportBlender.js).
-function collectFloorDepthGuideSegments(faces, mainLayer, floors, faceAttributes) {
+function collectFloorDepthGuideSegments(faces, mainLayer, floors, faceAttributes, gebouwdelen) {
   const segments = []
-  const valid = (floors ?? []).filter(f => f.heightM != null && f.heightM !== '' && f.referencePoint)
+  const valid = (floors ?? []).filter(f => floorHasAnyHeight(f) && f.referencePoint)
+  const mainId = mainGebouwdeelId(gebouwdelen)
+
+  // Het gebouwdeel van de ruimte achter deze gevel bepaalt welke
+  // verdiepingshoogte telt — een aanbouw met een lagere verdiepingsvloer
+  // snijdt het dak op een andere hoogte dan het hoofdhuis. Zie
+  // BLENDER_EXPORT_PLAN.md, blok "Gebouwdelen en constructies".
+  function gebouwdeelOfWall(node) {
+    const candidates = faces.filter(f => f.edgeIds.includes(node.id()))
+    if (!candidates.length) return mainId
+    const usage = candidates.filter(f => resolveFaceAard(f, faceAttributes) === 'gebruiksruimte')
+    const face = usage.length === 1 ? usage[0] : candidates[0]
+    return faceAttributes?.[faceHash(face)]?.gebouwdeelId ?? mainId
+  }
 
   for (let i = 0; i < valid.length - 1; i++) {
     const floorF = valid[i]
@@ -155,12 +169,17 @@ function collectFloorDepthGuideSegments(faces, mainLayer, floors, faceAttributes
     const startNode = mainLayer.findOne(`#${floorF.referencePoint.wallId}`)
     if (!startNode) continue
     const dx = posNext.x - posF.x, dy = posNext.y - posF.y
-    const targetHeightM = Number(floorF.heightM)
 
     for (const node of walkHierarchy(startNode, mainLayer)) {
       if (!isWallNode(node)) continue
       const courses = node.attrs.roofCourses
       if (!Array.isArray(courses) || !courses.length) continue
+      // Hoogte van het gebouwdeel achter deze gevel; valt terug op het
+      // hoofdgebouwdeel als dat deel hier geen eigen hoogte heeft.
+      const own = getFloorHeight(floorF, gebouwdeelOfWall(node), gebouwdelen).heightM
+      const raw = own == null || own === '' ? getFloorHeight(floorF, mainId, gebouwdelen).heightM : own
+      if (raw == null || raw === '') continue
+      const targetHeightM = Number(raw)
       const run = computeRoofRunToHeight(node.attrs.roofBaseHeightM, courses, targetHeightM)
       if (run == null) continue
       const seg = computeWallGuideSegment(node, faces, run, faceAttributes)
@@ -500,10 +519,10 @@ export function collectHeightGuideChainsForHierarchy(mainLayer, startNode, faceA
 // — geen dubbele geometrie-logica. `floors` = note.settings.floors,
 // `faceAttributes` = note.settings.faceAttributes (voor de aard-gebaseerde
 // kant-bepaling bij een muur die aan twee vlakken grenst, zie findInteriorNormal).
-export function collectTechnicalGuideSegments(mainLayer, floors, faceAttributes) {
+export function collectTechnicalGuideSegments(mainLayer, floors, faceAttributes, gebouwdelen) {
   const faces = facesFromNodes(mainLayer.getChildren())
   return [
     ...collectHeightGuideChainsForFaces(faces, mainLayer, faceAttributes),
-    ...collectFloorDepthGuideSegments(faces, mainLayer, floors ?? [], faceAttributes),
+    ...collectFloorDepthGuideSegments(faces, mainLayer, floors ?? [], faceAttributes, gebouwdelen ?? []),
   ]
 }

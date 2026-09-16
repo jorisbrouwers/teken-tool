@@ -208,6 +208,82 @@ export function computeEnvelopeFromWalls(walls) {
   return { polygon: outer[0].vertices, wallIds: outer[0].edgeWallIds }
 }
 
+// Buitenomtrek van een DEELVERZAMELING vlakken — de omtrek van één gebouwdeel
+// op één verdieping (zie BLENDER_EXPORT_PLAN.md, blok "Gebouwdelen en
+// constructies"). Anders dan computeEnvelopeFromWalls, die over de muurgraaf
+// loopt, werkt dit op al gedetecteerde vlakken: een rand hoort bij de omtrek
+// als de tegenoverliggende (omgekeerde) rand NIET ook in deze verzameling zit
+// — dus als er aan de andere kant geen vlak van hetzelfde gebouwdeel ligt.
+//
+// Daardoor blijft een hulplijn (isAux) die als gebouwdeelgrens getekend is hier
+// juist wél in de omtrek staan: aan de andere kant ligt een vlak van een ánder
+// gebouwdeel, en het dak van deze regio moet daar eindigen. Dat is precies
+// andersom dan bij envelopeFromNodes, waar isAux-muren geen gevel zijn.
+//
+// faces = entries uit computeFacesFromWalls (vertices + orderedEdgeIds).
+// Retourneert { polygon: [{x,y}], wallIds: [id] } met hetzelfde contract als
+// computeEnvelopeFromWalls (wallIds[i] hoort bij polygon[i] → polygon[i+1]),
+// of null als er geen gesloten ring uit komt.
+export function envelopeForFaces(faces) {
+  if (!faces?.length) return null
+
+  // Vertex-sleutel op positie: vlakken delen dezelfde vertex-objecten uit
+  // computeLoops (vertexPos), maar twee vlakken kunnen hun eigen object voor
+  // hetzelfde punt hebben. Afronden op 1e-6 px is ver onder tekenprecisie en
+  // maakt de sleutel robuust tegen float-ruis.
+  const key = (v) => `${Math.round(v.x * 1e6)},${Math.round(v.y * 1e6)}`
+
+  // Alle gerichte randen van alle vlakken in de verzameling.
+  const edges = new Map() // "from->to" -> { from, to, wallId }
+  for (const face of faces) {
+    const n = face.vertices.length
+    for (let i = 0; i < n; i++) {
+      const a = face.vertices[i]
+      const b = face.vertices[(i + 1) % n]
+      edges.set(`${key(a)}->${key(b)}`, { from: a, to: b, wallId: face.orderedEdgeIds?.[i] })
+    }
+  }
+
+  // Grensranden = randen zonder tegenhanger binnen de verzameling.
+  const boundary = new Map() // fromKey -> [{ from, to, wallId }]
+  for (const [k, edge] of edges) {
+    const reversed = `${key(edge.to)}->${key(edge.from)}`
+    if (edges.has(reversed)) continue
+    const fk = key(edge.from)
+    if (!boundary.has(fk)) boundary.set(fk, [])
+    boundary.get(fk).push(edge)
+  }
+  if (boundary.size === 0) return null
+
+  // Grensranden aan elkaar rijgen tot ring(en). Bij een vertex met meerdere
+  // uitgaande grensranden (twee stukken die elkaar in één punt raken) pakken we
+  // gewoon de eerstvolgende ongebruikte — dat levert nog steeds gesloten
+  // ringen op; we kiezen daarna de grootste.
+  const used = new Set()
+  const rings = []
+  for (const [startKey, startEdges] of boundary) {
+    for (const startEdge of startEdges) {
+      if (used.has(startEdge)) continue
+      const polygon = []
+      const wallIds = []
+      let cur = startEdge
+      while (cur && !used.has(cur)) {
+        used.add(cur)
+        polygon.push(cur.from)
+        wallIds.push(cur.wallId)
+        const nextList = boundary.get(key(cur.to)) ?? []
+        cur = nextList.find(e => !used.has(e))
+        if (cur && key(cur.from) === startKey) break // ring rond
+      }
+      if (polygon.length >= 3) rings.push({ polygon, wallIds, area: Math.abs(signedArea(polygon)) })
+    }
+  }
+  if (!rings.length) return null
+
+  rings.sort((a, b) => b.area - a.area)
+  return { polygon: rings[0].polygon, wallIds: rings[0].wallIds }
+}
+
 // Platte walldata uit een lijst Konva-nodes (zelfde vorm die
 // computeFacesFromWalls/computeEnvelopeFromWalls verwachten).
 export function wallsFromNodes(nodes) {

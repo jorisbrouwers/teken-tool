@@ -15,6 +15,7 @@ import { facesFromNodes, faceHash, signedArea, deriveZones, resolveRoomAssignmen
 import { walkHierarchy } from './wallGraph.js'
 import { GRID_SIZE } from './useGrid.js'
 import { installationLabel } from '../Installations/InstallationsSidebar.jsx'
+import { floorHasAnyHeight, mainGebouwdeelId } from '../Building/buildingDefaults.js'
 
 function faceAreaM2(face) {
   return Math.abs(signedArea(face.vertices)) / (GRID_SIZE * GRID_SIZE)
@@ -42,12 +43,15 @@ export function computeAgTotals(note, mainLayer) {
   const defaultHeatingInstallationId = note.settings?.defaultHeatingInstallationId
   const roomAssignments = note.settings?.roomAssignments ?? {}
   const faceAttributes = note.settings?.faceAttributes ?? {}
+  const gebouwdelen = note.settings?.gebouwdelen ?? []
+  const mainId = mainGebouwdeelId(gebouwdelen)
 
   const floorTotals = [] // [{ floorId, name, areaM2 }]
   const allFaces = [] // gebruiksruimte-vlakken van alle verdiepingen, getagd met _floorId
+  const areaByPart = new Map() // gebouwdeelId -> m²
 
   for (const floor of floors) {
-    if (floor.heightM == null || floor.heightM === '' || !floor.referencePoint) continue
+    if (!floorHasAnyHeight(floor) || !floor.referencePoint) continue
     const startNode = mainLayer.findOne(`#${floor.referencePoint.wallId}`)
     if (!startNode) continue // gekoppelde muur bestaat niet meer
 
@@ -56,9 +60,13 @@ export function computeAgTotals(note, mainLayer) {
 
     let areaM2 = 0
     for (const face of faces) {
-      const aard = faceAttributes[faceHash(face)]?.aard ?? 'gebruiksruimte'
+      const hash = faceHash(face)
+      const aard = faceAttributes[hash]?.aard ?? 'gebruiksruimte'
       if (aard !== 'gebruiksruimte') continue
-      areaM2 += faceAreaM2(face)
+      const area = faceAreaM2(face)
+      areaM2 += area
+      const part = faceAttributes[hash]?.gebouwdeelId ?? mainId
+      areaByPart.set(part, (areaByPart.get(part) ?? 0) + area)
       face._floorId = floor.id // tijdelijk, puur JS — geen Konva-attr, niets geserialiseerd
       allFaces.push(face)
     }
@@ -84,5 +92,13 @@ export function computeAgTotals(note, mainLayer) {
     }
   })
 
-  return { floors: floorTotals, grandTotal, zones }
+  // Alleen zinvol zodra er meer dan één gebouwdeel is; anders is dit gewoon
+  // het totaal nog een keer.
+  const parts = gebouwdelen.length > 1
+    ? gebouwdelen
+        .filter(g => (areaByPart.get(g.id) ?? 0) > 0)
+        .map(g => ({ id: g.id, name: g.name, areaM2: areaByPart.get(g.id) }))
+    : []
+
+  return { floors: floorTotals, grandTotal, zones, parts }
 }

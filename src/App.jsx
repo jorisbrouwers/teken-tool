@@ -17,7 +17,8 @@ import SettingsPanel from './components/Settings/SettingsPanel.jsx'
 import FabButton from './components/Sidebar/FabButton.jsx'
 import LeftSidebar from './components/Sidebar/LeftSidebar.jsx'
 import InstallationsSidebar from './components/Installations/InstallationsSidebar.jsx'
-import BuildingSidebar, { seedFloors, DEFAULT_NORTH_ANGLE, DEFAULT_FRONT_FACADE_SCREEN_ANGLE } from './components/Building/BuildingSidebar.jsx'
+import BuildingSidebar, { seedFloors, seedGebouwdelen, DEFAULT_NORTH_ANGLE, DEFAULT_FRONT_FACADE_SCREEN_ANGLE } from './components/Building/BuildingSidebar.jsx'
+import { floorHasAnyHeight } from './components/Building/buildingDefaults.js'
 import { GRID_SIZE } from './components/Canvas/useGrid.js'
 import './App.css'
 
@@ -147,6 +148,8 @@ export default function App() {
   const showGrid = activeNote?.settings?.background === 'grid'
   const installations = activeNote?.settings?.installations ?? []
   const floors = activeNote?.settings?.floors ?? []
+  const gebouwdelen = activeNote?.settings?.gebouwdelen ?? []
+  const constructies = activeNote?.settings?.constructies ?? []
   const northAngle = activeNote?.settings?.northAngle ?? DEFAULT_NORTH_ANGLE
   const frontFacadeScreenAngle = activeNote?.settings?.frontFacadeScreenAngle ?? DEFAULT_FRONT_FACADE_SCREEN_ANGLE
 
@@ -174,7 +177,12 @@ export default function App() {
     if (!activeNote) return
     const needsInstallations = activeNote.settings?.installations === undefined
     const needsFloors = activeNote.settings?.floors === undefined
-    if (!needsInstallations && !needsFloors) return
+    // Ook bestaande notities (die nog geen gebouwdelen kenden) krijgen hier
+    // stilzwijgend het hoofdgebouwdeel — zonder dat verandert er niets aan hun
+    // data, want de hoogtes van het hoofdgebouwdeel staan gewoon in
+    // floor.heightM. Zie BLENDER_EXPORT_PLAN.md, "Gebouwdelen en constructies".
+    const needsGebouwdelen = !(activeNote.settings?.gebouwdelen?.length > 0)
+    if (!needsInstallations && !needsFloors && !needsGebouwdelen) return
     const newSettings = { ...activeNote.settings }
     if (needsInstallations) {
       const seeded = [{ id: generateUUID(), kind: 'verwarming', type: 'cv_ketel' }]
@@ -183,6 +191,9 @@ export default function App() {
     }
     if (needsFloors) {
       newSettings.floors = seedFloors()
+    }
+    if (needsGebouwdelen) {
+      newSettings.gebouwdelen = seedGebouwdelen()
     }
     patchNoteSettings(activeNote.id, newSettings)
     updateNoteSettings(activeNote.id, newSettings)
@@ -201,6 +212,63 @@ export default function App() {
   const handleFloorsChange = useCallback((newFloors) => {
     if (!activeNote) return
     const newSettings = { ...activeNote.settings, floors: newFloors }
+    patchNoteSettings(activeNote.id, newSettings)
+    updateNoteSettings(activeNote.id, newSettings)
+  }, [activeNote, patchNoteSettings])
+
+  const handleGebouwdelenChange = useCallback((newList) => {
+    if (!activeNote) return
+    const newSettings = { ...activeNote.settings, gebouwdelen: newList }
+    patchNoteSettings(activeNote.id, newSettings)
+    updateNoteSettings(activeNote.id, newSettings)
+  }, [activeNote, patchNoteSettings])
+
+  // Een gebouwdeel verwijderen raakt drie plekken tegelijk: de lijst zelf, de
+  // partHeights van elke verdieping, en de vlakken die eraan toegewezen waren
+  // (die vallen terug op het hoofdgebouwdeel = geen gebouwdeelId). Bewust in
+  // ÉÉN settings-write, zelfde reden als het gecombineerde seed-effect
+  // hierboven: losse writes van dezelfde render-pass overschrijven elkaar.
+  const handleGebouwdeelDelete = useCallback((gebouwdeelId) => {
+    if (!activeNote) return
+    const newFloors = (activeNote.settings?.floors ?? []).map(f => {
+      if (!f.partHeights?.[gebouwdeelId]) return f
+      const { [gebouwdeelId]: _removed, ...rest } = f.partHeights
+      return { ...f, partHeights: rest }
+    })
+    const oldFaceAttrs = activeNote.settings?.faceAttributes ?? {}
+    const newFaceAttrs = {}
+    for (const [hash, attr] of Object.entries(oldFaceAttrs)) {
+      newFaceAttrs[hash] = attr?.gebouwdeelId === gebouwdeelId
+        ? { ...attr, gebouwdeelId: undefined }
+        : attr
+    }
+    const newSettings = {
+      ...activeNote.settings,
+      gebouwdelen: (activeNote.settings?.gebouwdelen ?? []).filter(g => g.id !== gebouwdeelId),
+      floors: newFloors,
+      faceAttributes: newFaceAttrs,
+    }
+    patchNoteSettings(activeNote.id, newSettings)
+    updateNoteSettings(activeNote.id, newSettings)
+  }, [activeNote, patchNoteSettings])
+
+  const handleConstructiesChange = useCallback((newList) => {
+    if (!activeNote) return
+    const newSettings = { ...activeNote.settings, constructies: newList }
+    patchNoteSettings(activeNote.id, newSettings)
+    updateNoteSettings(activeNote.id, newSettings)
+  }, [activeNote, patchNoteSettings])
+
+  // De constructie zit als attr op de muur-nodes zelf (niet in settings), dus
+  // het opruimen daarvan moet via CanvasView — anders blijven muren naar een
+  // niet-bestaande constructie wijzen.
+  const handleConstructieDelete = useCallback((constructieId) => {
+    if (!activeNote) return
+    canvasViewRef.current?.clearConstructieFromWalls?.(constructieId)
+    const newSettings = {
+      ...activeNote.settings,
+      constructies: (activeNote.settings?.constructies ?? []).filter(c => c.id !== constructieId),
+    }
     patchNoteSettings(activeNote.id, newSettings)
     updateNoteSettings(activeNote.id, newSettings)
   }, [activeNote, patchNoteSettings])
@@ -285,20 +353,27 @@ export default function App() {
     // inmiddels stilzwijgend "verbroken" is (zie pruneInvalidReferencePoints
     // in CanvasView.jsx) door een merge/split/verwijdering.
     const missing = (activeNote.settings?.floors ?? [])
-      .filter(f => f.heightM != null && f.heightM !== '' && !f.referencePoint)
-    if (missing.length) {
-      // Linksboven, net rechts van de Eigenschappen/Installaties-FAB-stack —
-      // i.p.v. midden-boven, waar 'ie makkelijk gemist wordt.
+      .filter(f => floorHasAnyHeight(f) && !f.referencePoint)
+    // Linksboven, net rechts van de Eigenschappen/Installaties-FAB-stack —
+    // i.p.v. midden-boven, waar 'ie makkelijk gemist wordt.
+    const showWarning = (text, offsetY = 0) => {
       const fabRect = document.querySelector('.sidebar-fab-stack')?.getBoundingClientRect()
       spawnFloatyText(
         fabRect ? fabRect.right + 12 : 64,
-        fabRect ? fabRect.top + 6 : 96,
-        `Geen referentiepunt, overgeslagen: ${missing.map(f => f.name).join(', ')}`,
+        (fabRect ? fabRect.top + 6 : 96) + offsetY,
+        text,
         'error',
         'left',
       )
     }
-    exportBlender(activeNote, mainLayer)
+    if (missing.length) {
+      showWarning(`Geen referentiepunt, overgeslagen: ${missing.map(f => f.name).join(', ')}`)
+    }
+    // Meldingen uit de export zelf (bv. een gebouwdeel zonder hoogte op een
+    // verdieping waar het wél vlakken heeft) — de export gaat gewoon door, maar
+    // de gebruiker moet weten dat daar de hoofdhuis-hoogte gebruikt is.
+    const warnings = exportBlender(activeNote, mainLayer) ?? []
+    warnings.forEach((w, i) => showWarning(w, (missing.length ? 1 : 0) * 26 + i * 26))
   }, [activeNote])
 
   const handleExportAll = useCallback(async () => {
@@ -469,6 +544,7 @@ export default function App() {
               showTechnicalGuides={showTechnicalGuides}
               linkingFloorId={linkingFloorId}
               onEndpointLinked={handleEndpointLinked}
+              onConstructiesChange={handleConstructiesChange}
             />
             <StylePanel
               activeTool={activeTool}
@@ -559,6 +635,12 @@ export default function App() {
                 linkingFloorId={linkingFloorId}
                 onStartLinking={handleStartLinking}
                 onResetReferencePoint={handleResetReferencePoint}
+                gebouwdelen={gebouwdelen}
+                onGebouwdelenChange={handleGebouwdelenChange}
+                onGebouwdeelDelete={handleGebouwdeelDelete}
+                constructies={constructies}
+                onConstructiesChange={handleConstructiesChange}
+                onConstructieDelete={handleConstructieDelete}
               />
             </LeftSidebar>
 

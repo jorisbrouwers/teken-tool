@@ -49,6 +49,142 @@
   color: var(--color-text);
 }
 
+/* ─── Gebouwdeel-tabs ──────────────────────────────────────────────────────
+   Alleen zichtbaar zodra er meer dan één gebouwdeel is; elk tabblad heeft zijn
+   eigen hoogtes per verdieping. Raakdoelen bewust ≥28px hoog (pen op tablet). */
+.building-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.building-tab {
+  padding: 5px 10px;
+  min-height: 28px;
+  font-size: 12px;
+  border: 1px solid var(--color-sidebar-border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.building-tab:hover {
+  background: var(--color-item-hover);
+}
+
+.building-tab.active {
+  background: var(--color-item-active);
+  border-color: var(--color-accent);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.building-tab-add {
+  min-width: 28px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.building-tab-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.building-tab-actions button {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+  background: none;
+  padding: 2px 0;
+}
+
+.building-tab-actions button.danger:hover {
+  color: var(--color-danger);
+}
+
+/* Inline naam-invoer (gebouwdeel/constructie aanmaken of hernoemen) */
+.building-inline-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.building-inline-name input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 6px;
+  font-size: 12px;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius);
+}
+
+.building-inline-ok,
+.building-inline-cancel {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.building-inline-ok:hover {
+  background: var(--color-item-hover);
+  color: var(--color-accent);
+}
+
+.building-inline-cancel:hover {
+  background: var(--color-item-hover);
+  color: var(--color-danger);
+}
+
+/* Onopvallende "+ Gebouwdeel" / "+ Constructie": dit is voor de meeste
+   tekeningen nooit nodig, dus geen volwaardige knop-stijl. */
+.building-add-part-btn {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 5px 0;
+  font-size: 11px;
+  border: 1px dashed var(--color-sidebar-border);
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.building-add-part-btn:hover {
+  background: var(--color-item-hover);
+  color: var(--color-text);
+}
+
+.building-constructie-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.building-constructie-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Hoogte-rij: naam | hoogte | m | opmerking. De naam krijgt een vaste
    breedte zodat de opmerking-kolom de resterende ruimte netjes uitlijnt. */
 .building-floor-row .building-floor-name {

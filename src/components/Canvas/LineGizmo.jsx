@@ -24,7 +24,7 @@ const HANDLE_RADIUS_MAX  = 8
 const HANDLE_HIT_STROKE_WIDTH = 16
 
 // eslint-disable-next-line no-unused-vars
-export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onEndpointBodySnap, onEndpointCollapse, onMeasureConfirm, onMeasureDelete, snapEnabledRef, showTechnicalGuidesRef, floorsRef, faceAttributesRef, version, autoEditRef, showPills = true, pillStyle }) {
+export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onEndpointBodySnap, onEndpointCollapse, onMeasureConfirm, onMeasureDelete, snapEnabledRef, showTechnicalGuidesRef, floorsRef, faceAttributesRef, gebouwdelenRef, version, autoEditRef, showPills = true, pillStyle }) {
   const [, setVersion] = useState(0)
   const [editing, setEditing] = useState(false)
   const [inputValue, setInputValue] = useState('')
@@ -451,7 +451,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
         lastAbsPos    = { x: circle.x(), y: circle.y() }
         activeDragRef.current = { nodeId: targetNode.id(), ep: i }
         cachedGuideSegments = showTechnicalGuidesRef?.current
-          ? collectTechnicalGuideSegments(layer, floorsRef?.current ?? [], faceAttributesRef?.current)
+          ? collectTechnicalGuideSegments(layer, floorsRef?.current ?? [], faceAttributesRef?.current, gebouwdelenRef?.current ?? [])
           : []
 
         function onMove(ev) {
