@@ -223,6 +223,167 @@ export function collectMeasureAffected(node, ep, layer, collinearTolRad = 8 * Ma
   return { affected, welds }
 }
 
+// ─── Symmetrische maatinvoer tussen twee 1,5m-lijnen ─────────────────────────
+//
+// De berekende 1,5m-lijn (roofGuides.js) is extreem gevoelig voor goothoogte/
+// hellingshoek, dus in de praktijk wordt de afstand tussen twee tegenover
+// elkaar liggende 1,5m-lijnen ter plekke gemeten en daarna gecorrigeerd. Die
+// fout zit aan beide kanten even groot, dus een maat op een segment dat van
+// de ene 1,5m-lijn naar de andere loopt (bv. de 1,5m-lijn langs een
+// schildkant, of het middenstuk van een kopgevel tussen de twee T-punten)
+// verschuift niet één kant maar BEIDE 1,5m-lijnen, elk de helft, evenwijdig
+// aan zichzelf. Hun verre uiteinde glijdt langs de muur waar het tegenaan
+// gelast is; hoek-diagonalen (`heightGuide: 'corner'`) rekken alleen mee, hun
+// echte hoekpunt blijft staan.
+//
+// Herkenning via attr `heightGuide` ('edge' | 'corner'), gezet door
+// "1,5m-lijnen intekenen" (CanvasView.jsx::handleInsertHeightGuides).
+
+const PARALLEL_TOL_RAD = 8 * Math.PI / 180
+
+function endpointAbs(n, ep) {
+  const p = n.points()
+  return { x: n.x() + p[ep * 2], y: n.y() + p[ep * 2 + 1] }
+}
+
+function setEndpointAbs(n, ep, pt) {
+  const p = n.points().slice()
+  p[ep * 2] = pt.x - n.x()
+  p[ep * 2 + 1] = pt.y - n.y()
+  n.points(p)
+}
+
+function lineDir(n) {
+  const p = n.points()
+  const dx = p[2] - p[0], dy = p[3] - p[1]
+  const len = Math.hypot(dx, dy)
+  return len < 1e-6 ? null : { dx: dx / len, dy: dy / len }
+}
+
+function isParallelTo(a, b) {
+  const da = lineDir(a), db = lineDir(b)
+  if (!da || !db) return false
+  return Math.abs(da.dx * db.dy - da.dy * db.dx) < Math.sin(PARALLEL_TOL_RAD)
+}
+
+function intersectNodeLines(a, b) {
+  const pa = endpointAbs(a, 0), da = lineDir(a)
+  const pb = endpointAbs(b, 0), db = lineDir(b)
+  if (!da || !db) return null
+  const denom = da.dx * db.dy - da.dy * db.dx
+  if (Math.abs(denom) < 1e-9) return null
+  const t = ((pb.x - pa.x) * db.dy - (pb.y - pa.y) * db.dx) / denom
+  return { x: pa.x + da.dx * t, y: pa.y + da.dy * t }
+}
+
+function resolveConns(node, ep, layer) {
+  return getConns(node, ep)
+    .map(c => ({ node: layer.findOne(`#${c.id}`), ep: c.ep }))
+    .filter(m => m.node)
+}
+
+// Null als de symmetrische modus niet van toepassing is; anders per eindpunt
+// van `node` de 1,5m-lijnen die meeschuiven ({ node, ep } met ep = het
+// eindpunt van die lijn dat op `node` aansluit).
+export function planSymmetricGuideMeasure(node, layer) {
+  if (!isWallNode(node) || !lineDir(node)) return null
+  const ends = [0, 1].map(ep => resolveConns(node, ep, layer).filter(m =>
+    isWallNode(m.node) && m.node.attrs.heightGuide === 'edge' && !isParallelTo(m.node, node)))
+  if (!ends[0].length || !ends[1].length) return null
+  return { ends }
+}
+
+// Alle muren die bij de symmetrische maatinvoer als geheel verschuiven (voor
+// de oranje markering in LineGizmo) — de 1,5m-lijnen zelf plus hun
+// collineaire voortzetting (een 1,5m-lijn die door een T-punt in stukken is
+// geknipt).
+export function collectSymmetricGuideAffected(node, layer) {
+  const plan = planSymmetricGuideMeasure(node, layer)
+  if (!plan) return null
+  const out = []
+  for (const g of [...plan.ends[0], ...plan.ends[1]]) {
+    for (const { node: n } of walkGuideChain(g.node, 1 - g.ep, layer)) out.push(n)
+  }
+  return out
+}
+
+// Loopt vanaf een 1,5m-lijn rechtdoor over collineaire 1,5m-lijn-stukken.
+// Retourneert [{ node, farEp }] in volgorde, beginnend met `start`.
+function walkGuideChain(start, farEp, layer) {
+  const chain = [{ node: start, farEp }]
+  const visited = new Set([start.id()])
+  let cur = start, curFar = farEp
+  while (true) {
+    const next = resolveConns(cur, curFar, layer).find(m =>
+      !visited.has(m.node.id()) && m.node.attrs.heightGuide === 'edge' && isParallelTo(m.node, cur))
+    if (!next) break
+    visited.add(next.node.id())
+    chain.push({ node: next.node, farEp: 1 - next.ep })
+    cur = next.node; curFar = 1 - next.ep
+  }
+  return chain
+}
+
+// Past de lengte van `node` symmetrisch aan (newLenPx in content-eenheden) en
+// verschuift de 1,5m-lijnen aan beide kanten mee. Retourneert false als de
+// symmetrische modus niet van toepassing is (aanroeper valt dan terug op de
+// gewone, eenzijdige maatinvoer).
+export function applySymmetricGuideMeasure(node, newLenPx, layer) {
+  const plan = planSymmetricGuideMeasure(node, layer)
+  if (!plan) return false
+  const a = endpointAbs(node, 0), b = endpointAbs(node, 1)
+  const dir = lineDir(node)
+  const len = Math.hypot(b.x - a.x, b.y - a.y)
+  const half = (newLenPx - len) / 2
+  const newEnds = [
+    { x: a.x - dir.dx * half, y: a.y - dir.dy * half },
+    { x: b.x + dir.dx * half, y: b.y + dir.dy * half },
+  ]
+  const oldEnds = [a, b]
+
+  for (let ep = 0; ep < 2; ep++) {
+    const d = { x: newEnds[ep].x - oldEnds[ep].x, y: newEnds[ep].y - oldEnds[ep].y }
+    const guides = plan.ends[ep]
+    const guideIds = new Set(guides.map(g => g.node.id()))
+
+    // Eindpunt van `node` zelf + alles op dat hoekpunt dat níet als geheel
+    // meeschuift (collineaire rest van dezelfde muur, hoek-diagonaal): rekken.
+    for (const m of resolveConns(node, ep, layer)) {
+      if (!guideIds.has(m.node.id())) setEndpointAbs(m.node, m.ep, newEnds[ep])
+    }
+    setEndpointAbs(node, ep, newEnds[ep])
+
+    for (const g of guides) {
+      const chain = walkGuideChain(g.node, 1 - g.ep, layer)
+      for (const { node: n } of chain) n.position({ x: n.x() + d.x, y: n.y() + d.y })
+      // Tussenliggende knooppunten op de (nu verschoven) lijn — bv. een
+      // kruispunt met een binnenmuur: laten glijden langs die muur (snijpunt
+      // van de verschoven lijn met de muur), zodat een schuine binnenmuur
+      // recht blijft; alles op dat punt gaat mee.
+      const chainIds = new Set(chain.map(c => c.node.id()))
+      for (let i = 0; i < chain.length - 1; i++) {
+        const { node: n, farEp } = chain[i]
+        const members = resolveConns(n, farEp, layer)
+        const host = members.find(m => !chainIds.has(m.node.id())
+          && m.node.attrs.heightGuide !== 'corner' && !isParallelTo(m.node, n))
+        const pt = (host && intersectNodeLines(n, host.node)) ?? endpointAbs(n, farEp)
+        setEndpointAbs(n, farEp, pt)
+        for (const m of members) setEndpointAbs(m.node, m.ep, pt)
+      }
+      // Ver uiteinde: laten glijden langs de muur waar het tegenaan zit
+      // (snijpunt van de verschoven lijn met die muur), zodat bv. een T-punt
+      // op een kopgevel óp die kopgevel blijft.
+      const last = chain[chain.length - 1]
+      const members = resolveConns(last.node, last.farEp, layer)
+      const host = members.find(m => m.node.attrs.heightGuide !== 'corner' && !isParallelTo(m.node, last.node))
+      const target = (host && intersectNodeLines(last.node, host.node)) ?? endpointAbs(last.node, last.farEp)
+      setEndpointAbs(last.node, last.farEp, target)
+      for (const m of members) setEndpointAbs(m.node, m.ep, target)
+    }
+  }
+  return true
+}
+
 // Dichtstbijzijnde muur-eindpunt binnen maxDist (stage-eenheden), voor lassen/
 // kettingen tijdens het tekenen. Scant alle muren op de layer, ongeacht
 // hiërarchie — dit is de las-snap en die is per definitie pointer-lokaal (de

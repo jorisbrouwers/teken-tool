@@ -104,7 +104,7 @@
   background: var(--color-item-hover);
 }
 
-/* Toewijzingspopup van de "ruimte toewijzen"-tool (klimatiseringszones) */
+/* Vlakeigenschappen-popup (tik op een vlak met de muur-tool) */
 .room-assign-popup {
   position: fixed;
   z-index: 100;
@@ -113,7 +113,8 @@
   border-radius: 8px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08);
   padding: 8px 10px;
-  min-width: 200px;
+  min-width: 240px;
+  max-width: min(420px, calc(100vw - 16px));
   user-select: none;
   pointer-events: auto;
 }
@@ -122,10 +123,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  margin-bottom: 6px;
+  margin: -2px -4px 3px 0;
 }
 
 .room-assign-close {
@@ -144,12 +142,33 @@
   color: var(--color-text);
 }
 
-.room-assign-row {
-  display: flex;
+/* Secties (Installaties / Eigenschap / Gebouwdeel / Overig) — klein kopje, geen extra
+   laag: alle keuzes staan direct als toggle-chip in beeld. */
+.room-assign-section {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  margin: 10px 0 5px;
+}
+
+/* Eerste kopje staat in de header-regel naast de sluitknop. */
+.room-assign-header .room-assign-section {
+  margin: 0;
+}
+
+/* Installaties als tabel: label-kolom + chips per rij. */
+.room-assign-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 3px 0;
+  column-gap: 10px;
+  row-gap: 5px;
+}
+
+.room-assign-grid.disabled {
+  opacity: 0.45;
 }
 
 .room-assign-label {
@@ -157,50 +176,64 @@
   color: var(--color-text);
 }
 
-.room-assign-row select {
-  flex: 1;
-  min-width: 0;
-  max-width: 130px;
-  padding: 4px 6px;
+.room-assign-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.room-assign-chips--spaced {
+  margin-top: 6px;
+}
+
+.room-assign-empty {
   font-size: 12px;
+  color: var(--color-text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.room-assign-chip {
+  padding: 4px 9px;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
   border: 1px solid var(--color-sidebar-border);
-  border-radius: var(--radius);
-}
-
-/* Zelfde visuele taal als .settings-toggle (SettingsPanel), maar compacter —
-   past beter naast een korte label in deze smalle popup. */
-.room-assign-toggle {
-  flex-shrink: 0;
-  width: 34px;
-  height: 20px;
-  border-radius: 10px;
-  background: var(--color-sidebar-border);
-  border: none;
-  position: relative;
-  cursor: pointer;
-  transition: background 0.18s;
-  padding: 0;
-}
-
-.room-assign-toggle::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
+  border-radius: 999px;
   background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transition: transform 0.18s;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
 }
 
-.room-assign-toggle.on {
-  background: #1971c2;
+.room-assign-chip:hover:not(:disabled):not(.active) {
+  background: var(--color-item-hover);
 }
 
-.room-assign-toggle.on::after {
-  transform: translateX(14px);
+.room-assign-chip:disabled {
+  cursor: default;
+}
+
+/* Actief = volle kleur als rand, dezelfde kleur doorschijnend als vulling en
+   (iets donkerder) als tekst — een volledig gevulde knop oogt te zwaar. */
+.room-assign-chip.active {
+  background: rgba(25, 113, 194, 0.14);
+  border-color: #1971c2;
+  color: #155e9f;
+  font-weight: 600;
+}
+
+/* Zelfde kleuren als de installatie-kaarten in de sidebar (Installations.css). */
+.room-assign-chip--verwarming.active {
+  background: rgba(225, 105, 25, 0.14);
+  border-color: #e16919;
+  color: #b4520f;
+}
+
+.room-assign-chip--koeling.active {
+  background: rgba(75, 161, 241, 0.18);
+  border-color: #4ba1f1;
+  color: #1f76c4;
 }
 
 .object-toolbar-btn.locked {
@@ -548,6 +581,7 @@
   border-radius: 10px;
   white-space: nowrap;
   user-select: none;
+  touch-action: none; /* vinger-slepen/pinchen op een pill = canvas-navigatie, niet browser-scroll */
   transform: translate(-50%, -50%);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
   z-index: 40;

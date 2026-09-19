@@ -362,6 +362,77 @@ export function pointInFace(face, x, y) {
   return inside
 }
 
+// Een punt dat gegarandeerd BINNEN het vlak ligt (het zwaartepunt ligt bij een
+// L-vormige ruimte er vaak buiten). Scanline op de gemiddelde vertex-y: de
+// snijpunten met de randen gesorteerd, in paren = binnen-intervallen; het
+// midden van het breedste interval. Zelfde half-open regel als pointInFace,
+// dus een vertex precies op de scanline telt consistent. Een doodlopend
+// muurstuk in het vlak (heen-en-terug gelopen) levert een interval van
+// breedte 0 op en wint dus nooit. null bij een degeneraat vlak.
+export function interiorPoint(vertices) {
+  const n = vertices.length
+  if (n < 3) return null
+  const y = vertices.reduce((s, v) => s + v.y, 0) / n
+  const xs = []
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const a = vertices[i], b = vertices[j]
+    if ((a.y > y) !== (b.y > y)) xs.push((b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x)
+  }
+  xs.sort((p, q) => p - q)
+  let best = null, bestWidth = 0
+  for (let k = 0; k + 1 < xs.length; k += 2) {
+    const w = xs[k + 1] - xs[k]
+    if (w > bestWidth) { bestWidth = w; best = { x: (xs[k] + xs[k + 1]) / 2, y } }
+  }
+  return best
+}
+
+// Vlak-gegevens (roomAssignments/faceAttributes) hangen aan faceHash = de
+// muur-ids van het vlak. Een T-aftakking (splitWallAt) of het weer samenvoegen
+// (tryMergeCollinearJoint) vervangt muren door nieuwe ids, en een nieuwe muur
+// die een ruimte doorsnijdt maakt twee nieuwe vlakken — telkens zou de
+// toewijzing van dat vlak dan stilzwijgend verdwijnen. Deze functie zoekt voor
+// elk NIEUW vlak zonder gegevens het verdwenen oude vlak (mét gegevens) waar
+// het ruimtelijk mee overlapt, zodat de aanroeper de gegevens kan overerven:
+//   - zelfde vorm, andere muur-ids → 1-op-1
+//   - ruimte in tweeën gesplitst  → beide helften erven van het origineel
+//   - twee ruimtes samengevoegd   → erft van de grootste
+// Overlap wordt benaderd met binnenpunt-tests in beide richtingen (nieuw in
+// oud = splitsing/gelijk, oud in nieuw = samenvoeging); bij meerdere
+// kandidaten wint de grootste min(oppervlak), dus de beste overlap.
+//
+// hasData(hash) → true als er voor dat vlak iets bewaard is. Retourneert
+// Map nieuweHash → oudeHash.
+export function matchOrphanedFaces(oldFaces, newFaces, hasData) {
+  const result = new Map()
+  const newHashes = new Set(newFaces.map(faceHash))
+  const orphans = []
+  for (const face of oldFaces) {
+    const hash = faceHash(face)
+    if (newHashes.has(hash) || !hasData(hash)) continue
+    orphans.push({ hash, face, area: Math.abs(signedArea(face.vertices)), pt: interiorPoint(face.vertices) })
+  }
+  if (!orphans.length) return result
+
+  const oldHashes = new Set(oldFaces.map(faceHash))
+  for (const face of newFaces) {
+    const hash = faceHash(face)
+    if (oldHashes.has(hash) || hasData(hash)) continue // ongewijzigd, of heeft al eigen gegevens
+    const area = Math.abs(signedArea(face.vertices))
+    const pt = interiorPoint(face.vertices)
+    let best = null, bestScore = 0
+    for (const o of orphans) {
+      const newInOld = pt && pointInFace(o.face, pt.x, pt.y)
+      const oldInNew = o.pt && pointInFace(face, o.pt.x, o.pt.y)
+      if (!newInOld && !oldInNew) continue
+      const score = Math.min(area, o.area)
+      if (score > bestScore) { bestScore = score; best = o }
+    }
+    if (best) result.set(hash, best.hash)
+  }
+  return result
+}
+
 // Stabiele identiteit van een vlak, voor gebruik als sleutel in
 // note.settings.roomAssignments — gebaseerd op de bijdragende muur-ids
 // (al gesorteerd/gededupliceerd door computeFacesFromWalls).

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Konva from 'konva'
 import { GRID_SIZE } from './useGrid.js'
 import { getPillCssStyle } from './pillStyle.js'
-import { getConns, walkHierarchy, collectSnapVertices, collectMeasureAffected, findWallBodyNear, closestPointOnSegment } from './wallGraph.js'
+import { getConns, walkHierarchy, collectSnapVertices, collectMeasureAffected, collectSymmetricGuideAffected, findWallBodyNear, closestPointOnSegment } from './wallGraph.js'
 import { collectTechnicalGuideSegments } from './roofGuides.js'
 
 const SNAP_RAD = 3 * Math.PI / 180
@@ -22,6 +22,15 @@ const HANDLE_RADIUS_MAX  = 8
 // de bol zelf zodat per ongeluk een muurlijn pakken i.p.v. de hinge minder
 // snel gebeurt.
 const HANDLE_HIT_STROKE_WIDTH = 16
+
+// Maatinvoer: zowel "5.40" als "5,40" (Nederlands toetsenbord/iPad) toestaan.
+function parseMeasureInput(raw) {
+  return parseFloat(String(raw).trim().replace(',', '.'))
+}
+
+// Kleur van de "actieve" muur: de geselecteerde muur zelf, en tijdens
+// maatinvoer ook de eindpunten/muren die meebewegen.
+const ACTIVE_WALL_COLOR = '#e8590c'
 
 // eslint-disable-next-line no-unused-vars
 export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDragMove, onEndpointDragEnd, onEndpointSnap, onEndpointBodySnap, onEndpointCollapse, onMeasureConfirm, onMeasureDelete, snapEnabledRef, showTechnicalGuidesRef, floorsRef, faceAttributesRef, gebouwdelenRef, version, autoEditRef, showPills = true, pillStyle }) {
@@ -73,7 +82,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
   useEffect(() => {
     return () => {
       if (editingRef.current) {
-        const v = parseFloat(inputValueRef.current)
+        const v = parseMeasureInput(inputValueRef.current)
         // Pass nodeRef.current explicitly — lineGizmoNodeRef in CanvasView is already
         // cleared synchronously by setGizmoNode(null) before this cleanup runs.
         if (!isNaN(v)) {
@@ -523,13 +532,13 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
     // Highlight-overlay: geeft aan WELKE muur precies geselecteerd is (niet de
     // hoekpunten — die blijven overal neutraal, zie createCircle). Getekend
     // exact over het geselecteerde segment met dezelfde dikte, dus leest als
-    // "deze lijn is nu grijs" zonder de echte stroke-attr van de node aan te
+    // "deze lijn is nu oranje" zonder de echte stroke-attr van de node aan te
     // raken (die wordt geserialiseerd; dit overlay-object niet, zie de
     // lineGizmoHandle-naamfilter in konvaSerialize.js).
     const highlightLine = new Konva.Line({
       points: node.points(),
       x: node.x(), y: node.y(),
-      stroke: '#929aa1',
+      stroke: ACTIVE_WALL_COLOR,
       strokeWidth: node.strokeWidth(),
       lineCap: node.lineCap(),
       dash: node.dash() ?? [],  // hulplijn (isAux) → ook de highlight gestreept
@@ -575,9 +584,15 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
     // oranje: precies één richtingswissel vanaf `node` zelf, en dan die ene
     // rechte lijn oneindig doorgetrokken (180°). Evenwijdig aan `node` zelf
     // wordt nooit meegenomen.
-    const moveNeighborIds = editing && node && mainLayerRef.current
-      ? new Set(collectMeasureAffected(node, moveEp, mainLayerRef.current).affected.map(n => n.id()))
+    // Segment tussen twee 1,5m-lijnen: beide kanten bewegen symmetrisch (zie
+    // applySymmetricGuideMeasure in wallGraph.js) — dan beide eindpunten en
+    // beide 1,5m-lijnen oranje.
+    const symmetricAffected = editing && node && mainLayerRef.current
+      ? collectSymmetricGuideAffected(node, mainLayerRef.current)
       : null
+    const moveNeighborIds = !editing || !node || !mainLayerRef.current ? null
+      : symmetricAffected ? new Set(symmetricAffected.map(n => n.id()))
+      : new Set(collectMeasureAffected(node, moveEp, mainLayerRef.current).affected.map(n => n.id()))
     for (const { targetNode, ep, circle, cross } of circlesRef.current) {
       if (active?.nodeId === targetNode.id() && active?.ep === ep) continue
       const pts = targetNode.points()
@@ -589,8 +604,8 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
       // tikken op het andere (het anker) wisselt dit, zie onUp hierboven —
       // én de muren die in het rechte verlengde meeverschuiven. Zelfde
       // dikte als een normale handle, alleen de kleur wijkt af.
-      if (editing && ((targetNode === node && ep === moveEp) || moveNeighborIds?.has(targetNode.id()))) {
-        circle.stroke('#e8590c')
+      if (editing && ((targetNode === node && (symmetricAffected || ep === moveEp)) || moveNeighborIds?.has(targetNode.id()))) {
+        circle.stroke(ACTIVE_WALL_COLOR)
       } else {
         circle.stroke('black')
       }
@@ -605,6 +620,9 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
         // Volgt de hulplijn-toggle in de object-toolbar (handleAuxToggle zet
         // node.dash) — die rendert de parent opnieuw, dus deze effect loopt mee.
         highlightLineRef.current.dash(node.dash() ?? [])
+        // Tijdens maatinvoer níet oranje: dan zijn alleen de meebewegende
+        // muren oranje, anders valt de bewerkte muur daar niet van te onderscheiden.
+        highlightLineRef.current.visible(!editing)
         mainDirty = true
       }
     }
@@ -620,7 +638,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
       let line = moveNeighborLinesRef.current.get(targetNode.id())
       if (!line) {
         line = new Konva.Line({
-          stroke: '#e8590c',
+          stroke: ACTIVE_WALL_COLOR,
           strokeWidth: targetNode.strokeWidth(),
           lineCap: targetNode.lineCap(),
           listening: false,
@@ -667,9 +685,10 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
   const lengthM = Math.hypot(pts[2] - pts[0], pts[3] - pts[1]) / GRID_SIZE
   const midScreen = toScreen(nx + (pts[0] + pts[2]) / 2, ny + (pts[1] + pts[3]) / 2)
   const isDragging = activeDragRef.current !== null
+  const isSymmetric = editing && !!mainLayerRef.current && !!collectSymmetricGuideAffected(node, mainLayerRef.current)
 
   function confirmMeasure(raw) {
-    const v = parseFloat(raw)
+    const v = parseMeasureInput(raw)
     if (!isNaN(v)) {
       // Een waarde van (vrijwel) 0 betekent "verwijder dit segment" — anders
       // eindig je met een onzichtbare/verborgen nul-lengte muur die alleen nog
@@ -697,6 +716,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
         <input
           className="line-gizmo-measure-input"
           style={{ left: midScreen.x, top: midScreen.y }}
+          inputMode="decimal"
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           value={inputValue}
@@ -711,7 +731,7 @@ export default function LineGizmo({ node, stageRef, mainLayerRef, onEndpointDrag
         />
       )}
 
-      {editing && (
+      {editing && !isSymmetric && (
         <button
           type="button"
           className="line-gizmo-measure-swap"

@@ -14,22 +14,25 @@
 import { facesFromNodes, faceHash, signedArea, deriveZones, resolveRoomAssignment } from './roomGraph.js'
 import { walkHierarchy } from './wallGraph.js'
 import { GRID_SIZE } from './useGrid.js'
-import { installationLabel } from '../Installations/InstallationsSidebar.jsx'
+import { dropdownLabel } from '../Installations/InstallationsSidebar.jsx'
 import { floorHasAnyHeight, mainGebouwdeelId } from '../Building/buildingDefaults.js'
 
 function faceAreaM2(face) {
   return Math.abs(signedArea(face.vertices)) / (GRID_SIZE * GRID_SIZE)
 }
 
+// Zelfde naam als in de Vlakeigenschappen-popup (type, met volgnummer zodra er
+// 2+ van dezelfde soort zijn) — bv. "CV-ketel + Warmtepomp (lucht)".
+// Verwarming altijd eerst, dan koeling.
 function zoneLabel(zone, installations) {
   const parts = []
   if (zone.heatingInstallationId) {
     const inst = installations.find(i => i.id === zone.heatingInstallationId)
-    if (inst) parts.push(installationLabel(installations, inst))
+    if (inst) parts.push(dropdownLabel(installations, inst))
   }
   if (zone.coolingInstallationId) {
     const inst = installations.find(i => i.id === zone.coolingInstallationId)
-    if (inst) parts.push(installationLabel(installations, inst))
+    if (inst) parts.push(dropdownLabel(installations, inst))
   }
   return parts.length > 0 ? parts.join(' + ') : zone.name
 }

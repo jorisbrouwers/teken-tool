@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react'
+import { Fragment, useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react'
 import Konva from 'konva'
 
 // Extra hit area (px) around strokes for tap-to-select and eraser detection.
@@ -41,6 +41,12 @@ const ROOM_CLICK_MARGIN_STAGE = 0.3 * GRID_SIZE
 // actieve pen-kleur — begrenzing (zie WALL_BOUNDARY_OPTIONS in wallGraph.js)
 // bepaalt de zichtbare kleur via een aparte overlay-laag, niet de muur zelf.
 const WALL_STROKE_COLOR = '#1d1d1d'
+// Ingetekende 1,5m-lijnen ("1,5m-lijnen intekenen") zijn dunner dan de muur
+// waar ze van afgeleid zijn — onderscheid met een gewone hulplijn.
+const HEIGHT_GUIDE_STROKE_FACTOR = 0.5
+// DOM-overlays boven het canvas waar muiswiel-zoom en pannen (middelste knop /
+// Alt+slepen) gewoon doorheen moeten werken.
+const CANVAS_WHEEL_PASSTHROUGH_SELECTOR = '.measurement-label-global, .measurement-label-roof, .line-gizmo-measure-label'
 
 // Vlak-aard: onafhankelijk van installatie-toewijzing (zie faceAttributes
 // hieronder) — bepaalt hoe een vlak bij de latere Blender-export behandeld
@@ -54,9 +60,11 @@ const WALL_STROKE_COLOR = '#1d1d1d'
 // gebruiksruimte. Eén aard-waarde kon dat onderscheid niet tegelijk maken;
 // zie BLENDER_EXPORT_PLAN.md, blok "Vlak-eigenschap".
 const FACE_AARD_OPTIONS = [
-  { value: 'gebruiksruimte', label: 'Gebruiksruimte' },
-  { value: 'niet berekend', label: 'Niet berekend' },
+  // Waarde blijft 'gebruiksruimte' (opgeslagen/geëxporteerd, Ag-berekening);
+  // alleen het label heet "Gebruiksoppervlak".
+  { value: 'gebruiksruimte', label: 'Gebruiksoppervlak' },
   { value: '<1.5m', label: '<1,5m' },
+  { value: 'niet berekend', label: 'Niet berekend' },
 ]
 
 // Zet de verdwenen aard-waarde "plat dak" om naar gebruiksruimte + platDak.
@@ -142,7 +150,7 @@ import { useHistory } from './useHistory.js'
 import { useGrid, GRID_SIZE } from './useGrid.js'
 import { evaluateExpression } from '../../math/mathEval.js'
 import { deserializeLayer, serializeNodes, normalizeSnapshot } from './konvaSerialize.js'
-import { getConns, connsAttr, addConn, removeConn, weldAllAt, connectAllPairs, walkHierarchy, collectSnapVertices, collectMeasureAffected, findWallEndpointNear, findWallBodyNear, closestPointOnSegment, WALL_BOUNDARY_OPTIONS, resolveWallBoundary } from './wallGraph.js'
+import { getConns, connsAttr, addConn, removeConn, weldAllAt, connectAllPairs, walkHierarchy, collectSnapVertices, collectMeasureAffected, applySymmetricGuideMeasure, findWallEndpointNear, findWallBodyNear, closestPointOnSegment, WALL_BOUNDARY_OPTIONS, resolveWallBoundary } from './wallGraph.js'
 import WallBoundaryOverlay from './WallBoundaryOverlay.jsx'
 import { spawnFloatyText } from './floatyText.js'
 import { getPillCssStyle } from './pillStyle.js'
@@ -159,14 +167,17 @@ import HingeDecorations from './HingeDecorations.jsx'
 import ZoneFillOverlay from './ZoneFillOverlay.jsx'
 import AgPanel from './AgPanel.jsx'
 import RoofGuideOverlay from './RoofGuideOverlay.jsx'
-import { collectTechnicalGuideSegments, collectHeightGuideChainsForHierarchy } from './roofGuides.js'
-import { detectFaces, facesFromNodes, computeFacesFromWalls, pointInFace, faceHash, resolveRoomAssignment, shrinkPolygon } from './roomGraph.js'
+import HeightGuideLabels from './HeightGuideLabels.jsx'
+import ReferencePointMarkers from './ReferencePointMarkers.jsx'
+import { collectTechnicalGuideSegments, collectHeightGuideChainsForHierarchy, classifyHeightGuideFaces } from './roofGuides.js'
+import LowHeadroomHatch from './LowHeadroomHatch.jsx'
+import { detectFaces, facesFromNodes, computeFacesFromWalls, pointInFace, faceHash, resolveRoomAssignment, shrinkPolygon, matchOrphanedFaces } from './roomGraph.js'
 import { dropdownLabel } from '../Installations/InstallationsSidebar.jsx'
 import { COLORS } from '../StylePanel/StylePanel.jsx'
 import './Canvas.css'
 
 const CanvasView = forwardRef(function CanvasView(
-  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, onCanvasPointerDown, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true, showZones = false, showMinimap = true, showTechnicalGuides = false, patchNoteSettings, linkingFloorId = null, onEndpointLinked, onConstructiesChange },
+  { note, activeTool, onToolSelect, penColor, penSize, opacity, strokeStyle, pressureSensitive, onInputDetected, onCanvasPointerDown, shouldCenter, onCopy, onSelectionChange, snapEnabled = true, showPills = true, pillStyle, showHinges = true, showZones = false, showMinimap = true, showTechnicalGuides = false, showReferencePoints = false, patchNoteSettings, linkingFloorId = null, onEndpointLinked, onConstructiesChange },
   ref
 ) {
   // ─── DOM + Konva refs ───────────────────────────────────────────────────────
@@ -225,7 +236,7 @@ const CanvasView = forwardRef(function CanvasView(
   const [isWallToolbarTarget, setIsWallToolbarTarget] = useState(false)
   const [wallBoundary, setWallBoundary] = useState('buiten')
   const [wallIsAux, setWallIsAux] = useState(false)
-  // Constructie van de geselecteerde muur (afwijkende opbouw/isolatie) — alleen
+  // Constructie van de geselecteerde muur (afwijkende isolatie) — alleen
   // een id naar note.settings.constructies, geen geometrie. Zie
   // BLENDER_EXPORT_PLAN.md, blok "Gebouwdelen en constructies".
   const [wallConstructieId, setWallConstructieId] = useState(null)
@@ -463,6 +474,13 @@ const CanvasView = forwardRef(function CanvasView(
   // patchNoteSettings erbij zodat App.jsx's eigen `notes`-state meteen
   // meeloopt (zie updateRoomAssignment/carryRoomAssignments hieronder).
   const [roomAssignments, setRoomAssignments] = useState(() => note.settings?.roomAssignments ?? {})
+  // Zone-toewijzing/-kleuren of de zones-toggle wijzigen raakt mainLayer niet
+  // (dus geen scheduleSnapshot), maar de minimap toont de zone-inkleuring wél.
+  const zoneInstallations = note.settings?.installations
+  const zoneDefaultInstallation = note.settings?.defaultHeatingInstallationId
+  useEffect(() => {
+    setMinimapVersion(v => v + 1)
+  }, [roomAssignments, zoneInstallations, zoneDefaultInstallation, showZones])
   // Vlak-eigenschappen: onafhankelijk van installatie-toewijzing (zie
   // BLENDER_EXPORT_PLAN.md, blok "Vlak-eigenschap") — een vlak kan zowel
   // "geen installatie" als "niet berekend" zijn, en `platDak` staat helemaal
@@ -555,6 +573,26 @@ const CanvasView = forwardRef(function CanvasView(
     updateNoteSettings(note.id, newSettings)
   }
 
+  // Aard wijzigen via de popup. "Niet berekend" betekent dat het vlak voor de
+  // berekening niet bestaat — een installatie-toewijzing is dan zinloos en
+  // wordt meteen op "geen" gezet (expliciet null, niet de entry weghalen:
+  // zonder entry valt het vlak terug op de default-verwarming). Beide
+  // wijzigingen in één settings-write: updateRoomAssignment/
+  // updateFaceAttribute na elkaar zouden elk vanaf dezelfde (verouderde)
+  // note.settings schrijven en zo elkaars wijziging overschrijven.
+  function updateFaceAard(hash, aard) {
+    const nextFa = { ...faceAttributes, [hash]: { ...(faceAttributes[hash] ?? {}), aard } }
+    setFaceAttributes(nextFa)
+    let newSettings = { ...note.settings, faceAttributes: nextFa }
+    if (aard === 'niet berekend') {
+      const nextRa = { ...roomAssignments, [hash]: { heatingInstallationId: null, coolingInstallationId: null } }
+      setRoomAssignments(nextRa)
+      newSettings = { ...newSettings, roomAssignments: nextRa }
+    }
+    patchNoteSettings?.(note.id, newSettings)
+    updateNoteSettings(note.id, newSettings)
+  }
+
   // Zelfde remap-logica als carryRoomAssignments hierboven, voor de losse
   // vlak-aard-toewijzing — zie die functie voor de volledige toelichting.
   function carryFaceAttributes(oldFaces, idMap) {
@@ -572,6 +610,71 @@ const CanvasView = forwardRef(function CanvasView(
     const newSettings = { ...note.settings, faceAttributes: next }
     patchNoteSettings?.(note.id, newSettings)
     updateNoteSettings(note.id, newSettings)
+  }
+
+  // ─── Vlak-gegevens meenemen bij topologie-wijzigingen ───────────────────────
+  // Zie matchOrphanedFaces (roomGraph.js): na elke structurele wijziging worden
+  // de vlakken opnieuw gedetecteerd en vergeleken met de vorige stand; nieuwe
+  // vlakken zonder gegevens erven die van het verdwenen vlak waar ze mee
+  // overlappen. Oude entries blijven bewust staan, zodat undo (dat de oude
+  // muur-ids terugzet) de oorspronkelijke toewijzing gewoon weer terugvindt.
+  //
+  // Draait gedebounced via scheduleSnapshot, en wacht (net als persistence)
+  // tot de pen stil is — vlak-detectie is O(muren). Een uitgestelde run is
+  // geen probleem: knownFacesRef houdt de stand van vóór de wijziging(en)
+  // vast, en de vergelijking is puur geometrisch.
+  const roomAssignmentsRef = useRef(roomAssignments)
+  roomAssignmentsRef.current = roomAssignments
+  const knownFacesRef = useRef(null) // vlakken bij de vorige reconcile; null = nog niet geladen
+  const faceReconcileTimerRef = useRef(null)
+  const reconcileFaceDataRef = useRef(null)
+
+  function scheduleFaceReconcile(delay = 150) {
+    clearTimeout(faceReconcileTimerRef.current)
+    faceReconcileTimerRef.current = setTimeout(() => reconcileFaceDataRef.current?.(), delay)
+  }
+  useEffect(() => () => clearTimeout(faceReconcileTimerRef.current), [])
+
+  // `adjustFaceAttributes(fa) → fa` (optioneel) wordt NA het overerven
+  // toegepast, in dezelfde schrijfactie — zo kan een aanroeper (bv. de
+  // automatische <1,5m-markering in handleInsertHeightGuides) een geërfde
+  // waarde overschrijven zonder dat een latere reconcile 'm weer terugzet.
+  // `force` slaat de pen-wachttijd over (expliciete knop-actie, geen streek).
+  reconcileFaceDataRef.current = function reconcileFaceData({ force = false, adjustFaceAttributes } = {}) {
+    const layer = mainLayerRef.current
+    if (!layer) return
+    if (!force && performance.now() - penActivityRef.current < 1500) { scheduleFaceReconcile(1500); return }
+    // Tijdens het slepen van een hinge is de graaf kortstondig inconsistent
+    // (zie wallEditActiveRef); de drag-end plant zelf een nieuwe run.
+    if (wallEditActiveRef.current) return
+
+    const faces = detectFaces(layer)
+    const prev = knownFacesRef.current
+    knownFacesRef.current = faces
+
+    const ra = roomAssignmentsRef.current
+    const fa = faceAttributesRef.current
+    const matches = prev ? matchOrphanedFaces(prev, faces, h => !!(ra[h] || fa[h])) : new Map()
+
+    const raAdd = {}, faAdd = {}
+    for (const [newHash, oldHash] of matches) {
+      if (ra[oldHash]) raAdd[newHash] = ra[oldHash]
+      if (fa[oldHash]) faAdd[newHash] = fa[oldHash]
+    }
+    const nextRa = Object.keys(raAdd).length ? { ...ra, ...raAdd } : ra
+    const inheritedFa = Object.keys(faAdd).length ? { ...fa, ...faAdd } : fa
+    const nextFa = adjustFaceAttributes ? adjustFaceAttributes(inheritedFa) : inheritedFa
+    if (nextRa === ra && nextFa === fa) return
+    // Refs meteen bijwerken: een volgende run of update vóór de re-render moet
+    // de nieuwe stand al zien.
+    roomAssignmentsRef.current = nextRa
+    faceAttributesRef.current = nextFa
+    if (nextRa !== ra) setRoomAssignments(nextRa)
+    if (nextFa !== fa) setFaceAttributes(nextFa)
+    const n = noteRef.current
+    const newSettings = { ...n.settings, roomAssignments: nextRa, faceAttributes: nextFa }
+    patchNoteSettings?.(n.id, newSettings)
+    updateNoteSettings(n.id, newSettings)
   }
 
   useEffect(() => {
@@ -642,6 +745,7 @@ const CanvasView = forwardRef(function CanvasView(
     // (merge/split/verwijderen/…) zonder dat elke plek dit zelf hoeft te
     // onthouden — zie pruneInvalidReferencePoints hierboven.
     pruneInvalidReferencePoints()
+    scheduleFaceReconcile()
     persistenceScheduleRef.current?.()
     setMinimapVersion(v => v + 1)
   }
@@ -685,7 +789,11 @@ const CanvasView = forwardRef(function CanvasView(
       // oorspronkelijke muur) gaan anders verloren bij het samenvoegen. Idem
       // voor een eventueel dak (zie applyRoof/exportRoof) — anders verdwijnt
       // dakdata stilzwijgend zodra een T-splitsing weer wordt opgeheven.
-      boundary: node.attrs.boundary, isAux: node.attrs.isAux,
+      boundary: node.attrs.boundary, isAux: node.attrs.isAux, heightGuide: node.attrs.heightGuide,
+      // Label-kant is relatief t.o.v. de lijnrichting; de samengevoegde muur
+      // loopt van node's vrije eindpunt weg, dus bij ep === 0 omgekeerd.
+      heightGuideSide: node.attrs.heightGuideSide == null ? undefined
+        : (ep === 1 ? node.attrs.heightGuideSide : -node.attrs.heightGuideSide),
       roofBaseHeightM: node.attrs.roofBaseHeightM, roofCourses: node.attrs.roofCourses,
       lineCap: node.lineCap(), lineJoin: node.lineJoin(),
       ...(node.dash()?.length ? { dash: node.dash() } : {}),
@@ -768,7 +876,8 @@ const CanvasView = forwardRef(function CanvasView(
       // zaten niet in de rest van deze lijst en gingen anders verloren. Idem
       // voor een eventueel dak (zie applyRoof/exportRoof) — anders verdwijnt
       // dakdata stilzwijgend zodra een muur mid-segment wordt afgetakt.
-      boundary: host.attrs.boundary, isAux: host.attrs.isAux,
+      boundary: host.attrs.boundary, isAux: host.attrs.isAux, heightGuide: host.attrs.heightGuide,
+      heightGuideSide: host.attrs.heightGuideSide, // beide helften houden de richting van host
       roofBaseHeightM: host.attrs.roofBaseHeightM, roofCourses: host.attrs.roofCourses,
       lineCap: host.lineCap(), lineJoin: host.lineJoin(),
       ...(host.dash()?.length ? { dash: host.dash() } : {}),
@@ -838,6 +947,14 @@ const CanvasView = forwardRef(function CanvasView(
     const node = nodeOverride ?? lineGizmoNodeRef.current
     const layer = mainLayerRef.current
     if (!node || !layer || meters <= 0) return
+    // Segment tussen twee 1,5m-lijnen: beide lijnen symmetrisch verschuiven
+    // i.p.v. één kant — zie applySymmetricGuideMeasure in wallGraph.js.
+    if (applySymmetricGuideMeasure(node, meters * GRID_SIZE, layer)) {
+      layer.batchDraw()
+      historyPushRef.current?.()
+      scheduleSnapshot()
+      return
+    }
     // Ankerpunt (5.2): welk eindpunt vast blijft staan en welk verschuift. Standaard
     // ep0 (zoals altijd); een vers gesplitste helft waarvan het T-punt op ep0 zit
     // krijgt _measureAnchorEp=1 (buitenhoek als anker) — zie splitWallAt. Tikken op
@@ -1108,6 +1225,14 @@ const CanvasView = forwardRef(function CanvasView(
     // niet-muur node mét actieve Transformer gebruiken we diens volledige
     // clientRect (incl. padding/anchors/rotatiegreep) zodat de toolbar er onder
     // altijd echt vrij van blijft — dezelfde aanpak als bij multi-selectie.
+    // Ingetekende 1,5m-lijn (en hoek-diagonaal): géén toolbar — begrenzing,
+    // hulplijn-toggle, constructie, dak en dupliceren zijn daar allemaal
+    // zinloos, verwijderen kan met de gum. De LineGizmo (handles + maat-pill,
+    // o.a. voor de symmetrische maatinvoer) blijft wél actief.
+    if (node.attrs.heightGuide) {
+      div.style.display = 'none'
+      return
+    }
     const box = stage.container().getBoundingClientRect()
     const useTransformerRect = tr && !isWallSegment(node) && !isEditableLinear(node) && !node.attrs.isLocked && tr.nodes().includes(node)
     const r = useTransformerRect ? tr.getClientRect() : node.getClientRect()
@@ -1243,6 +1368,7 @@ const CanvasView = forwardRef(function CanvasView(
           if (n.getClassName() !== 'Transformer') n.visible(true)
         })
         history.reset()
+        knownFacesRef.current = detectFaces(mainLayer) // uitgangsstand, zie reconcileFaceData
         if (capturedShouldCenter) {
           centerToContentRef.current?.()
         } else {
@@ -1270,6 +1396,7 @@ const CanvasView = forwardRef(function CanvasView(
           afterLoad()
         } else {
           history.reset()
+          knownFacesRef.current = []
         }
       })
     }
@@ -1360,6 +1487,11 @@ const CanvasView = forwardRef(function CanvasView(
     let lastPinchMid = null
     let lastInputType = null
     let mousePanning = false
+    // Vingers die op een maat-pill begonnen (pointerId -> pill-element): hun
+    // events lopen via pointer capture door de gewone touch-afhandeling
+    // hieronder; een tik (zonder beweging) wordt aan het eind alsnog als klik
+    // aan de pill doorgegeven. Zie onOverlayPointerDown.
+    const pillTouchTargets = new Map()
     let lastMousePos = { x: 0, y: 0 }
     let wheelRestoreTimer = null
     let penEraserDirty = false  // true after pen-eraser-button erase, until pointerup
@@ -1763,12 +1895,19 @@ const CanvasView = forwardRef(function CanvasView(
 
       // ── Mouse alt-drag / middle-button pan ─────────────────────────────
       if (e.pointerType === 'mouse' && (e.altKey || e.button === 1)) {
-        mousePanning = true
-        lastMousePos = { x: e.clientX, y: e.clientY }
-        startNav()
-        e.stopImmediatePropagation()
+        startMousePan(e)
         return
       }
+    }
+
+    function startMousePan(e) {
+      mousePanning = true
+      lastMousePos = { x: e.clientX, y: e.clientY }
+      startNav()
+      e.stopImmediatePropagation()
+      // Pointer capture: anders gaan de moves naar een maat-pill (DOM-overlay
+      // buiten de container) zodra de cursor eroverheen schuift, en hapert de pan.
+      try { container.setPointerCapture(e.pointerId) } catch { /* pointer al weg */ }
     }
 
     function onPointerMove(e) {
@@ -1882,6 +2021,10 @@ const CanvasView = forwardRef(function CanvasView(
         e.preventDefault()
         const ptr = touchPointers.get(e.pointerId)
         touchPointers.delete(e.pointerId)
+        // Begon deze vinger op een maat-pill? (Altijd opruimen, ook als er nog
+        // vingers liggen; een pointercancel telt nooit als tik.)
+        const pillEl = e.type === 'pointercancel' ? null : pillTouchTargets.get(e.pointerId)
+        pillTouchTargets.delete(e.pointerId)
         lastPinchDist = null
         lastPinchMid  = null
 
@@ -1915,6 +2058,12 @@ const CanvasView = forwardRef(function CanvasView(
           // Skip tap detection after a multi-finger gesture (twoFingerActive was just cleared
           // but we detect the gesture via navActive having been true during the gesture).
           // Use the moved threshold: multi-finger gestures always move > 12 px total.
+          if (moved < 12 && pillEl?.isConnected) {
+            // Tik op een maat-pill: de pill zelf afhandelen (maatinvoer), geen
+            // canvas-selectie/dubbeltik.
+            pillEl.click()
+            return
+          }
           if (moved < 12) {
             // ── Double-tap detection (finger only) ──────────────────────────
             const now = Date.now()
@@ -2078,8 +2227,43 @@ const CanvasView = forwardRef(function CanvasView(
     container.addEventListener('pointerup',    onPointerUp,   { capture: true })
     container.addEventListener('pointercancel',onPointerUp,   { capture: true })
     container.addEventListener('wheel',        onWheel,       { passive: false })
+    // Maat-pills zijn DOM-overlays buiten de container — scrollen
+    // met de cursor erboven bereikt onWheel anders nooit (zoom "hapert" dan).
+    function onOverlayWheel(e) {
+      if (!(e.target instanceof Element) || container.contains(e.target)) return  // die loopt al via onWheel
+      if (e.target.closest(CANVAS_WHEEL_PASSTHROUGH_SELECTOR)) onWheel(e)
+    }
+    document.addEventListener('wheel', onOverlayWheel, { passive: false })
+    // Idem voor pannen met de middelste muisknop (of Alt+slepen) vanaf een
+    // pill, en voor vingers: een vinger die op een pill begint doet gewoon mee
+    // met slepen/pinchen (pointer capture naar de container, zodat ook de
+    // volgende moves daar binnenkomen); een tik gaat aan het eind alsnog naar
+    // de pill (zie pillTouchTargets in onPointerUp).
+    function onOverlayPointerDown(e) {
+      if (!(e.target instanceof Element) || container.contains(e.target)) return
+      const pillEl = e.target.closest(CANVAS_WHEEL_PASSTHROUGH_SELECTOR)
+      if (!pillEl) return
+      if (e.pointerType === 'touch') {
+        pillTouchTargets.set(e.pointerId, pillEl)
+        onPointerDown(e)
+        try { container.setPointerCapture(e.pointerId) } catch { /* pointer al weg */ }
+        return
+      }
+      if (e.pointerType !== 'mouse' || !(e.button === 1 || e.altKey)) return
+      e.preventDefault()
+      startMousePan(e)
+    }
+    // Middelste knop op een pill: geen autoscroll-cursor van de browser.
+    function onOverlayMouseDown(e) {
+      if (e.button === 1 && e.target instanceof Element && e.target.closest(CANVAS_WHEEL_PASSTHROUGH_SELECTOR)) e.preventDefault()
+    }
+    document.addEventListener('pointerdown', onOverlayPointerDown, { capture: true })
+    document.addEventListener('mousedown', onOverlayMouseDown, { capture: true })
 
     return () => {
+      document.removeEventListener('wheel', onOverlayWheel, { passive: false })
+      document.removeEventListener('pointerdown', onOverlayPointerDown, { capture: true })
+      document.removeEventListener('mousedown', onOverlayMouseDown, { capture: true })
       container.removeEventListener('touchstart',  stopNativeTouch, { capture: true })
       container.removeEventListener('touchmove',   stopNativeTouch, { capture: true })
       container.removeEventListener('touchend',    stopNativeTouch, { capture: true })
@@ -4128,7 +4312,7 @@ const CanvasView = forwardRef(function CanvasView(
     scheduleSnapshot()
   }
 
-  // Constructie = afwijkende opbouw/isolatie van déze muur; puur een label dat
+  // Constructie = afwijkende isolatie van déze muur; puur een label dat
   // de m²-berekening in Blender extra opsplitst (naast zone/begrenzing), geen
   // geometrie. Vandaar geen visualisatie op het canvas — alleen het
   // knop-highlight in de toolbar. Zie BLENDER_EXPORT_PLAN.md.
@@ -4245,8 +4429,17 @@ const CanvasView = forwardRef(function CanvasView(
   function handleInsertHeightGuides() {
     setShowWallMenu(false)
     const mainLayer = mainLayerRef.current
+    if (!mainLayer || !toolbarTargetRef.current) return
+
+    // Opnieuw intekenen vervangt de bestaande ingetekende 1,5m-lijnen van deze
+    // hiërarchie (ook een eerdere handmatige correctie) — anders komt er een
+    // tweede set bovenop. disconnectAndDestroy voegt de T-splitsingen die
+    // daardoor overbodig worden weer samen; die buigt toolbarTargetRef om als
+    // de geselecteerde muur zelf zo'n gesplitste helft was.
+    const oldGuides = walkHierarchy(toolbarTargetRef.current, mainLayer).filter(n => n.attrs.heightGuide)
+    if (oldGuides.length) disconnectAndDestroy(oldGuides, mainLayer)
     const startNode = toolbarTargetRef.current
-    if (!mainLayer || !startNode) return
+    if (!startNode) return
 
     const segments = collectHeightGuideChainsForHierarchy(mainLayer, startNode, faceAttributes)
     if (!segments.length) {
@@ -4255,6 +4448,11 @@ const CanvasView = forwardRef(function CanvasView(
         const pts = startNode.points()
         const clientPos = stageToClient(stage, startNode.x() + pts[0], startNode.y() + pts[1])
         spawnFloatyText(clientPos.x, clientPos.y, 'Geen 1,5m-lijnen gevonden voor deze hiërarchie', 'error')
+      }
+      if (oldGuides.length) {
+        mainLayer.batchDraw()
+        history.pushState()
+        scheduleSnapshot()
       }
       return
     }
@@ -4266,15 +4464,27 @@ const CanvasView = forwardRef(function CanvasView(
       // strokeWidth die past bij de rest van deze hoek.
       const sourceWall = mainLayer.findOne(`#${seg.wallId ?? seg.startWeldWallId}`)
       const sw = sourceWall ? sourceWall.strokeWidth() : penSizeRef.current * 2
+      // Dunner dan een gewone hulplijn, zodat een 1,5m-lijn er direct van te
+      // onderscheiden is (naast het vaste "1.5m"-label, HeightGuideLabels.jsx).
+      const guideSw = sw * HEIGHT_GUIDE_STROKE_FACTOR
+      // Kant waar het label hoort (de binnenkant, zelfde kant als de
+      // verschuiving) — relatief t.o.v. de lijnrichting opgeslagen, zodat het
+      // na verslepen/maatinvoer nog klopt: +1 = links van ep0→ep1.
+      const side = seg.type === 'corner' ? undefined
+        : ((-(seg.y2 - seg.y1)) * seg.nx + (seg.x2 - seg.x1) * seg.ny >= 0 ? 1 : -1)
       const node = new Konva.Line({
         id: generateId(),
         points: [seg.x1, seg.y1, seg.x2, seg.y2],
-        stroke: WALL_STROKE_COLOR, strokeWidth: sw,
-        dash: [sw * 2, sw * 3],
+        stroke: WALL_STROKE_COLOR, strokeWidth: guideSw,
+        dash: [guideSw * 2, guideSw * 3],
         hitStrokeWidth: Math.max(sw * 4, HIT_MARGIN),
         lineCap: 'round',
         listening: true, draggable: false, perfectDrawEnabled: false,
         shadowForStrokeEnabled: false, isWall: true, isAux: true,
+        // Herkenning voor de symmetrische maatinvoer (applySymmetricGuideMeasure):
+        // 'edge' = verschoven gevel-lijn, 'corner' = hoek-diagonaal.
+        heightGuide: seg.type === 'corner' ? 'corner' : 'edge',
+        heightGuideSide: side,
       })
       mainLayer.add(node)
       return { node, seg }
@@ -4325,9 +4535,124 @@ const CanvasView = forwardRef(function CanvasView(
       if (seg.endWeldWallId != null) weldAgainstExistingWall(seg.x2, seg.y2, node.id(), 1)
     })
 
+    // Fase 4: kruisingen met bestaande muren (binnenmuren) echt splitsen.
+    // Zonder dit ligt een 1,5m-lijn visueel over een binnenmuur heen, maar
+    // weet de vlak-detectie niet dat ze elkaar raken — de strook onder 1,5 m
+    // wordt dan geen eigen vlak en is niet als "<1,5m" te markeren.
+    splitHeightGuideCrossings(mainLayer, newNodes.map(({ node }) => node))
+
     mainLayer.batchDraw()
     history.pushState()
+
+    // Fase 5: de stroken tussen gootgevel en 1,5m-lijn automatisch als
+    // "<1,5m" markeren (zie classifyHeightGuideFaces). Scope = alleen deze
+    // hiërarchie; anker = een node die alle splitsingen hierboven overleefd
+    // heeft. Het middendeel wordt juist teruggezet naar "gebruiksruimte" als
+    // het bij opnieuw intekenen toevallig "<1,5m" van een oude strook erfde.
+    // Via de reconcile (i.p.v. los updateFaceAttribute) zodat het overerven
+    // van bv. de gebouwdeel-toewijzing uit de oorspronkelijke ruimte en deze
+    // markering in één keer gebeuren. Handmatig bijstellen blijft daarna
+    // gewoon kunnen: dit draait alleen bij het intekenen.
+    const anchor = [toolbarTargetRef.current, ...newNodes.map(({ node }) => node)].find(n => n?.getStage())
+    const verdicts = anchor
+      ? classifyHeightGuideFaces(facesFromNodes(walkHierarchy(anchor, mainLayer)), mainLayer)
+      : new Map()
+    reconcileFaceDataRef.current?.({
+      force: true,
+      adjustFaceAttributes: fa => {
+        const patch = {}
+        for (const [hash, verdict] of verdicts) {
+          const aard = fa[hash]?.aard ?? 'gebruiksruimte'
+          if (verdict === 'low' && aard !== '<1.5m') patch[hash] = { ...fa[hash], aard: '<1.5m' }
+          if (verdict === 'high' && aard === '<1.5m') patch[hash] = { ...fa[hash], aard: 'gebruiksruimte' }
+        }
+        return Object.keys(patch).length ? { ...fa, ...patch } : fa
+      },
+    })
     scheduleSnapshot()
+  }
+
+  // Splitst elke 1,5m-lijn op elk punt waar hij een bestaande (niet-1,5m-)muur
+  // van zijn hiërarchie kruist, en verbindt de stukken tot een volledige kliek:
+  // - echte kruising midden op beide lijnen → beide splitsen (kruispunt, 4 armen);
+  // - de 1,5m-lijn loopt door een bestaand hoekpunt → alleen de 1,5m-lijn
+  //   splitsen en aan dat hoekpunt lassen;
+  // - een EINDPUNT van de 1,5m-lijn ligt op een muur waar het nog niet aan
+  //   vastzit → die muur splitsen (of, op een hoekpunt, alleen lassen). Komt
+  //   voor waar een gevel door een binnenmuur in twee stukken is geknipt: de
+  //   1,5m-lijn bestaat dan uit twee stukken die elkaar precies óp die
+  //   binnenmuur raken (roofGuides.js, "in elkaars verlengde").
+  // Werkt stuk voor stuk: per lijnstuk de dichtstbijzijnde kruising, splitsen,
+  // en verder met de resterende helft.
+  function splitHeightGuideCrossings(layer, guides) {
+    const EPS = 0.5 // content-eenheden (2 cm) — hoekpunt-/eindpunt-tolerantie
+    function abs(n) {
+      const p = n.points()
+      return { ax: n.x() + p[0], ay: n.y() + p[1], bx: n.x() + p[2], by: n.y() + p[3] }
+    }
+    function firstCrossing(g) {
+      const G = abs(g)
+      const gdx = G.bx - G.ax, gdy = G.by - G.ay
+      const gLen = Math.hypot(gdx, gdy)
+      if (gLen < EPS * 2) return null
+      let best = null
+      for (const w of walkHierarchy(g, layer)) {
+        if (w === g || w.attrs.heightGuide || !isWallSegment(w)) continue
+        const W = abs(w)
+        const wdx = W.bx - W.ax, wdy = W.by - W.ay
+        const wLen = Math.hypot(wdx, wdy)
+        const denom = gdx * wdy - gdy * wdx
+        if (wLen < 1e-6 || Math.abs(denom) < 1e-9 * gLen * wLen) continue // evenwijdig
+        const t = ((W.ax - G.ax) * wdy - (W.ay - G.ay) * wdx) / denom
+        const u = ((W.ax - G.ax) * gdy - (W.ay - G.ay) * gdx) / denom
+        if (t * gLen < -EPS || (1 - t) * gLen < -EPS) continue // voorbij de 1,5m-lijn
+        if (u * wLen < -EPS || (1 - u) * wLen < -EPS) continue // naast de muur
+        // Op een eigen eindpunt van de 1,5m-lijn: alleen als dat eindpunt nog
+        // niet aan deze muur vastzit (anders is het al gelast in fase 2/3).
+        const gEp = t * gLen < EPS ? 0 : (1 - t) * gLen < EPS ? 1 : null
+        if (gEp !== null && getConns(g, gEp).some(c => c.id === w.id())) continue
+        const x = G.ax + gdx * t, y = G.ay + gdy * t
+        let hit
+        if (u * wLen < EPS) hit = { kind: 'vertex', w, wEp: 0, x: W.ax, y: W.ay }
+        else if ((1 - u) * wLen < EPS) hit = { kind: 'vertex', w, wEp: 1, x: W.bx, y: W.by }
+        else hit = { kind: 'cross', w, x, y }
+        if (!best || t < best.t) best = { ...hit, t, gEp }
+      }
+      return best
+    }
+
+    const queue = [...guides]
+    let guard = 0
+    while (queue.length && guard++ < 1000) {
+      const g = queue.shift()
+      if (!g.getLayer()) continue
+      const hit = firstCrossing(g)
+      if (!hit) continue
+      if (hit.gEp !== null) {
+        // Eindpunt van de 1,5m-lijn op een muur: muur splitsen of op het
+        // hoekpunt lassen; de 1,5m-lijn zelf blijft heel.
+        if (hit.kind === 'cross') {
+          const { halfA: wA } = splitWallAt(hit.w, hit.x, hit.y, layer)
+          weldAllAt(layer, g, hit.gEp, wA, 1)
+        } else {
+          weldAllAt(layer, g, hit.gEp, hit.w, hit.wEp)
+        }
+        queue.push(g) // andere eindpunt/kruisingen van hetzelfde stuk nog nalopen
+        continue
+      }
+      const { halfA: gA, halfB: gB } = splitWallAt(g, hit.x, hit.y, layer)
+      if (hit.kind === 'cross') {
+        const { halfA: wA, halfB: wB } = splitWallAt(hit.w, hit.x, hit.y, layer)
+        connectAllPairs(layer, [
+          { id: gA.id(), ep: 1 }, { id: gB.id(), ep: 0 },
+          { id: wA.id(), ep: 1 }, { id: wB.id(), ep: 0 },
+        ])
+      } else {
+        weldAllAt(layer, gA, 1, hit.w, hit.wEp)
+        weldAllAt(layer, gB, 0, hit.w, hit.wEp)
+      }
+      queue.push(gB) // gA (vóór de kruising) heeft per definitie geen eerdere kruising meer
+    }
   }
 
   // ─── Expose API via ref ─────────────────────────────────────────────────────
@@ -4509,6 +4834,18 @@ const CanvasView = forwardRef(function CanvasView(
         mainLayerRef={mainLayerRef}
       />
 
+      <HeightGuideLabels
+        stageRef={stageRef}
+        mainLayerRef={mainLayerRef}
+      />
+
+      <ReferencePointMarkers
+        stageRef={stageRef}
+        mainLayerRef={mainLayerRef}
+        floors={note.settings?.floors ?? []}
+        visible={showReferencePoints}
+      />
+
       <RoofGuideOverlay
         stageRef={stageRef}
         mainLayerRef={mainLayerRef}
@@ -4525,6 +4862,7 @@ const CanvasView = forwardRef(function CanvasView(
         suppressRef={suppressMeasureRef}
         onPillClick={handlePillClick}
         showPills={showPills}
+        showRoofPills={showTechnicalGuides}
         pillStyle={pillStyle}
         editModeActive={!!lineGizmoNode}
       />
@@ -4542,6 +4880,13 @@ const CanvasView = forwardRef(function CanvasView(
         suppressRef={wallEditActiveRef}
       />
 
+      <LowHeadroomHatch
+        stageRef={stageRef}
+        mainLayerRef={mainLayerRef}
+        faceAttributes={faceAttributes}
+        suppressRef={wallEditActiveRef}
+      />
+
       <AgPanel
         mainLayerRef={mainLayerRef}
         noteRef={noteRef}
@@ -4554,83 +4899,125 @@ const CanvasView = forwardRef(function CanvasView(
           assignPopup.hash, roomAssignments,
           note.settings?.installations ?? [], note.settings?.defaultHeatingInstallationId,
         )
+        const hash = assignPopup.hash
+        const attrs = faceAttributes[hash] ?? {}
+        const aard = attrs.aard ?? FACE_AARD_OPTIONS[0].value
+        const allInstallations = note.settings?.installations ?? []
+        // "Niet berekend" = vlak telt niet mee, installaties staan dan op geen
+        // (zie updateFaceAard) — knoppen gedimd zodat dat zichtbaar is.
+        const installationsDisabled = aard === 'niet berekend'
+        const gebouwdelen = note.settings?.gebouwdelen ?? []
+        // Alle keuzes direct zichtbaar als toggle-chips (geen dropdowns): bij
+        // de meeste woningen zijn er 1-2 installaties per soort, dus dit blijft
+        // compact. Label-kolom links, chips rechts (wrappen bij veel opties).
         return (
           <div
             className="room-assign-popup"
             style={{ left: assignPopup.left, top: assignPopup.top }}
             onPointerDown={e => e.stopPropagation()}
+            ref={el => {
+              // Hoger dan vroeger — binnen het scherm houden: past 'ie niet
+              // onder het tikpunt, dan erboven; horizontaal klemmen (let op de
+              // translateX(-50%) in de CSS).
+              if (!el) return
+              const margin = 8
+              const w = el.offsetWidth, h = el.offsetHeight
+              let top = assignPopup.top
+              if (top + h > window.innerHeight - margin) top = Math.max(margin, assignPopup.top - 24 - h)
+              const left = Math.min(Math.max(assignPopup.left, margin + w / 2), window.innerWidth - margin - w / 2)
+              el.style.top = `${top}px`
+              el.style.left = `${left}px`
+            }}
           >
+            {/* Geen titel — het eerste sectiekopje deelt de regel met de sluitknop. */}
             <div className="room-assign-header">
-              <span>Ruimte toewijzen</span>
+              <span className="room-assign-section">Installaties</span>
               <button className="room-assign-close" onClick={() => setAssignPopup(null)} title="Sluiten">✕</button>
             </div>
-            {['verwarming', 'koeling'].map(kind => {
-              const field = kind === 'verwarming' ? 'heatingInstallationId' : 'coolingInstallationId'
-              const allInstallations = note.settings?.installations ?? []
-              const options = allInstallations.filter(i => i.kind === kind)
-              return (
-                <div className="room-assign-row" key={kind}>
-                  <span className="room-assign-label">{kind === 'verwarming' ? 'Verwarming' : 'Koeling'}</span>
-                  <select
-                    value={effective[field] ?? ''}
-                    onChange={e => updateRoomAssignment(assignPopup.hash, { [field]: e.target.value || null })}
-                  >
-                    <option value="">geen</option>
-                    {options.map(inst => (
-                      <option key={inst.id} value={inst.id}>
-                        {dropdownLabel(allInstallations, inst)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )
-            })}
-            <div className="room-assign-row">
-              <span className="room-assign-label">Eigenschap</span>
-              <select
-                value={faceAttributes[assignPopup.hash]?.aard ?? FACE_AARD_OPTIONS[0].value}
-                onChange={e => updateFaceAttribute(assignPopup.hash, { aard: e.target.value })}
-              >
-                {FACE_AARD_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
+            <div className={`room-assign-grid${installationsDisabled ? ' disabled' : ''}`}>
+              {['verwarming', 'koeling'].map(kind => {
+                const field = kind === 'verwarming' ? 'heatingInstallationId' : 'coolingInstallationId'
+                const options = allInstallations.filter(i => i.kind === kind)
+                return (
+                  <Fragment key={kind}>
+                    <span className="room-assign-label">{kind === 'verwarming' ? 'Verwarming' : 'Koeling'}</span>
+                    <div className="room-assign-chips">
+                      {options.length === 0 && <span className="room-assign-empty">geen installatie</span>}
+                      {/* Toggle: nogmaals tikken op de actieve = "geen" (expliciet null). */}
+                      {options.map(inst => {
+                        const active = effective[field] === inst.id
+                        return (
+                          <button
+                            key={inst.id}
+                            className={`room-assign-chip room-assign-chip--${kind}${active ? ' active' : ''}`}
+                            aria-pressed={active}
+                            disabled={installationsDisabled}
+                            onClick={() => updateRoomAssignment(hash, { [field]: active ? null : inst.id })}
+                          >
+                            {dropdownLabel(allInstallations, inst)}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </Fragment>
+                )
+              })}
+            </div>
+
+            <div className="room-assign-section">Eigenschap</div>
+            {/* Precies één actief — nogmaals tikken op de actieve doet niets. */}
+            <div className="room-assign-chips">
+              {FACE_AARD_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  className={`room-assign-chip${aard === opt.value ? ' active' : ''}`}
+                  aria-pressed={aard === opt.value}
+                  onClick={() => { if (aard !== opt.value) updateFaceAard(hash, opt.value) }}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
             {/* Gebouwdeel: alleen zichtbaar zodra er méér dan één is — voor een
                 gewone woning zou het een lege keuze zijn. Het hoofdgebouwdeel
                 slaat bewust GEEN waarde op (undefined), zodat "geen entry" overal
                 hetzelfde betekent. Zie BLENDER_EXPORT_PLAN.md, blok "Gebouwdelen
                 en constructies". */}
-            {(note.settings?.gebouwdelen ?? []).length > 1 && (() => {
-              const gebouwdelen = note.settings.gebouwdelen
+            {gebouwdelen.length > 1 && (() => {
               const mainId = gebouwdelen[0].id
+              const current = attrs.gebouwdeelId ?? mainId
               return (
-                <div className="room-assign-row">
-                  <span className="room-assign-label">Gebouwdeel</span>
-                  <select
-                    value={faceAttributes[assignPopup.hash]?.gebouwdeelId ?? mainId}
-                    onChange={e => updateFaceAttribute(assignPopup.hash, {
-                      gebouwdeelId: e.target.value === mainId ? undefined : e.target.value,
-                    })}
-                  >
+                <>
+                  <div className="room-assign-section">Gebouwdeel</div>
+                  <div className="room-assign-chips">
                     {gebouwdelen.map(g => (
-                      <option key={g.id} value={g.id}>{g.name}</option>
+                      <button
+                        key={g.id}
+                        className={`room-assign-chip${current === g.id ? ' active' : ''}`}
+                        aria-pressed={current === g.id}
+                        onClick={() => updateFaceAttribute(hash, { gebouwdeelId: g.id === mainId ? undefined : g.id })}
+                      >
+                        {g.name}
+                      </button>
                     ))}
-                  </select>
-                </div>
+                  </div>
+                </>
               )
             })()}
+
             {/* Los van "Eigenschap": een plat dak is een eigenschap van dit
-                vlak, niet van "aard" — de ruimte eronder blijft gewoon
-                bijvoorbeeld een gebruiksruimte. Zie BLENDER_EXPORT_PLAN.md,
+                vlak, niet van "aard" — het vlak eronder blijft gewoon
+                bijvoorbeeld gebruiksoppervlak. Zie BLENDER_EXPORT_PLAN.md,
                 blok "Vlak-eigenschap". */}
-            <div className="room-assign-row">
-              <span className="room-assign-label">Heeft plat dak</span>
+            <div className="room-assign-section">Overig</div>
+            <div className="room-assign-chips">
               <button
-                className={`room-assign-toggle${faceAttributes[assignPopup.hash]?.platDak ? ' on' : ''}`}
-                onClick={() => updateFaceAttribute(assignPopup.hash, { platDak: !faceAttributes[assignPopup.hash]?.platDak })}
-                aria-label={faceAttributes[assignPopup.hash]?.platDak ? 'Uitschakelen' : 'Inschakelen'}
-              />
+                className={`room-assign-chip${attrs.platDak ? ' active' : ''}`}
+                aria-pressed={!!attrs.platDak}
+                onClick={() => updateFaceAttribute(hash, { platDak: !attrs.platDak })}
+              >
+                Plat dak aanwezig
+              </button>
             </div>
           </div>
         )
@@ -4789,7 +5176,7 @@ const CanvasView = forwardRef(function CanvasView(
           </div>
         )}
 
-        {/* Constructie (afwijkende opbouw/isolatie) — paneel opent naar BOVEN,
+        {/* Constructie (afwijkende isolatie) — paneel opent naar BOVEN,
             net als het kebab-menu, zodat het niet botst met het dakpaneel
             eronder. Alleen een label: geen hoogtes, geen geometrie. */}
         {isWallToolbarTarget && (
@@ -4798,7 +5185,7 @@ const CanvasView = forwardRef(function CanvasView(
               className={`object-toolbar-btn${wallConstructieId ? ' active' : ''}`}
               title={wallConstructieId
                 ? `Constructie: ${(note.settings?.constructies ?? []).find(c => c.id === wallConstructieId)?.name ?? '—'}`
-                : 'Constructie (afwijkende opbouw/isolatie)'}
+                : 'Constructie (afwijkende isolatie)'}
               onClick={() => { setShowConstructiePanel(v => !v); setAddingConstructie(false) }}
             >
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -4892,7 +5279,9 @@ const CanvasView = forwardRef(function CanvasView(
             {showWallMenu && (
               <div className="object-toolbar-kebab-menu">
                 <button className="wall-menu-item" onClick={handleInsertHeightGuides}>
-                  1,5m-lijnen intekenen
+                  {toolbarTargetRef.current && mainLayerRef.current
+                    && walkHierarchy(toolbarTargetRef.current, mainLayerRef.current).some(n => n.attrs.heightGuide)
+                    ? '1,5m-lijnen opnieuw intekenen' : '1,5m-lijnen intekenen'}
                 </button>
               </div>
             )}

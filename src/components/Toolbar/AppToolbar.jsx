@@ -431,15 +431,6 @@ export default function AppToolbar({
         </svg>
       </button>
 
-      {/* Maat-pills zichtbaarheid */}
-      <button
-        className={`toolbar-btn${showPills ? ' active' : ''}`}
-        title={showPills ? 'Maat-pills op canvas (nu aan)' : 'Maat-pills op canvas (nu uit)'}
-        onClick={onTogglePills}
-      >
-        {Icons.pillTag}
-      </button>
-
       {/* Klimatiseringszones inkleuren */}
       <button
         className={`toolbar-btn${showZones ? ' active' : ''}`}
@@ -447,6 +438,15 @@ export default function AppToolbar({
         onClick={onToggleZones}
       >
         {Icons.zonesFill}
+      </button>
+
+      {/* Maat-pills zichtbaarheid */}
+      <button
+        className={`toolbar-btn${showPills ? ' active' : ''}`}
+        title={showPills ? 'Maat-pills op canvas (nu aan)' : 'Maat-pills op canvas (nu uit)'}
+        onClick={onTogglePills}
+      >
+        {Icons.pillTag}
       </button>
 
       {/* Technische hulplijnen (dak) */}

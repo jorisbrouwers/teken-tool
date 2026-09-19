@@ -16,24 +16,34 @@ import './Sidebar.css'
 //    touch-event en werkt als vangnet ook wanneer Pointer Events zelf om wat
 //    voor reden dan ook niet vuren.
 // Beide mogen elkaar overlappen — onClose nogmaals aanroepen op een reeds
-// gesloten sidebar is onschadelijk.
-export default function LeftSidebar({ open, onClose, title, children }) {
+// gesloten sidebar is onschadelijk. `closeOnOutside={false}` zet mechanisme 2
+// tijdelijk uit (bv. tijdens het koppelen van een referentiepunt, waar de
+// canvas-tik juist bij de sidebar-actie hoort); mechanisme 1 moet de aanroeper
+// dan zelf ook overslaan.
+export default function LeftSidebar({ open, onClose, title, children, closeOnOutside = true }) {
   const panelRef = useRef(null)
 
   useEffect(() => {
-    if (!open) return
+    if (!open || !closeOnOutside) return
     function handleOutside(e) {
       if (panelRef.current && !panelRef.current.contains(e.target)) onClose()
     }
-    document.addEventListener('pointerdown', handleOutside, true)
-    document.addEventListener('touchstart', handleOutside, true)
-    document.addEventListener('mousedown', handleOutside, true)
+    // Pas in de volgende taak aanzetten: de tik die closeOnOutside weer op
+    // true zet (de hoek-tik die het koppelen afrondt) vuurt na zijn
+    // pointerdown nog een mousedown/touchstart af — die mag het paneel niet
+    // alsnog sluiten.
+    const timer = setTimeout(() => {
+      document.addEventListener('pointerdown', handleOutside, true)
+      document.addEventListener('touchstart', handleOutside, true)
+      document.addEventListener('mousedown', handleOutside, true)
+    }, 0)
     return () => {
+      clearTimeout(timer)
       document.removeEventListener('pointerdown', handleOutside, true)
       document.removeEventListener('touchstart', handleOutside, true)
       document.removeEventListener('mousedown', handleOutside, true)
     }
-  }, [open, onClose])
+  }, [open, onClose, closeOnOutside])
 
   if (!open) return null
 

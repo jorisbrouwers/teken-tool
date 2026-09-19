@@ -2,7 +2,29 @@ import { useEffect, useRef } from 'react'
 import { GRID_SIZE } from './useGrid.js'
 import { getPillCssStyle } from './pillStyle.js'
 
-export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, suppressRef, onPillClick, showPills = true, pillStyle, editModeActive = false }) {
+// Uitgezoomd verbergen: een pill op een muur die op het scherm te kort is valt
+// over de muur heen en maakt de tekening onleesbaar (zelfde idee als het
+// "1.5m"-label in HeightGuideLabels.jsx). De pill van de geselecteerde muur
+// (LineGizmo) blijft altijd staan.
+//
+// Zoomgrens per muur via een curve i.p.v. een vaste schermlengte: bij een
+// vaste lengte schaalt de grens 1-op-1 met de muurlengte (2 m verdwijnt al bij
+// 2× zo weinig uitzoomen als 4 m), wat korte muren te vroeg en lange te laat
+// laat verdwijnen. Afgesteld met twee ankerpunten — "een korte muur (SHORT)
+// verdwijnt onder zoom X, een lange (LONG) onder zoom Y" — met een
+// machtscurve ertussen (en daarbuiten doorgetrokken):
+//   minZoom = SHORT_ZOOM × (SHORT_LENGTH / lengte)^p
+// waarbij p zo gekozen is dat de curve door beide ankerpunten gaat.
+// Hogere zoom = verdwijnt eerder (minder ver uitzoomen nodig).
+const PILL_HIDE_SHORT = { lengthM: 2, zoom: 1.41 }
+const PILL_HIDE_LONG = { lengthM: 6, zoom: 0.9 }
+const PILL_HIDE_EXPONENT = Math.log(PILL_HIDE_SHORT.zoom / PILL_HIDE_LONG.zoom)
+  / Math.log(PILL_HIDE_LONG.lengthM / PILL_HIDE_SHORT.lengthM)
+function pillMinZoom(lengthM) {
+  return PILL_HIDE_SHORT.zoom * Math.pow(PILL_HIDE_SHORT.lengthM / lengthM, PILL_HIDE_EXPONENT)
+}
+
+export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, suppressRef, onPillClick, showPills = true, showRoofPills = false, pillStyle, editModeActive = false }) {
   const containerRef    = useRef(null)
   const labelMapRef     = useRef(new Map())
   // Tweede pill onder de maat-pill: dakhelling(en) van het dak boven dit
@@ -14,6 +36,10 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
   onPillClickRef.current = onPillClick
   const showPillsRef    = useRef(showPills)
   showPillsRef.current  = showPills
+  // Dak-pill (goothoogte/helling) hoort bij de technische hulplijnen, niet
+  // bij de maat-pill-toggle — eigen zichtbaarheid.
+  const showRoofPillsRef = useRef(showRoofPills)
+  showRoofPillsRef.current = showRoofPills
   const pillStyleRef    = useRef(pillStyle)
   pillStyleRef.current  = pillStyle
   // In edit mode moeten pillen "doorzichtig" zijn voor de pointer: anders
@@ -30,7 +56,9 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
     function tick() {
       const layer = mainLayerRef.current
       const stage = stageRef.current
-      if (suppressRef?.current || !showPillsRef.current) {
+      const showMain = showPillsRef.current
+      const showRoof = showRoofPillsRef.current
+      if (suppressRef?.current || (!showMain && !showRoof)) {
         labelMapRef.current.forEach(el => { el.style.visibility = 'hidden' })
         roofLabelMapRef.current.forEach(el => { el.style.visibility = 'hidden' })
         rafRef.current = requestAnimationFrame(tick)
@@ -40,6 +68,7 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
         const box       = stage.container().getBoundingClientRect()
         const transform = stage.getAbsoluteTransform()
         const seenIds   = new Set()
+        const seenRoofIds = new Set()
 
         for (const node of layer.getChildren()) {
           if (!node.attrs.isWall) continue  // alleen lijnsysteem-segmenten krijgen een pill
@@ -65,22 +94,25 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
           // overflow:hidden van canvas-wrapper (dat clipt alleen het canvas
           // zelf) — buiten de viewport dus zelf verbergen.
           if (x < box.left || x > box.right || y < box.top || y > box.bottom) continue
-          seenIds.add(id)
+          if (stage.scaleX() < pillMinZoom(lengthPx / GRID_SIZE)) continue
 
-          const lengthM = (lengthPx / GRID_SIZE).toFixed(2)
-          const text    = `${lengthM}`
+          if (showMain) {
+            seenIds.add(id)
 
-          let el = labelMapRef.current.get(id)
-          if (!el) {
-            el = document.createElement('span')
-            el.className = 'measurement-label-global'
-            el.style.cursor = 'pointer'
-            el.addEventListener('click', (e) => {
-              e.stopPropagation()
-              onPillClickRef.current?.(id)
-            })
-            container.appendChild(el)
-            labelMapRef.current.set(id, el)
+            const lengthM = (lengthPx / GRID_SIZE).toFixed(2)
+            const text    = `${lengthM}`
+
+            let el = labelMapRef.current.get(id)
+            if (!el) {
+              el = document.createElement('span')
+              el.className = 'measurement-label-global'
+              el.style.cursor = 'pointer'
+              el.addEventListener('click', (e) => {
+                e.stopPropagation()
+                onPillClickRef.current?.(id)
+              })
+              container.appendChild(el)
+              labelMapRef.current.set(id, el)
           }
           const ps = getPillCssStyle(pillStyleRef.current)
           el.style.background = ps.background
@@ -95,6 +127,7 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
           // naar de muur eronder (body-drag) i.p.v. door de pill zelf
           // afgevangen te worden.
           el.style.pointerEvents = editModeActiveRef.current ? 'none' : 'auto'
+          }
 
           // Dak-pill: alleen bij een muur met dak (roofCourses). Toont de
           // goothoogte + de helling(en): "2.60m, 45°" of "2.60m, 70°, 25°"
@@ -103,7 +136,8 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
           // Blender). Vaste opmaak, display-only (geen pointer-events).
           const courses = Array.isArray(node.attrs.roofCourses) ? node.attrs.roofCourses : null
           let rel = roofLabelMapRef.current.get(id)
-          if (courses && courses.length) {
+          if (showRoof && courses && courses.length) {
+            seenRoofIds.add(id)
             if (!rel) {
               rel = document.createElement('span')
               rel.className = 'measurement-label-roof'
@@ -127,9 +161,6 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
             rel.style.left     = (x + nX * 18) + 'px'
             rel.style.top      = (y + nY * 18 + (1 - nY) * 16) + 'px'
             rel.style.visibility = ''
-          } else if (rel) {
-            rel.remove()
-            roofLabelMapRef.current.delete(id)
           }
         }
 
@@ -140,7 +171,7 @@ export default function MeasurementLabels({ mainLayerRef, stageRef, skipNodeId, 
           }
         }
         for (const [id, el] of [...roofLabelMapRef.current]) {
-          if (!seenIds.has(id)) {
+          if (!seenRoofIds.has(id)) {
             el.remove()
             roofLabelMapRef.current.delete(id)
           }

@@ -5,17 +5,6 @@
   overflow-y: auto;
 }
 
-/* Bewust ondergeschikt aan de rest — dit is een teken-app, geen Blender-tool;
-   de meeste gebruikers zullen dit paneel nooit hoeven in te vullen. */
-.building-disclaimer {
-  padding: 8px 12px;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--color-text-muted);
-  font-style: italic;
-  border-bottom: 1px solid var(--color-sidebar-border);
-}
-
 .building-section {
   padding: 12px;
   border-bottom: 1px solid var(--color-sidebar-border);
@@ -32,6 +21,43 @@
   text-transform: uppercase;
   letter-spacing: 0.03em;
   margin-bottom: 8px;
+}
+
+.building-section-title--with-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Klein oog-knopje naast een sectietitel (aan/uit-toggle, bv. referentiepunten
+   op het canvas tonen). */
+.building-title-eye-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.building-title-eye-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.building-title-eye-btn:hover {
+  background: var(--color-item-hover);
+}
+
+.building-title-eye-btn.active {
+  color: #7048e8;
+  border-color: #7048e8;
+  background: rgba(112, 72, 232, 0.1);
 }
 
 .building-floor-row,
@@ -291,6 +317,10 @@
   font-size: 12px;
   color: var(--color-text-muted);
   padding: 4px 0 8px;
+}
+
+.building-ref-hint {
+  font-style: italic;
 }
 
 /* Twee wielen naast elkaar: links het noorden, rechts de voorgevel. Smaller

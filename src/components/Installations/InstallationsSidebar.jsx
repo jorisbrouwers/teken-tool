@@ -8,27 +8,42 @@ export const KIND_LABELS = {
 }
 
 // Per soort de mogelijke installatietypes — dit bepaalt de dropdown-opties.
-// Koeling heeft (vooralsnog) maar één type, dat daarom automatisch gekozen
-// wordt en niet aanpasbaar is (grijze/disabled dropdown, net als in Uniec
-// waar sommige velden vast liggen).
+// Een soort met maar één type krijgt die automatisch en is dan niet
+// aanpasbaar (grijze/disabled dropdown, net als in Uniec waar sommige velden
+// vast liggen).
 export const TYPE_OPTIONS = {
   verwarming: [
-    { value: 'warmtepomp', label: 'Warmtepomp' },
+    { value: 'warmtepomp_lucht', label: 'Warmtepomp (lucht)' },
+    { value: 'warmtepomp_water', label: 'Warmtepomp (water)' },
     { value: 'cv_ketel', label: 'CV-ketel' },
-    { value: 'kachel_elektrisch', label: 'Kachel elektrisch' },
-    { value: 'kachel_gas', label: 'Kachel gas' },
+    { value: 'kachel_elektrisch', label: 'Kachel (elektrisch)' },
+    { value: 'kachel_gas', label: 'Kachel (gas)' },
     { value: 'clv', label: 'Centrale luchtverwarming' },
   ],
   koeling: [
-    { value: 'airco', label: 'Airco' },
+    { value: 'warmtepomp_lucht', label: 'Warmtepomp (lucht)' },
+    { value: 'warmtepomp_water', label: 'Warmtepomp (water)' },
   ],
+}
+
+// Vervallen type-waarden → hun huidige opvolger. Alleen bij het lezen
+// omgezet (label + dropdown-waarde); de opgeslagen waarde wordt vanzelf
+// vervangen zodra het type in de sidebar gewijzigd wordt.
+const LEGACY_TYPES = {
+  airco: 'warmtepomp_lucht',      // koeling
+  warmtepomp: 'warmtepomp_lucht', // verwarming
+}
+
+export function normalizeType(type) {
+  return LEGACY_TYPES[type] ?? type
 }
 
 const KIND_OPTIONS = Object.keys(KIND_LABELS)
 
 export function typeLabel(kind, type) {
   if (!type) return '[LEEG]'
-  return TYPE_OPTIONS[kind].find(t => t.value === type)?.label ?? type
+  const t = normalizeType(type)
+  return TYPE_OPTIONS[kind].find(o => o.value === t)?.label ?? t
 }
 
 // Volgnummer binnen dezelfde soort (array-volgorde), voor auto-nummering:
@@ -42,12 +57,12 @@ export function installationLabel(installations, inst) {
   return `${KIND_LABELS[inst.kind]} ${installationNumber(installations, inst)}`
 }
 
-// Label voor de toewijzing-dropdown: puur het type (bv. "Airco", "CV-ketel"),
+// Label voor de toewijzing-dropdown: puur het type (bv. "Warmtepomp (lucht)", "CV-ketel"),
 // zonder "Verwarming N"-voorvoegsel — dat voegt weinig toe zolang er maar één
 // installatie van die soort is. Zodra er 2+ installaties van dezelfde soort
 // bestaan (ongeacht of het type overeenkomt), krijgen ze allemaal een
-// volgnummer als "N. Type" — bv. "1. Warmtepomp" / "2. CV-ketel", of
-// "1. Airco" / "2. Airco" — zodat ze in de lijst als een genummerde reeks
+// volgnummer als "N. Type" — bv. "1. Warmtepomp (lucht)" / "2. CV-ketel", of
+// "1. Warmtepomp (lucht)" / "2. Warmtepomp (water)" — zodat ze in de lijst als een genummerde reeks
 // herkenbaar zijn, net als "Verwarming N" in de installaties-sidebar.
 export function dropdownLabel(installations, inst) {
   const label = typeLabel(inst.kind, inst.type)
@@ -59,8 +74,8 @@ export function dropdownLabel(installations, inst) {
 export default function InstallationsSidebar({ installations, onChange }) {
   function handleAddKind(kind) {
     // Beide soorten krijgen een zinnig default-type i.p.v. leeg beginnen:
-    // koeling heeft er toch maar één, en CV-ketel is verreweg het meest voorkomende
-    // verwarmingstype. "[LEEG]" blijft als optie bestaan voor eventuele oudere data.
+    // koeling de eerste optie (Warmtepomp (lucht)), en CV-ketel is verreweg
+    // het meest voorkomende verwarmingstype. "[LEEG]" blijft als optie bestaan voor eventuele oudere data.
     const type = kind === 'koeling' ? TYPE_OPTIONS.koeling[0].value : 'cv_ketel'
     onChange([...installations, { id: generateUUID(), kind, type }])
   }
@@ -113,7 +128,7 @@ export default function InstallationsSidebar({ installations, onChange }) {
               </div>
               <select
                 className="installations-type-select"
-                value={inst.type ?? ''}
+                value={normalizeType(inst.type) ?? ''}
                 disabled={singleFixedOption}
                 onChange={e => handleTypeChange(inst.id, e.target.value)}
               >

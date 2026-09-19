@@ -48,6 +48,7 @@ Een browser-gebaseerde notitie-app als intern alternatief voor Microsoft OneNote
 | `src/components/Canvas/MeasurementLabels.jsx` | Maat-pills (DOM-overlay) op alle lijnsegmenten, rAF-loop |
 | `src/components/Canvas/HingeDecorations.jsx` | Scharnier-stippen op lijn-eindpunten, eigen Konva-layer, rAF-loop met change-detectie |
 | `src/components/Canvas/WallBoundaryOverlay.jsx` | Muurbegrenzing-kleur als dunne overlay bovenop de (altijd zwarte) muurlijn, zelfde rAF+signature-patroon als `HingeDecorations.jsx` |
+| `src/components/Canvas/LowHeadroomHatch.jsx` | Dunne diagonale arcering over vlakken met aard `<1.5m`, altijd zichtbaar (los van de zones-toggle); zelfde rAF+signature-patroon, vlakdetectie hooguit elke 250 ms |
 | `src/components/Canvas/wallGraph.js` | Verbindingsmodel van het lijnsysteem (`_ep0conns`/`_ep1conns`, `walkHierarchy`, snapping-helpers), muurbegrenzing-opties (`WALL_BOUNDARY_OPTIONS`) |
 | `src/components/Canvas/roomGraph.js` | Automatische ruimte-/vlakdetectie uit de muurgraaf (DCEL-achtige half-edge-traversal), klimatiseringszones (`deriveZones`) |
 | `src/components/Canvas/floatyText.js` | Korte, vervagende DOM-feedbacktekst (`spawnFloatyText`) bij een scherm-positie — bv. koppel-bevestiging/-foutmelding; generiek herbruikbaar |
@@ -122,6 +123,7 @@ Kerninvarianten:
 - Maat-pills op segmenten (tik = maat numeriek aanpassen), opmaak instelbaar, ook in PDF-export
 - Scharnier-stippen op verbindingen (toggle in instellingen)
 - Automatische ruimte-/vlakdetectie (`roomGraph.js`), klimatiseringszones: installatie-toewijzing per vlak (popup bij tik met muur-tool) + onafhankelijke vlak-eigenschap ("Eigenschap": gebruiksruimte/plat dak/niet berekend/<1,5m)
+- "1,5m-lijnen intekenen" (kebab-menu van een muur) markeert de stroken tussen gootgevel en 1,5m-lijn automatisch als `<1.5m` (`classifyHeightGuideFaces` in `roofGuides.js`, op basis van `heightGuideSide`); daarna handmatig aan te passen
 - Muurbegrenzing (buiten/buren/AOR/SGR) en hulplijn-markering, instelbaar in de object-toolbar van een geselecteerde muur
 - Constructie per muur (huis-knop in de object-toolbar): vrije naam voor een afwijkende opbouw/isolatie, splitst alleen de m²-berekening in Blender
 

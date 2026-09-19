@@ -53,13 +53,17 @@ export default function App() {
   const [linkingFloorId, setLinkingFloorId] = useState(null)
   const [showPills, setShowPills] = useState(true)
   const [showPillsInPdf, setShowPillsInPdf] = useState(false)
-  const [showZonesInPdf, setShowZonesInPdf] = useState(false)
+  const [showZonesInPdf, setShowZonesInPdf] = useState(true)
   const [showHinges, setShowHinges] = useState(true)
   const [showMinimap, setShowMinimap] = useState(true)
   // Technische hulplijnen (dak-gerelateerd, zie roofGuides.js) — default uit:
   // specialistische hulp voor wie de Blender-export gebruikt, geen ruis voor
   // bestaande gebruikers die dit niet nodig hebben.
   const [showTechnicalGuides, setShowTechnicalGuides] = useState(false)
+  // Oog-knopje bij "Referentiepunten" (Gebouweigenschappen): markeert de
+  // gekoppelde hoeken op het canvas. Bewust niet bewaard — een tijdelijke
+  // controle, geen instelling.
+  const [showReferencePoints, setShowReferencePoints] = useState(false)
   const [pillColor, setPillColor] = useState('#1971c2')
   const [pillOpacity, setPillOpacity] = useState(100)
   const [pillFontSize, setPillFontSize] = useState(10)
@@ -128,9 +132,14 @@ export default function App() {
   // hoort onafhankelijk van de sidebar te blijven staan zodat de gebruiker
   // ook na het sluiten van het paneel nog kan pannen/zoomen/de hoek
   // aantikken; zie handleStartLinking/handleEndpointLinked.
+  // Uitzondering: tijdens het koppelen van een referentiepunt blijft de
+  // Gebouweigenschappen-sidebar open, zodat na het aantikken van de hoek
+  // meteen de volgende verdieping gekoppeld kan worden.
+  const linkingFloorIdRef = useRef(null)
+  linkingFloorIdRef.current = linkingFloorId
   const handleCanvasPointerDown = useCallback(() => {
     setInstallationsOpen(false)
-    setBuildingPropsOpen(false)
+    if (!linkingFloorIdRef.current) setBuildingPropsOpen(false)
   }, [])
 
   const [penColor, setPenColor] = useState('#1d1d1d')
@@ -542,6 +551,7 @@ export default function App() {
               showZones={showZones}
               showMinimap={showMinimap}
               showTechnicalGuides={showTechnicalGuides}
+              showReferencePoints={showReferencePoints}
               linkingFloorId={linkingFloorId}
               onEndpointLinked={handleEndpointLinked}
               onConstructiesChange={handleConstructiesChange}
@@ -624,6 +634,7 @@ export default function App() {
               open={buildingPropsOpen}
               onClose={() => setBuildingPropsOpen(false)}
               title="Gebouweigenschappen"
+              closeOnOutside={!linkingFloorId}
             >
               <BuildingSidebar
                 floors={floors}
@@ -634,6 +645,8 @@ export default function App() {
                 onFrontFacadeScreenAngleChange={handleFrontFacadeScreenAngleChange}
                 linkingFloorId={linkingFloorId}
                 onStartLinking={handleStartLinking}
+                showReferencePoints={showReferencePoints}
+                onToggleReferencePoints={() => setShowReferencePoints(v => !v)}
                 onResetReferencePoint={handleResetReferencePoint}
                 gebouwdelen={gebouwdelen}
                 onGebouwdelenChange={handleGebouwdelenChange}
@@ -697,11 +710,12 @@ export default function App() {
           onToggleMinimap={() => setShowMinimap(v => !v)}
           onClose={() => setSettingsOpen(false)}
           onReset={() => {
-            setShowPills(false)
+            setShowPills(true)
             setShowPillsInPdf(false)
-            setShowZonesInPdf(false)
+            setShowZonesInPdf(true)
             setShowHinges(true)
             setShowMinimap(true)
+            setShowTechnicalGuides(false)
             setPillColor('#1971c2')
             setPillOpacity(70)
             setPillFontSize(10)

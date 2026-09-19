@@ -118,7 +118,7 @@ function exportWall(node, originPx) {
     conns: { ep0: getConns(node, 0), ep1: getConns(node, 1) },
     boundary: resolveWallBoundary(node),
     isAux: !!node.attrs.isAux,
-    // Afwijkende opbouw/isolatie van deze muur; splitst alleen de
+    // Afwijkende isolatie van deze muur; splitst alleen de
     // m²-berekening, geen geometrie. Zie "Gebouwdelen en constructies".
     constructieId: node.attrs.constructieId ?? null,
     ...exportRoof(node),

@@ -52,6 +52,17 @@ export async function exportPdf(note, stage, mainLayer, showGrid, showPillsInPdf
   const zoneLayer = stage.findOne('.zoneFillLayer')
   const prevZoneVisible = zoneLayer?.visible()
   if (zoneLayer) zoneLayer.visible(showZonesInPdf)
+  // De live "1.5m"-labels (HeightGuideLabels.jsx) zijn scherm-gebonden (alleen
+  // on-screen, constante schermgrootte) — hier niet meerasteren, maar
+  // hieronder apart tekenen via drawHeightGuideLabels.
+  const guideLabelLayer = stage.findOne('.heightGuideLabelLayer')
+  const prevGuideLabelVisible = guideLabelLayer?.visible()
+  if (guideLabelLayer) guideLabelLayer.visible(false)
+  // Technische hulplijnen (RoofGuideOverlay.jsx) zijn een tekenhulp, nooit
+  // mee in de PDF — ook niet als de toggle aan staat.
+  const roofGuideLayer = stage.findOne('.roofGuideLayer')
+  const prevRoofGuideVisible = roofGuideLayer?.visible()
+  if (roofGuideLayer) roofGuideLayer.visible(false)
 
   const konvaCanvas = withCulledVisible(mainLayer, () => stage.toCanvas({
     x: canvasCropX,
@@ -62,6 +73,8 @@ export async function exportPdf(note, stage, mainLayer, showGrid, showPillsInPdf
   }))
 
   if (zoneLayer) zoneLayer.visible(prevZoneVisible)
+  if (guideLabelLayer) guideLabelLayer.visible(prevGuideLabelVisible)
+  if (roofGuideLayer) roofGuideLayer.visible(prevRoofGuideVisible)
 
   // Composite in correct layer order: white background → grid → Konva content.
   const finalCanvas = document.createElement('canvas')
@@ -98,12 +111,80 @@ export async function exportPdf(note, stage, mainLayer, showGrid, showPillsInPdf
   if (showPillsInPdf) {
     drawMeasurementPills(ctx, nodes, cropSX, cropSY, targetScale, pillStyle)
   }
+  drawHeightGuideLabels(ctx, nodes, cropSX, cropSY, targetScale, pillStyle, showPillsInPdf)
 
   const dataUrl = finalCanvas.toDataURL('image/jpeg', 0.85)
   const orientation = outputW >= outputH ? 'landscape' : 'portrait'
   const pdf = new jsPDF({ orientation, unit: 'px', format: [outputW, outputH] })
   pdf.addImage(dataUrl, 'JPEG', 0, 0, outputW, outputH)
   pdf.save(`notitie_${note.title.replace(/[^a-z0-9_\-. ]/gi, '_')}.pdf`)
+}
+
+// Vast "1.5m"-label bij elke ingetekende 1,5m-lijn — altijd, net als op het
+// canvas (zie HeightGuideLabels.jsx voor de plaatsing: aan de binnenkant,
+// `heightGuideSide` +1 = links van ep0→ep1). Staan er maat-pills in de PDF
+// (showPills), dan schuift het label langs de lijn opzij naast de pill;
+// past het er niet naast (kort stuk, of een grote tekening waar de pill klein
+// is t.o.v. de pagina), dan midden op de lijn, verder naar binnen dan de pill.
+//
+// Grootte zoals de pills: een vaste verhouding t.o.v. de tekening (niet de
+// pagina — die is zo groot als de tekening, dus paginavaste tekst is bij een
+// kleine tekening piepklein en bij een grote enorm), afgeleid van de
+// pill-lettergrootte, ook als de pills zelf niet in de PDF staan.
+const PDF_LABEL_TO_PILL_RATIO = 0.7
+function drawHeightGuideLabels(ctx, nodes, cropSX, cropSY, targetScale, pillStyle, showPills) {
+  const pillFontSize = Math.round(getPdfFontSize(pillStyle?.pillFontSize ?? 12) * targetScale)
+  const fontSize = Math.max(1, Math.round(pillFontSize * PDF_LABEL_TO_PILL_RATIO))
+  const gap = fontSize
+  const margin = 4 * targetScale
+  ctx.save()
+  ctx.fillStyle = '#1d1d1d'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+
+  // Pill-breedte om naast te gaan staan (zelfde maten als drawMeasurementPills).
+  const pillPadX = Math.round(6 * targetScale)
+  const pillPadY = Math.round(3 * targetScale)
+
+  for (const node of nodes) {
+    if (node.attrs.heightGuide !== 'edge') continue
+    const pts = node.points()
+    if (!pts || pts.length !== 4) continue
+    const ax = (node.x() + pts[0] - cropSX) * targetScale, ay = (node.y() + pts[1] - cropSY) * targetScale
+    const bx = (node.x() + pts[2] - cropSX) * targetScale, by = (node.y() + pts[3] - cropSY) * targetScale
+    const dx = bx - ax, dy = by - ay
+    const len = Math.hypot(dx, dy)
+    if (len < 1) continue
+    const ux = dx / len, uy = dy / len
+    const side = node.attrs.heightGuideSide ?? 1
+    const nx = -uy * side, ny = ux * side
+
+    ctx.font = `500 ${fontSize}px system-ui, -apple-system, sans-serif`
+    const labelW = ctx.measureText('1.5m').width
+    let along = 0, perp = gap
+    if (showPills) {
+      ctx.font = `bold ${pillFontSize}px system-ui, -apple-system, sans-serif`
+      const pillW = ctx.measureText((len / targetScale / GRID_SIZE).toFixed(2)).width + pillPadX * 2
+      ctx.font = `500 ${fontSize}px system-ui, -apple-system, sans-serif`
+      along = pillW / 2 + margin + labelW / 2
+      if (len / 2 < along + labelW / 2) {
+        along = 0
+        perp = Math.max(gap, (pillFontSize + pillPadY * 2) / 2 + margin + fontSize / 2)
+      }
+    }
+    if (len < labelW) continue // lijnstuk korter dan het label zelf
+
+    const px = (ax + bx) / 2 + nx * perp - ux * along
+    const py = (ay + by) / 2 + ny * perp - uy * along
+    let angle = Math.atan2(dy, dx)
+    if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI // nooit ondersteboven
+    ctx.save()
+    ctx.translate(px, py)
+    ctx.rotate(angle)
+    ctx.fillText('1.5m', 0, 0)
+    ctx.restore()
+  }
+  ctx.restore()
 }
 
 // Draw measurement pills for Line/Arrow nodes with exactly 4 points,

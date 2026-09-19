@@ -49,6 +49,7 @@ export default function BuildingSidebar({
   floors, onFloorsChange, northAngle, onNorthAngleChange,
   frontFacadeScreenAngle, onFrontFacadeScreenAngleChange,
   linkingFloorId, onStartLinking, onResetReferencePoint,
+  showReferencePoints = false, onToggleReferencePoints,
   gebouwdelen = [], onGebouwdelenChange, onGebouwdeelDelete,
   constructies = [], onConstructiesChange, onConstructieDelete,
 }) {
@@ -63,7 +64,11 @@ export default function BuildingSidebar({
   const [renamingConstructieId, setRenamingConstructieId] = useState(null)
 
   function handleHeightChange(id, value) {
-    const heightM = value === '' ? null : Number(value)
+    // Altijd op 2 decimalen (cm) afgerond — meer precisie is bij een
+    // verdiepingshoogte schijnnauwkeurigheid. Via de "e2"-notatie i.p.v.
+    // `* 100`: 2.805 * 100 = 280.4999… zou anders naar 2.80 afronden.
+    const n = Number(value)
+    const heightM = value === '' || !Number.isFinite(n) ? null : Math.round(Number(`${n}e2`)) / 100
     onFloorsChange(floors.map(f => f.id === id
       ? setFloorHeight(f, activeId, gebouwdelen, { heightM })
       : f))
@@ -127,20 +132,33 @@ export default function BuildingSidebar({
 
   return (
     <div className="building-panel">
-      <div className="building-disclaimer">
-        Eigenschappen voor de Blender-export. Alleen relevant als
-        je die gebruikt.
+      <div className="building-section">
+        <div className="building-section-title">Oriëntatie</div>
+        <div className="orientation-wheels">
+          <div className="orientation-wheel-col">
+            <NorthWheel value={northAngle} onChange={onNorthAngleChange} />
+            <div className="orientation-wheel-caption">Oriëntatie</div>
+          </div>
+          <div className="orientation-wheel-col">
+            <FrontFacadeWheel
+              northAngle={northAngle}
+              value={frontFacadeScreenAngle}
+              onChange={onFrontFacadeScreenAngleChange}
+            />
+            <div className="orientation-wheel-caption">Voorgevel</div>
+          </div>
+        </div>
       </div>
 
       <div className="building-section">
-        <div className="building-section-title">Hoogte per verdieping</div>
+        <div className="building-section-title">Hoogtes</div>
 
-        {/* Eén gebouwdeel = de gangbare situatie: geen tabs, alleen een
-            onopvallende knop om er een tweede bij te maken. Zodra er meer zijn
-            wordt het een tabstrip; elk tabblad heeft zijn eigen hoogtes, en een
-            leeg veld betekent "dit gebouwdeel bestaat niet op deze verdieping".
-            Zie BLENDER_EXPORT_PLAN.md, blok "Gebouwdelen en constructies". */}
-        {gebouwdelen.length > 1 && (
+        {/* Altijd een tabstrip, ook met alleen het hoofdhuis, met "+" om een
+            gebouwdeel toe te voegen. Elk tabblad heeft zijn eigen hoogtes, en
+            een leeg veld betekent "dit gebouwdeel bestaat niet op deze
+            verdieping". Zie BLENDER_EXPORT_PLAN.md, blok "Gebouwdelen en
+            constructies". */}
+        {gebouwdelen.length > 0 && (
           <div className="building-tabs">
             {gebouwdelen.map(g => (
               <button
@@ -222,24 +240,26 @@ export default function BuildingSidebar({
         <button className="btn btn-secondary building-add-floor-btn" onClick={handleAddFloor}>
           + Verdieping toevoegen
         </button>
-        {gebouwdelen.length <= 1 && !addingGebouwdeel && (
-          <button className="building-add-part-btn" onClick={() => setAddingGebouwdeel(true)}>
-            + Gebouwdeel (aanbouw, achterhuis…)
-          </button>
-        )}
       </div>
 
       <div className="building-section">
-        <div className="building-section-title">Referentiepunten (XY-uitlijning)</div>
-        {floorsWithHeight.length === 0 && (
-          <div className="building-ref-empty">Geef eerst een verdieping een hoogte.</div>
-        )}
-        {floorsWithHeight.length > 0 && (
-          <div className="building-ref-hint">
-            Klik Koppel bij een verdieping en tik dan een hoekpunt aan op het
-            canvas (muur-tool).
-          </div>
-        )}
+        <div className="building-section-title building-section-title--with-btn">
+          Referentiepunten
+          <button
+            className={`building-title-eye-btn${showReferencePoints ? ' active' : ''}`}
+            title={showReferencePoints ? 'Gekoppelde hoeken verbergen' : 'Gekoppelde hoeken tonen op het canvas'}
+            onClick={onToggleReferencePoints}
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1.5 10s3-5.5 8.5-5.5S18.5 10 18.5 10s-3 5.5-8.5 5.5S1.5 10 1.5 10z" />
+              <circle cx="10" cy="10" r="2.5" />
+              {!showReferencePoints && <path d="M3 17L17 3" />}
+            </svg>
+          </button>
+        </div>
+        <div className="building-ref-hint">
+          Ten behoeve van de Blender export.
+        </div>
         {floorsWithHeight.map(f => (
           <div className="building-ref-row" key={f.id}>
             <span className="building-ref-name">{f.name}</span>
@@ -266,24 +286,6 @@ export default function BuildingSidebar({
         ))}
       </div>
 
-      <div className="building-section">
-        <div className="building-section-title">Oriëntatie</div>
-        <div className="orientation-wheels">
-          <div className="orientation-wheel-col">
-            <NorthWheel value={northAngle} onChange={onNorthAngleChange} />
-            <div className="orientation-wheel-caption">Oriëntatie</div>
-          </div>
-          <div className="orientation-wheel-col">
-            <FrontFacadeWheel
-              northAngle={northAngle}
-              value={frontFacadeScreenAngle}
-              onChange={onFrontFacadeScreenAngleChange}
-            />
-            <div className="orientation-wheel-caption">Voorgevel</div>
-          </div>
-        </div>
-      </div>
-
       {/* Constructies: alleen een naam, per MUUR toegewezen (huis-knop in de
           object-toolbar). Geen hoogtes, dus bewust géén tabblad hierboven —
           het splitst alleen de m²-berekening in Blender. */}
@@ -291,7 +293,7 @@ export default function BuildingSidebar({
         <div className="building-section-title">Constructies</div>
         {constructies.length === 0 && !addingConstructie && (
           <div className="building-ref-empty">
-            Voor een muur die anders is opgebouwd of geïsoleerd. Toe te wijzen
+            Voor een muur die anders is geïsoleerd. Toe te wijzen
             via de huis-knop bij een geselecteerde muur.
           </div>
         )}

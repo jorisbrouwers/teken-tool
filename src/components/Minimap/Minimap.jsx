@@ -16,6 +16,8 @@ function computeLayout(cb) {
   }
 }
 
+const MINIMAP_ZONE_OPACITY = 0.5
+
 export default function Minimap({ stageRef, mainLayerRef, version, activityRef }) {
   const [thumbnail, setThumbnail] = useState(null)
   const contentBoxRef  = useRef(null)
@@ -96,7 +98,34 @@ export default function Minimap({ stageRef, mainLayerRef, version, activityRef }
 
       let url
       try {
-        url = mainLayer.toDataURL({ x: pX, y: pY, width: pW, height: pH, pixelRatio, mimeType: 'image/png' })
+        const region = { x: pX, y: pY, width: pW, height: pH, pixelRatio }
+        const mainCanvas = mainLayer.toCanvas(region)
+        // Zone-inkleuring (ZoneFillOverlay.jsx) staat op een eigen laag boven
+        // mainLayer — alleen een handvol polygonen, dus goedkoop om mee te
+        // renderen. Volgt vanzelf de zones-toggle (verborgen polygonen tellen
+        // niet mee). Gebouwdeel-labels zijn tegengeschaald op de live zoom en
+        // zouden hier verkeerd uitvallen — tijdelijk verbergen. De vulling is
+        // op het canvas bewust zwak (20%); op een thumbnail van 160 px is dat
+        // onzichtbaar, dus hier tijdelijk sterker.
+        const zoneLayer = stage.findOne('.zoneFillLayer')
+        if (zoneLayer?.getChildren(n => n.visible()).length) {
+          const labels = zoneLayer.getChildren(n => n.getClassName() === 'Text' && n.visible())
+          const polys = zoneLayer.getChildren(n => n.getClassName() === 'Line' && n.visible())
+          const savedOpacity = polys.map(poly => poly.opacity())
+          labels.forEach(t => t.visible(false))
+          polys.forEach(poly => poly.opacity(MINIMAP_ZONE_OPACITY))
+          const zoneCanvas = zoneLayer.toCanvas(region)
+          labels.forEach(t => t.visible(true))
+          polys.forEach((poly, i) => poly.opacity(savedOpacity[i]))
+          // Konva laat de context geschaald op pixelRatio achter — resetten,
+          // anders wordt de zone-afbeelding nogmaals verkleind getekend.
+          const ctx = mainCanvas.getContext('2d')
+          ctx.save()
+          ctx.setTransform(1, 0, 0, 1, 0, 0)
+          ctx.drawImage(zoneCanvas, 0, 0)
+          ctx.restore()
+        }
+        url = mainCanvas.toDataURL('image/png')
       } catch {
         // toDataURL can throw on tainted images (cross-origin); silently skip
       }

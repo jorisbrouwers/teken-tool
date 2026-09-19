@@ -20,6 +20,9 @@ const DEPTH_LABEL = 'snijpunt vloer'
 
 const LABEL_FONT_PX = 11        // constante schermgrootte, zie de scale-tegencompensatie hieronder
 const LABEL_GAP_SCREEN_PX = 12  // constante schermafstand tussen lijn en labelmidden
+// Uitgezoomd: label weg als de hulplijn op het scherm korter is dan dit (zelfde
+// idee als HeightGuideLabels.jsx, maar blijft langer zichtbaar). De lijn zelf blijft.
+const MIN_SEGMENT_SCREEN_PX = 120
 
 // Toont de technische hulplijnen (dak-gerelateerd, zie roofGuides.js) als een
 // losse, gestippelde lijn + klein label — pure visuele/snap-hulp, niets nieuws
@@ -136,7 +139,7 @@ export default function RoofGuideOverlay({ stageRef, mainLayerRef, floors, faceA
           entry.line.visible(true)
 
           entry.hasLabel = hasLabel
-          entry.text.visible(hasLabel)
+          entry.segLen = Math.hypot(seg.x2 - seg.x1, seg.y2 - seg.y1)
           if (hasLabel) {
             entry.text.text(label)
             entry.text.fill(color)
@@ -175,7 +178,9 @@ export default function RoofGuideOverlay({ stageRef, mainLayerRef, floors, faceA
         const invScale = 1 / scale
         const gap = LABEL_GAP_SCREEN_PX * invScale
         for (const entry of shapes.values()) {
-          if (!entry.hasLabel) continue
+          const showLabel = entry.hasLabel && entry.segLen * scale >= MIN_SEGMENT_SCREEN_PX
+          entry.text.visible(showLabel)
+          if (!showLabel) continue
           entry.text.scale({ x: invScale, y: invScale })
           entry.text.offsetX(entry.text.width() / 2)
           entry.text.offsetY(entry.text.height() / 2)

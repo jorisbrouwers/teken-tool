@@ -514,6 +514,47 @@ export function collectHeightGuideChainsForHierarchy(mainLayer, startNode, faceA
   return collectHeightGuideChainsForFaces(faces, mainLayer, faceAttributes)
 }
 
+// Welke kant van een ingetekende 1,5m-lijn ligt elk vlak? Na "1,5m-lijnen
+// intekenen" is een ruimte opgeknipt in stroken langs de gootgevels (onder
+// 1,5 m) en het middendeel (erboven). `heightGuideSide` op elke 'edge'-lijn
+// wijst naar de hoge kant (+1 = links van ep0→ep1, zie de insert-knop in
+// CanvasView.jsx) — en blijft dat ook na verslepen/maatinvoer. De binnenkant
+// van een vlak volgt uit de omloopzin (zelfde conventie als
+// computeHeightGuideChainForRegion: binnen = (dy, -dx) van elke rand).
+// Hoek-diagonalen ('corner') tellen niet mee: daar ligt aan beide kanten een
+// lage strook.
+//
+// Retourneert Map faceHash → 'low' | 'high'. Een vlak zonder 1,5m-lijn in
+// zijn rand, of met lijnen die elkaar tegenspreken (bv. een smalle ruimte
+// waar de lijnen elkaar kruisen), krijgt geen entry — dat blijft handwerk.
+export function classifyHeightGuideFaces(faces, mainLayer) {
+  const result = new Map()
+  for (const face of faces) {
+    const n = face.vertices.length
+    const sidesByNode = new Map() // nodeId -> Set(+1/-1) waar het vlak ligt
+    for (let i = 0; i < n; i++) {
+      const node = mainLayer.findOne(`#${face.orderedEdgeIds?.[i]}`)
+      if (!node || node.attrs.heightGuide !== 'edge') continue
+      const pts = node.points()
+      const a = face.vertices[i], b = face.vertices[(i + 1) % n]
+      const sameDir = (pts[2] - pts[0]) * (b.x - a.x) + (pts[3] - pts[1]) * (b.y - a.y) > 0
+      // Vlak-binnenkant (dy, -dx) is precies de RECHTER normaal van de rand;
+      // loopt de rand mee met ep0→ep1, dan ligt het vlak dus rechts (-1).
+      const faceSide = sameDir ? -1 : 1
+      if (!sidesByNode.has(node.id())) sidesByNode.set(node.id(), new Set())
+      sidesByNode.get(node.id()).add(faceSide === (node.attrs.heightGuideSide ?? 1) ? 'high' : 'low')
+    }
+    const verdicts = new Set()
+    for (const sides of sidesByNode.values()) {
+      // Losse lijn die heen-en-terug in hetzelfde vlak loopt (vrij uiteinde):
+      // zegt niets over welke kant het vlak ligt.
+      if (sides.size === 1) verdicts.add([...sides][0])
+    }
+    if (verdicts.size === 1) result.set(faceHash(face), [...verdicts][0])
+  }
+  return result
+}
+
 // Eén bron voor zowel het overlay-component (RoofGuideOverlay.jsx) als de
 // snap-cascade (CanvasView.jsx::computeWallEndpoint, LineGizmo.jsx::applyMove)
 // — geen dubbele geometrie-logica. `floors` = note.settings.floors,
