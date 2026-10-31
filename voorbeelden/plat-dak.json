@@ -1,0 +1,211 @@
+{
+  "version": "2.1",
+  "title": "Voorbeeld – Plat dak",
+  "created": "2026-10-22T00:00:00.000Z",
+  "modified": "2026-10-22T00:00:00.000Z",
+  "settings": {
+    "background": "grid",
+    "zoom": 1,
+    "pan": {
+      "x": 0,
+      "y": 0
+    },
+    "installations": [
+      {
+        "id": "pd-cv",
+        "kind": "verwarming",
+        "type": "cv_ketel"
+      }
+    ],
+    "defaultHeatingInstallationId": "pd-cv",
+    "floors": [
+      {
+        "id": "pd-f0",
+        "name": "Kelder",
+        "heightM": null,
+        "referencePoint": null
+      },
+      {
+        "id": "pd-f1",
+        "name": "Souterrain",
+        "heightM": null,
+        "referencePoint": null
+      },
+      {
+        "id": "pd-f2",
+        "name": "Begane grond",
+        "heightM": 3,
+        "referencePoint": {
+          "wallId": "pd-w1",
+          "ep": 0,
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": "pd-f3",
+        "name": "1e verdieping",
+        "heightM": null,
+        "referencePoint": null
+      },
+      {
+        "id": "pd-f4",
+        "name": "2e verdieping",
+        "heightM": null,
+        "referencePoint": null
+      }
+    ],
+    "gebouwdelen": [
+      {
+        "id": "pd-hoofd",
+        "name": "Hoofdhuis"
+      }
+    ],
+    "constructies": [],
+    "faceAttributes": {
+      "pd-w1|pd-w2|pd-w3|pd-w4": {
+        "platDak": true
+      }
+    }
+  },
+  "canvas": {
+    "konva_snapshot": [
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "pd-w1",
+          "points": [
+            0,
+            0,
+            200,
+            0
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "pd-w4",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "pd-w2",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "pd-w2",
+          "points": [
+            200,
+            0,
+            200,
+            150
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "pd-w1",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "pd-w3",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "pd-w3",
+          "points": [
+            200,
+            150,
+            0,
+            150
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "pd-w2",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "pd-w4",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "pd-w4",
+          "points": [
+            0,
+            150,
+            0,
+            0
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "pd-w3",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "pd-w1",
+              "ep": 0
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
