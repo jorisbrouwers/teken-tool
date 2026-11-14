@@ -1,0 +1,2828 @@
+{
+  "version": "2.1",
+  "title": "dakkapel_plat_dak",
+  "created": "2026-11-05T05:59:44.504Z",
+  "modified": "2026-11-14T10:11:51.810Z",
+  "settings": {
+    "background": "grid",
+    "zoom": 0.41787021875639496,
+    "pan": {
+      "x": 366.2217598687984,
+      "y": -177.13184430945466
+    },
+    "installations": [
+      {
+        "id": "cbfd377e-88c7-4228-bcf7-ee15ad9ea1af",
+        "kind": "verwarming",
+        "type": "cv_ketel"
+      }
+    ],
+    "defaultHeatingInstallationId": "cbfd377e-88c7-4228-bcf7-ee15ad9ea1af",
+    "floors": [
+      {
+        "id": "a5597f33-6238-43d5-bb56-d67ffbe32e5f",
+        "name": "Kelder",
+        "heightM": null,
+        "referencePoint": null
+      },
+      {
+        "id": "05b1a438-e060-468e-a108-8d14043da8ca",
+        "name": "Souterrain",
+        "heightM": null,
+        "referencePoint": null
+      },
+      {
+        "id": "7ee931fe-b565-472c-8825-18b8af0e4ea7",
+        "name": "Begane grond",
+        "heightM": 2.72,
+        "referencePoint": {
+          "wallId": "fd29f3d0-57f7-4baa-8514-436aff4106ce",
+          "ep": 1,
+          "x": -18,
+          "y": 39
+        }
+      },
+      {
+        "id": "66ee3b81-73aa-4b30-b441-1b15a3c9c6fa",
+        "name": "1e verdieping",
+        "heightM": 2.71,
+        "referencePoint": {
+          "wallId": "00bb00a9-9d68-4730-bee6-784ea2fc50e4",
+          "ep": 1,
+          "x": -5,
+          "y": 39
+        }
+      },
+      {
+        "id": "cd713a3e-b549-4841-b5ca-78d53304318b",
+        "name": "2e verdieping",
+        "heightM": 3.86,
+        "referencePoint": {
+          "wallId": "ba715b23-6cf9-49e2-b5f2-0c97447ea47f",
+          "ep": 0,
+          "x": 7,
+          "y": 39
+        },
+        "heightNote": "nok"
+      }
+    ],
+    "gebouwdelen": [
+      {
+        "id": "26cfccd1-1665-4504-87ab-df6241cce7f9",
+        "name": "Hoofdhuis"
+      }
+    ],
+    "faceAttributes": {
+      "0a6f43de-d63d-4b53-a124-a896020ee2e4|455d30c1-da4e-4329-bb9d-f036887b32c2|62195f45-ec45-484a-8b3a-f90068161a9b|de099c8e-e0db-498e-a791-0a39a09ffbce": {
+        "platDak": true,
+        "platDakHeightM": 2.49
+      },
+      "9332c69d-f861-4715-8d1e-7d7a70f2b478|9c329f69-aed4-492a-9c7d-3bb5918739ac|b8969496-c540-40e5-a327-f83e507a5d44|fb66036d-aa47-4225-b706-1b8b2e0825ef": {
+        "platDak": true,
+        "platDakHeightM": 2.49
+      },
+      "11bf8de6-f2f4-42cb-b1c4-defd07afd7f1|15bf43aa-2828-4a39-8ea1-b6b7e78ab41d|4ed2f279-dddb-4871-aa00-499d3591d510|597fb44f-813a-41ed-bdb0-2f4851d2903f|716f9efe-4aad-4553-bdad-aa9a1dc7bd63|990eb404-b77d-4318-bc73-fd1c0bdc53a3|a5210b63-671c-4b8e-80f3-e0c17db90583|d792ee0f-6466-42ea-acbd-48f2a2dd53c0|d9e85472-b467-4a49-ae65-1ee49e19eaf6|f2ef52de-2718-42d2-9e35-35abda4ee931": {
+        "aard": "<1.5m"
+      },
+      "31569402-6891-415f-b67f-866cd74c4e1a|33bae3dc-f3f7-4aed-be3f-93059ab2b48f|36fc3d05-cd00-464f-9e7f-a9bc69c76e5f|80add336-9485-4e8d-b1c8-2b39529ec54b|85ffcd6a-185d-48b8-9bf4-2199c1253ba0|97f95f67-4c81-46da-a721-6cd774cb7a8b|a55ae0ce-e547-4dae-8707-a7cec2809664|ae3dd28b-ea68-4926-8e96-6d0c06311333|e54fd7b3-dc87-4c7a-9fe8-e7476cbbe495|fa862996-0aba-4b48-8395-45174a91dac6": {
+        "aard": "<1.5m"
+      },
+      "1d038d4e-5e4e-4b26-a35f-4658f9090a47|a4c8d8de-a247-4c54-af50-1d595faba898|af93ae26-3156-4481-beaf-69e8ab9a084b|e03534ac-6f53-413e-b0ac-083076cca91a": {
+        "aard": "<1.5m"
+      },
+      "5b018cd8-2611-44b5-a3f4-97bb9fe9aa0b|75bf72ee-e251-4cea-ad56-d472eaa472e0|bad8209d-e24b-4148-b7c6-878aa023106b|d06e144b-405f-411d-821b-ef135682c034": {
+        "aard": "<1.5m"
+      },
+      "1f6a342e-5b8f-453e-8b5e-e4be0d1109ec|b3537464-93fa-45e5-9e69-2232236ba264|ba4b9fd9-732c-4917-820a-c37b777148d1|de099c8e-e0db-498e-a791-0a39a09ffbce": {
+        "platDak": true,
+        "platDakHeightM": 2.49
+      },
+      "11bf8de6-f2f4-42cb-b1c4-defd07afd7f1|49684178-eb11-41bc-af3c-c637cbfd93b0|4ed2f279-dddb-4871-aa00-499d3591d510|597fb44f-813a-41ed-bdb0-2f4851d2903f|716f9efe-4aad-4553-bdad-aa9a1dc7bd63|8e2c1e78-1bd5-4b19-8bcb-dbfec000b4cf|990eb404-b77d-4318-bc73-fd1c0bdc53a3|a5210b63-671c-4b8e-80f3-e0c17db90583|ba715b23-6cf9-49e2-b5f2-0c97447ea47f|d792ee0f-6466-42ea-acbd-48f2a2dd53c0|d9e85472-b467-4a49-ae65-1ee49e19eaf6|f2ef52de-2718-42d2-9e35-35abda4ee931": {
+        "aard": "<1.5m"
+      },
+      "11bf8de6-f2f4-42cb-b1c4-defd07afd7f1|49684178-eb11-41bc-af3c-c637cbfd93b0|4ed2f279-dddb-4871-aa00-499d3591d510|597fb44f-813a-41ed-bdb0-2f4851d2903f|8e2c1e78-1bd5-4b19-8bcb-dbfec000b4cf|990eb404-b77d-4318-bc73-fd1c0bdc53a3|a5210b63-671c-4b8e-80f3-e0c17db90583|ba715b23-6cf9-49e2-b5f2-0c97447ea47f|d792ee0f-6466-42ea-acbd-48f2a2dd53c0|d9e85472-b467-4a49-ae65-1ee49e19eaf6|f2ef52de-2718-42d2-9e35-35abda4ee931": {
+        "aard": "<1.5m"
+      },
+      "11bf8de6-f2f4-42cb-b1c4-defd07afd7f1|49684178-eb11-41bc-af3c-c637cbfd93b0|4ed2f279-dddb-4871-aa00-499d3591d510|597fb44f-813a-41ed-bdb0-2f4851d2903f|990eb404-b77d-4318-bc73-fd1c0bdc53a3|aabd7b6b-f5c9-452f-aec0-6d69f2c8b7af|ba715b23-6cf9-49e2-b5f2-0c97447ea47f|d792ee0f-6466-42ea-acbd-48f2a2dd53c0|f2ef52de-2718-42d2-9e35-35abda4ee931": {
+        "aard": "<1.5m"
+      },
+      "11bf8de6-f2f4-42cb-b1c4-defd07afd7f1|49684178-eb11-41bc-af3c-c637cbfd93b0|4ed2f279-dddb-4871-aa00-499d3591d510|597fb44f-813a-41ed-bdb0-2f4851d2903f|990eb404-b77d-4318-bc73-fd1c0bdc53a3|aabd7b6b-f5c9-452f-aec0-6d69f2c8b7af|ba715b23-6cf9-49e2-b5f2-0c97447ea47f|f2ef52de-2718-42d2-9e35-35abda4ee931": {
+        "aard": "<1.5m"
+      },
+      "06dc3538-2b5e-4792-81fa-ec65290a0778|4ed2f279-dddb-4871-aa00-499d3591d510|597fb44f-813a-41ed-bdb0-2f4851d2903f|aabd7b6b-f5c9-452f-aec0-6d69f2c8b7af|ba715b23-6cf9-49e2-b5f2-0c97447ea47f|f2ef52de-2718-42d2-9e35-35abda4ee931": {
+        "aard": "gebruiksruimte"
+      },
+      "65ae8e96-63c1-4bec-b124-ebdfa8558faa|c02b0e11-4ab1-4cac-9135-85e9cf526e27|d06e144b-405f-411d-821b-ef135682c034|e03534ac-6f53-413e-b0ac-083076cca91a": {
+        "aard": "<1.5m"
+      },
+      "009b7d75-47fc-4223-b21e-54cf13783823|5b018cd8-2611-44b5-a3f4-97bb9fe9aa0b|65cbf9a3-92ce-494d-8a63-0c1ee5603d6a|e03534ac-6f53-413e-b0ac-083076cca91a": {
+        "aard": "gebruiksruimte"
+      }
+    },
+    "roomAssignments": {
+      "1f6a342e-5b8f-453e-8b5e-e4be0d1109ec|b3537464-93fa-45e5-9e69-2232236ba264|ba4b9fd9-732c-4917-820a-c37b777148d1|de099c8e-e0db-498e-a791-0a39a09ffbce": {
+        "heatingInstallationId": null,
+        "coolingInstallationId": null
+      }
+    },
+    "northAngle": 135
+  },
+  "canvas": {
+    "konva_snapshot": [
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "00bb00a9-9d68-4730-bee6-784ea2fc50e4",
+          "points": [
+            -231.75,
+            772.75,
+            -231.75,
+            954.75
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "x": 106.75,
+          "y": 20,
+          "_ep0conns": [
+            {
+              "id": "c251d4e2-e8cf-417d-abfe-4f6136270a48",
+              "ep": 0
+            }
+          ],
+          "boundary": "buiten",
+          "_ep1conns": [
+            {
+              "id": "87bb7296-1ac3-421e-af00-da5d152fbea4",
+              "ep": 1
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "c251d4e2-e8cf-417d-abfe-4f6136270a48",
+          "points": [
+            -250.75,
+            780.75,
+            -128.25,
+            780.75
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "00bb00a9-9d68-4730-bee6-784ea2fc50e4",
+              "ep": 0
+            }
+          ],
+          "x": 125.75,
+          "y": 12,
+          "_ep1conns": [
+            {
+              "id": "2c603330-4f2d-4348-bbb5-79a28954dfee",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "ba715b23-6cf9-49e2-b5f2-0c97447ea47f",
+          "x": 177.25,
+          "y": 976,
+          "points": [
+            -0.75,
+            0,
+            121.75,
+            0
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "opacity": 1,
+          "hitStrokeWidth": 8,
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "lineCap": "round",
+          "_ep0conns": [
+            {
+              "id": "aabd7b6b-f5c9-452f-aec0-6d69f2c8b7af",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "06dc3538-2b5e-4792-81fa-ec65290a0778",
+              "ep": 1
+            }
+          ],
+          "roofCourses": [
+            {
+              "angleDeg": 47,
+              "riseM": null
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "3268eebf-2e04-481f-b4fe-459ba9999fdc",
+          "points": [
+            264.5,
+            775.25,
+            264.5,
+            756.5
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 0.8,
+          "dash": [
+            1.6,
+            2.4000000000000004
+          ],
+          "hitStrokeWidth": 8,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "isAux": true,
+          "_ep0conns": [
+            {
+              "id": "f2ef52de-2718-42d2-9e35-35abda4ee931",
+              "ep": 1
+            },
+            {
+              "id": "4ed2f279-dddb-4871-aa00-499d3591d510",
+              "ep": 0
+            }
+          ],
+          "x": -71,
+          "y": 18.75
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "f2ef52de-2718-42d2-9e35-35abda4ee931",
+          "x": 176.5,
+          "y": 794,
+          "points": [
+            0,
+            0,
+            17,
+            0
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "opacity": 1,
+          "hitStrokeWidth": 8,
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "roofCourses": [
+            {
+              "angleDeg": 47,
+              "riseM": null
+            }
+          ],
+          "lineCap": "round",
+          "_ep1conns": [
+            {
+              "id": "3268eebf-2e04-481f-b4fe-459ba9999fdc",
+              "ep": 0
+            },
+            {
+              "id": "4ed2f279-dddb-4871-aa00-499d3591d510",
+              "ep": 0
+            }
+          ],
+          "_ep0conns": [
+            {
+              "id": "aabd7b6b-f5c9-452f-aec0-6d69f2c8b7af",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "66e954bb-2c70-4f62-b741-28983aef058c",
+          "points": [
+            358,
+            775.25,
+            358,
+            756.5
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 0.8,
+          "dash": [
+            1.6,
+            2.4000000000000004
+          ],
+          "hitStrokeWidth": 8,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "isAux": true,
+          "_ep0conns": [
+            {
+              "id": "4ed2f279-dddb-4871-aa00-499d3591d510",
+              "ep": 1
+            },
+            {
+              "id": "597fb44f-813a-41ed-bdb0-2f4851d2903f",
+              "ep": 0
+            }
+          ],
+          "x": -76,
+          "y": 18.75
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "4ed2f279-dddb-4871-aa00-499d3591d510",
+          "x": 191,
+          "y": 794,
+          "points": [
+            2.5,
+            0,
+            91,
+            0
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "opacity": 1,
+          "hitStrokeWidth": 8,
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "lineCap": "round",
+          "_ep0conns": [
+            {
+              "id": "f2ef52de-2718-42d2-9e35-35abda4ee931",
+              "ep": 1
+            },
+            {
+              "id": "3268eebf-2e04-481f-b4fe-459ba9999fdc",
+              "ep": 0
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "597fb44f-813a-41ed-bdb0-2f4851d2903f",
+              "ep": 0
+            },
+            {
+              "id": "66e954bb-2c70-4f62-b741-28983aef058c",
+              "ep": 0
+            }
+          ],
+          "roofCourses": [
+            {
+              "angleDeg": 47,
+              "riseM": null
+            }
+          ],
+          "dakkapel": {
+            "type": "plat",
+            "onderkantM": 0.69,
+            "bovenkantM": 2.49,
+            "angleDeg": null,
+            "schildAngleDeg": null,
+            "wangBoundary1": null,
+            "wangBoundary2": null,
+            "angleDeg1": null,
+            "angleDeg2": null,
+            "bovenkantM1": null,
+            "bovenkantM2": null,
+            "constructieId": null,
+            "dakConstructieId": null
+          },
+          "boundary": "buiten"
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "597fb44f-813a-41ed-bdb0-2f4851d2903f",
+          "x": 284.5,
+          "y": 794,
+          "points": [
+            -2.5,
+            2.0818995585505003e-15,
+            14.5,
+            0
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "opacity": 1,
+          "hitStrokeWidth": 8,
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "roofCourses": [
+            {
+              "angleDeg": 47,
+              "riseM": null
+            }
+          ],
+          "lineCap": "round",
+          "_ep0conns": [
+            {
+              "id": "4ed2f279-dddb-4871-aa00-499d3591d510",
+              "ep": 1
+            },
+            {
+              "id": "66e954bb-2c70-4f62-b741-28983aef058c",
+              "ep": 0
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "06dc3538-2b5e-4792-81fa-ec65290a0778",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "aabd7b6b-f5c9-452f-aec0-6d69f2c8b7af",
+          "x": 176.5,
+          "y": 794,
+          "points": [
+            0,
+            0,
+            0,
+            182
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "opacity": 1,
+          "hitStrokeWidth": 8,
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "boundary": "buiten",
+          "lineCap": "round",
+          "_ep0conns": [
+            {
+              "id": "f2ef52de-2718-42d2-9e35-35abda4ee931",
+              "ep": 0
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "ba715b23-6cf9-49e2-b5f2-0c97447ea47f",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "06dc3538-2b5e-4792-81fa-ec65290a0778",
+          "x": 299,
+          "y": 794,
+          "points": [
+            0,
+            0,
+            0,
+            182
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "opacity": 1,
+          "hitStrokeWidth": 8,
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "boundary": "buren",
+          "lineCap": "round",
+          "_ep0conns": [
+            {
+              "id": "597fb44f-813a-41ed-bdb0-2f4851d2903f",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "ba715b23-6cf9-49e2-b5f2-0c97447ea47f",
+              "ep": 1
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "2c603330-4f2d-4348-bbb5-79a28954dfee",
+          "x": -2.5,
+          "y": 792.75,
+          "points": [
+            0,
+            0,
+            0,
+            182
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "opacity": 1,
+          "hitStrokeWidth": 8,
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "boundary": "buren",
+          "lineCap": "round",
+          "_ep0conns": [
+            {
+              "id": "c251d4e2-e8cf-417d-abfe-4f6136270a48",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "87bb7296-1ac3-421e-af00-da5d152fbea4",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "87bb7296-1ac3-421e-af00-da5d152fbea4",
+          "points": [
+            -152,
+            999.5,
+            -274.5,
+            999.5
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "2c603330-4f2d-4348-bbb5-79a28954dfee",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "00bb00a9-9d68-4730-bee6-784ea2fc50e4",
+              "ep": 1
+            }
+          ],
+          "x": 149.5,
+          "y": -24.75
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "fd29f3d0-57f7-4baa-8514-436aff4106ce",
+          "points": [
+            -231.75,
+            772.75,
+            -231.75,
+            954.75
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "x": -218,
+          "y": 20.75,
+          "_ep0conns": [
+            {
+              "id": "e1eac8a8-1754-4886-bb9d-711dc7d2072e",
+              "ep": 0
+            }
+          ],
+          "boundary": "buiten",
+          "_ep1conns": [
+            {
+              "id": "eac0c147-81bf-4791-bd51-7e3ec995e56a",
+              "ep": 1
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "e1eac8a8-1754-4886-bb9d-711dc7d2072e",
+          "points": [
+            -250.75,
+            780.75,
+            -128.25,
+            780.75
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "fd29f3d0-57f7-4baa-8514-436aff4106ce",
+              "ep": 0
+            }
+          ],
+          "x": -199,
+          "y": 12.75,
+          "_ep1conns": [
+            {
+              "id": "a45ab7d5-573a-4d4c-9db4-3238b680c26b",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "a45ab7d5-573a-4d4c-9db4-3238b680c26b",
+          "x": -327.25,
+          "y": 793.5,
+          "points": [
+            0,
+            0,
+            0,
+            182
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "opacity": 1,
+          "hitStrokeWidth": 8,
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "boundary": "buren",
+          "lineCap": "round",
+          "_ep0conns": [
+            {
+              "id": "e1eac8a8-1754-4886-bb9d-711dc7d2072e",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "eac0c147-81bf-4791-bd51-7e3ec995e56a",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "eac0c147-81bf-4791-bd51-7e3ec995e56a",
+          "points": [
+            -152,
+            999.5,
+            -274.5,
+            999.5
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "a45ab7d5-573a-4d4c-9db4-3238b680c26b",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "fd29f3d0-57f7-4baa-8514-436aff4106ce",
+              "ep": 1
+            }
+          ],
+          "x": -175.25,
+          "y": -24
+        }
+      }
+    ]
+  },
+  "model3d": {
+    "format": 1,
+    "gegenereerd": {
+      "model": {
+        "format": 1,
+        "motor": "0.17.0",
+        "invoer_sha1": "4fb5551cb76b569ce2b68338321bc436c34bc99f",
+        "project": {
+          "titel": "Woning",
+          "northAngle": 135,
+          "frontFacadeScreenAngle": 180,
+          "frontFacadeBearing": 135,
+          "begane_grond": "Begane grond"
+        },
+        "zones": [
+          {
+            "index": 0,
+            "label": "RZ-1",
+            "soort": "zone",
+            "kleur": "#994a20"
+          },
+          {
+            "index": 1,
+            "label": "onbekend",
+            "soort": "onbekend",
+            "kleur": "#b39090"
+          }
+        ],
+        "gebouwdelen": [
+          {
+            "index": 0,
+            "naam": "Hoofdhuis"
+          }
+        ],
+        "constructies": [],
+        "objecten": [
+          {
+            "id": "o1",
+            "label": "Begane grond",
+            "verdieping": "Begane grond",
+            "gebouwdeel": 0,
+            "z_onder": 0,
+            "z_boven": 2.72,
+            "buiten_berekening": false
+          },
+          {
+            "id": "o2",
+            "label": "1e verdieping",
+            "verdieping": "1e verdieping",
+            "gebouwdeel": 0,
+            "z_onder": 2.72,
+            "z_boven": 5.43,
+            "buiten_berekening": false
+          },
+          {
+            "id": "o3",
+            "label": "2e verdieping",
+            "verdieping": "2e verdieping",
+            "gebouwdeel": 0,
+            "z_onder": 5.43,
+            "z_boven": 9.29,
+            "buiten_berekening": false
+          }
+        ],
+        "vlakken": [
+          {
+            "id": "v1",
+            "object": "o1",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "fd29f3d0-57f7-4baa-8514-436aff4106ce",
+            "hoekpunten": [
+              [
+                0,
+                7.28,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                2.72
+              ],
+              [
+                0,
+                7.28,
+                2.72
+              ]
+            ],
+            "normaal": [
+              -1,
+              0,
+              0
+            ],
+            "oppervlakte": 19.8016,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZW",
+            "azimut": 225,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v2",
+            "object": "o1",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "eac0c147-81bf-4791-bd51-7e3ec995e56a",
+            "hoekpunten": [
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                4.9,
+                0,
+                0
+              ],
+              [
+                4.9,
+                0,
+                2.72
+              ],
+              [
+                0,
+                0,
+                2.72
+              ]
+            ],
+            "normaal": [
+              0,
+              -1,
+              0
+            ],
+            "oppervlakte": 13.328,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZO",
+            "azimut": 135,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v3",
+            "object": "o1",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "a45ab7d5-573a-4d4c-9db4-3238b680c26b",
+            "hoekpunten": [
+              [
+                4.9,
+                0,
+                0
+              ],
+              [
+                4.9,
+                7.28,
+                0
+              ],
+              [
+                4.9,
+                7.28,
+                2.72
+              ],
+              [
+                4.9,
+                0,
+                2.72
+              ]
+            ],
+            "normaal": [
+              1,
+              0,
+              0
+            ],
+            "oppervlakte": 19.8016,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buren",
+            "aard": "gebruiksruimte",
+            "windrichting": "NO",
+            "azimut": 45,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v4",
+            "object": "o1",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "e1eac8a8-1754-4886-bb9d-711dc7d2072e",
+            "hoekpunten": [
+              [
+                4.9,
+                7.28,
+                0
+              ],
+              [
+                0,
+                7.28,
+                0
+              ],
+              [
+                0,
+                7.28,
+                2.72
+              ],
+              [
+                4.9,
+                7.28,
+                2.72
+              ]
+            ],
+            "normaal": [
+              0,
+              1,
+              0
+            ],
+            "oppervlakte": 13.328,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "NW",
+            "azimut": 315,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v5",
+            "object": "o1",
+            "soort": "vloer",
+            "bron": "vloervlak",
+            "bron_id": "a45ab7d5-573a-4d4c-9db4-3238b680c26b|e1eac8a8-1754-4886-bb9d-711dc7d2072e|eac0c147-81bf-4791-bd51-7e3ec995e56a|fd29f3d0-57f7-4baa-8514-436aff4106ce",
+            "hoekpunten": [
+              [
+                4.9,
+                7.28,
+                0
+              ],
+              [
+                4.9,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                7.28,
+                0
+              ]
+            ],
+            "normaal": [
+              0,
+              0,
+              -1
+            ],
+            "oppervlakte": 35.672,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "kruipruimte",
+            "aard": "gebruiksruimte",
+            "windrichting": "HOR",
+            "azimut": null,
+            "helling": 0,
+            "dakkapel": null
+          },
+          {
+            "id": "v6",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "00bb00a9-9d68-4730-bee6-784ea2fc50e4",
+            "hoekpunten": [
+              [
+                0,
+                7.28,
+                2.72
+              ],
+              [
+                0,
+                0,
+                2.72
+              ],
+              [
+                0,
+                0,
+                5.43
+              ],
+              [
+                0,
+                7.28,
+                5.43
+              ]
+            ],
+            "normaal": [
+              -1,
+              0,
+              0
+            ],
+            "oppervlakte": 19.7288,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZW",
+            "azimut": 225,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v7",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "87bb7296-1ac3-421e-af00-da5d152fbea4",
+            "hoekpunten": [
+              [
+                0,
+                0,
+                2.72
+              ],
+              [
+                4.9,
+                0,
+                2.72
+              ],
+              [
+                4.9,
+                0,
+                5.43
+              ],
+              [
+                0,
+                0,
+                5.43
+              ]
+            ],
+            "normaal": [
+              0,
+              -1,
+              0
+            ],
+            "oppervlakte": 13.279,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZO",
+            "azimut": 135,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v8",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "2c603330-4f2d-4348-bbb5-79a28954dfee",
+            "hoekpunten": [
+              [
+                4.9,
+                0,
+                2.72
+              ],
+              [
+                4.9,
+                7.28,
+                2.72
+              ],
+              [
+                4.9,
+                7.28,
+                5.43
+              ],
+              [
+                4.9,
+                0,
+                5.43
+              ]
+            ],
+            "normaal": [
+              1,
+              0,
+              0
+            ],
+            "oppervlakte": 19.7288,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buren",
+            "aard": "gebruiksruimte",
+            "windrichting": "NO",
+            "azimut": 45,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v9",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "c251d4e2-e8cf-417d-abfe-4f6136270a48",
+            "hoekpunten": [
+              [
+                4.9,
+                7.28,
+                2.72
+              ],
+              [
+                0,
+                7.28,
+                2.72
+              ],
+              [
+                0,
+                7.28,
+                5.43
+              ],
+              [
+                4.9,
+                7.28,
+                5.43
+              ]
+            ],
+            "normaal": [
+              0,
+              1,
+              0
+            ],
+            "oppervlakte": 13.279,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "NW",
+            "azimut": 315,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v10",
+            "object": "o3",
+            "soort": "dak",
+            "bron": "dakvlak",
+            "bron_id": null,
+            "hoekpunten": [
+              [
+                0,
+                0,
+                5.43
+              ],
+              [
+                4.9,
+                0,
+                5.43
+              ],
+              [
+                4.9,
+                3.64,
+                9.333422
+              ],
+              [
+                0,
+                3.64,
+                9.333422
+              ]
+            ],
+            "normaal": [
+              0,
+              -0.731354,
+              0.681998
+            ],
+            "oppervlakte": 26.152556,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": null,
+            "windrichting": "ZO",
+            "azimut": 135,
+            "helling": 47,
+            "dakkapel": null
+          },
+          {
+            "id": "v11",
+            "object": "o3",
+            "soort": "dak",
+            "bron": "dakvlak",
+            "bron_id": null,
+            "hoekpunten": [
+              [
+                0,
+                7.28,
+                5.43
+              ],
+              [
+                0,
+                3.64,
+                9.333422
+              ],
+              [
+                4.22,
+                3.64,
+                9.333422
+              ],
+              [
+                4.22,
+                4.958037,
+                7.92
+              ],
+              [
+                0.68,
+                4.958037,
+                7.92
+              ],
+              [
+                0.68,
+                6.636565,
+                6.12
+              ],
+              [
+                4.22,
+                6.636565,
+                6.12
+              ],
+              [
+                4.22,
+                7.28,
+                5.43
+              ]
+            ],
+            "normaal": [
+              0,
+              0.731354,
+              0.681998
+            ],
+            "oppervlakte": 13.810611,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": null,
+            "windrichting": "NW",
+            "azimut": 315,
+            "helling": 47,
+            "dakkapel": null
+          },
+          {
+            "id": "v12",
+            "object": "o3",
+            "soort": "dak",
+            "bron": "dakvlak",
+            "bron_id": null,
+            "hoekpunten": [
+              [
+                4.22,
+                7.28,
+                5.43
+              ],
+              [
+                4.22,
+                6.636565,
+                6.12
+              ],
+              [
+                4.22,
+                4.958037,
+                7.92
+              ],
+              [
+                4.22,
+                3.64,
+                9.333422
+              ],
+              [
+                4.9,
+                3.64,
+                9.333422
+              ],
+              [
+                4.9,
+                7.28,
+                5.43
+              ]
+            ],
+            "normaal": [
+              0,
+              0.731354,
+              0.681998
+            ],
+            "oppervlakte": 3.629334,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": null,
+            "windrichting": "NW",
+            "azimut": 315,
+            "helling": 47,
+            "dakkapel": null
+          },
+          {
+            "id": "v13",
+            "object": "o3",
+            "soort": "dak",
+            "bron": "dakvlak",
+            "bron_id": null,
+            "hoekpunten": [
+              [
+                0.68,
+                6.636565,
+                7.92
+              ],
+              [
+                0.68,
+                4.958037,
+                7.92
+              ],
+              [
+                4.22,
+                4.958037,
+                7.92
+              ],
+              [
+                4.22,
+                6.636565,
+                7.92
+              ]
+            ],
+            "normaal": [
+              0,
+              0,
+              1
+            ],
+            "oppervlakte": 5.941986,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": null,
+            "windrichting": "HOR",
+            "azimut": null,
+            "helling": 0,
+            "dakkapel": {
+              "id": "4ed2f279-dddb-4871-aa00-499d3591d510",
+              "type": "plat",
+              "rol": "dak",
+              "windrichting": "NW",
+              "midden": [
+                2.45,
+                7.28
+              ],
+              "richting": [
+                0,
+                1
+              ]
+            }
+          },
+          {
+            "id": "v14",
+            "object": "o3",
+            "soort": "gevel",
+            "bron": "kopgevel",
+            "bron_id": null,
+            "hoekpunten": [
+              [
+                4.9,
+                0,
+                5.43
+              ],
+              [
+                4.9,
+                7.28,
+                5.43
+              ],
+              [
+                4.9,
+                3.64,
+                9.333422
+              ]
+            ],
+            "normaal": [
+              1,
+              0,
+              0
+            ],
+            "oppervlakte": 14.208456,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buren",
+            "aard": "gebruiksruimte",
+            "windrichting": "NO",
+            "azimut": 45,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v15",
+            "object": "o3",
+            "soort": "gevel",
+            "bron": "kopgevel",
+            "bron_id": null,
+            "hoekpunten": [
+              [
+                0,
+                7.28,
+                5.43
+              ],
+              [
+                0,
+                0,
+                5.43
+              ],
+              [
+                0,
+                3.64,
+                9.333422
+              ]
+            ],
+            "normaal": [
+              -1,
+              0,
+              0
+            ],
+            "oppervlakte": 14.208456,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZW",
+            "azimut": 225,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v16",
+            "object": "o3",
+            "soort": "gevel",
+            "bron": "kopgevel",
+            "bron_id": null,
+            "hoekpunten": [
+              [
+                4.22,
+                6.636565,
+                6.12
+              ],
+              [
+                0.68,
+                6.636565,
+                6.12
+              ],
+              [
+                0.68,
+                6.636565,
+                7.92
+              ],
+              [
+                4.22,
+                6.636565,
+                7.92
+              ]
+            ],
+            "normaal": [
+              0,
+              1,
+              0
+            ],
+            "oppervlakte": 6.372,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "NW",
+            "azimut": 315,
+            "helling": 90,
+            "dakkapel": {
+              "id": "4ed2f279-dddb-4871-aa00-499d3591d510",
+              "type": "plat",
+              "rol": "gevel",
+              "windrichting": "NW",
+              "midden": [
+                2.45,
+                7.28
+              ],
+              "richting": [
+                0,
+                1
+              ]
+            }
+          },
+          {
+            "id": "v17",
+            "object": "o3",
+            "soort": "gevel",
+            "bron": "kopgevel",
+            "bron_id": null,
+            "hoekpunten": [
+              [
+                4.22,
+                6.636565,
+                6.12
+              ],
+              [
+                4.22,
+                6.636565,
+                7.92
+              ],
+              [
+                4.22,
+                4.958037,
+                7.92
+              ]
+            ],
+            "normaal": [
+              1,
+              0,
+              0
+            ],
+            "oppervlakte": 1.510674,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "NO",
+            "azimut": 45,
+            "helling": 90,
+            "dakkapel": {
+              "id": "4ed2f279-dddb-4871-aa00-499d3591d510",
+              "type": "plat",
+              "rol": "wang2",
+              "windrichting": "NW",
+              "midden": [
+                2.45,
+                7.28
+              ],
+              "richting": [
+                0,
+                1
+              ]
+            }
+          },
+          {
+            "id": "v18",
+            "object": "o3",
+            "soort": "gevel",
+            "bron": "kopgevel",
+            "bron_id": null,
+            "hoekpunten": [
+              [
+                0.68,
+                4.958037,
+                7.92
+              ],
+              [
+                0.68,
+                6.636565,
+                7.92
+              ],
+              [
+                0.68,
+                6.636565,
+                6.12
+              ]
+            ],
+            "normaal": [
+              -1,
+              0,
+              0
+            ],
+            "oppervlakte": 1.510674,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZW",
+            "azimut": 225,
+            "helling": 90,
+            "dakkapel": {
+              "id": "4ed2f279-dddb-4871-aa00-499d3591d510",
+              "type": "plat",
+              "rol": "wang1",
+              "windrichting": "NW",
+              "midden": [
+                2.45,
+                7.28
+              ],
+              "richting": [
+                0,
+                1
+              ]
+            }
+          }
+        ],
+        "waarschuwingen": [],
+        "fouten": []
+      },
+      "berekening": {
+        "format": 1,
+        "motor": "0.17.0",
+        "model_sha1": "7b4f78a8298c91dc8277db50905009025cfd534d",
+        "koppen": [
+          {
+            "id": "vloer||-|0|z0|g0|c-1|kruipruimte",
+            "label": "Vloer",
+            "vlaktype": "vloer",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "kruipruimte",
+            "grens": null,
+            "windrichting": null,
+            "helling": 0,
+            "dakkapel": null,
+            "vlakken": [
+              "v5"
+            ],
+            "rijen": [
+              {
+                "a": 4.9,
+                "b": 7.28,
+                "uitkomst": 36.47,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v5"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        0,
+                        0,
+                        0
+                      ],
+                      [
+                        4.9,
+                        0,
+                        0
+                      ],
+                      [
+                        4.9,
+                        7.28,
+                        0
+                      ],
+                      [
+                        0,
+                        7.28,
+                        0
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 4.9,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "naar": [
+                        4.9,
+                        0,
+                        0
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 7.28,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "naar": [
+                        0,
+                        7.28,
+                        0
+                      ],
+                      "rand": true
+                    }
+                  ]
+                },
+                "toeslag_a": 0.11
+              }
+            ],
+            "oppervlakte": 35.672,
+            "totaal": 36.47,
+            "handmatig": false
+          },
+          {
+            "id": "gevel||ZO|90|z0|g0|c-1|buiten",
+            "label": "Voorgevel",
+            "vlaktype": "gevel",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "ZO",
+            "helling": 90,
+            "dakkapel": null,
+            "vlakken": [
+              "v2",
+              "v7"
+            ],
+            "rijen": [
+              {
+                "a": 4.9,
+                "b": 5.43,
+                "uitkomst": 27.2,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v2",
+                  "v7"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        0,
+                        0,
+                        0
+                      ],
+                      [
+                        4.9,
+                        0,
+                        0
+                      ],
+                      [
+                        4.9,
+                        0,
+                        5.43
+                      ],
+                      [
+                        0,
+                        0,
+                        5.43
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 4.9,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "naar": [
+                        4.9,
+                        0,
+                        0
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 5.43,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "naar": [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      "rand": true
+                    }
+                  ]
+                },
+                "toeslag_a": 0.11
+              }
+            ],
+            "oppervlakte": 26.607,
+            "totaal": 27.2,
+            "handmatig": false
+          },
+          {
+            "id": "gevel||NW|90|z0|g0|c-1|buiten",
+            "label": "Achtergevel",
+            "vlaktype": "gevel",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "NW",
+            "helling": 90,
+            "dakkapel": null,
+            "vlakken": [
+              "v4",
+              "v9"
+            ],
+            "rijen": [
+              {
+                "a": 4.9,
+                "b": 5.43,
+                "uitkomst": 27.2,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v4",
+                  "v9"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        4.9,
+                        7.28,
+                        0
+                      ],
+                      [
+                        0,
+                        7.28,
+                        0
+                      ],
+                      [
+                        0,
+                        7.28,
+                        5.43
+                      ],
+                      [
+                        4.9,
+                        7.28,
+                        5.43
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 4.9,
+                      "gehalveerd": false,
+                      "van": [
+                        4.9,
+                        7.28,
+                        0
+                      ],
+                      "naar": [
+                        0,
+                        7.28,
+                        0
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 5.43,
+                      "gehalveerd": false,
+                      "van": [
+                        4.9,
+                        7.28,
+                        0
+                      ],
+                      "naar": [
+                        4.9,
+                        7.28,
+                        5.43
+                      ],
+                      "rand": true
+                    }
+                  ]
+                },
+                "toeslag_a": 0.11
+              }
+            ],
+            "oppervlakte": 26.607,
+            "totaal": 27.2,
+            "handmatig": false
+          },
+          {
+            "id": "gevel||ZW|90|z0|g0|c-1|buiten",
+            "label": "Linkergevel",
+            "vlaktype": "gevel",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "ZW",
+            "helling": 90,
+            "dakkapel": null,
+            "vlakken": [
+              "v1",
+              "v6",
+              "v15"
+            ],
+            "rijen": [
+              {
+                "a": 7.28,
+                "b": 5.43,
+                "uitkomst": 39.53,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v1",
+                  "v6"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        0,
+                        7.28,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        0
+                      ],
+                      [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      [
+                        0,
+                        7.28,
+                        5.43
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 7.28,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        7.28,
+                        0
+                      ],
+                      "naar": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 5.43,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        7.28,
+                        0
+                      ],
+                      "naar": [
+                        0,
+                        7.28,
+                        5.43
+                      ],
+                      "rand": true
+                    }
+                  ]
+                }
+              },
+              {
+                "a": 3.64,
+                "b": 3.9,
+                "uitkomst": 14.2,
+                "vorm": "driehoek",
+                "aantal": 1,
+                "gehalveerd": "a",
+                "vol": 7.28,
+                "vlakken": [
+                  "v15"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        0,
+                        7.28,
+                        5.43
+                      ],
+                      [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      [
+                        0,
+                        3.64,
+                        9.3334
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 7.28,
+                      "gehalveerd": true,
+                      "van": [
+                        0,
+                        7.28,
+                        5.43
+                      ],
+                      "naar": [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      "rand": false
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 3.9,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        3.64,
+                        5.43
+                      ],
+                      "naar": [
+                        0,
+                        3.64,
+                        9.3334
+                      ],
+                      "rand": false
+                    }
+                  ]
+                }
+              }
+            ],
+            "oppervlakte": 53.738856,
+            "totaal": 53.73,
+            "handmatig": false
+          },
+          {
+            "id": "dak||ZO|47|z0|g0|c-1|buiten",
+            "label": "Dak hellend voor",
+            "vlaktype": "dak",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "ZO",
+            "helling": 47,
+            "dakkapel": null,
+            "vlakken": [
+              "v10"
+            ],
+            "rijen": [
+              {
+                "a": 4.9,
+                "b": 5.34,
+                "uitkomst": 26.75,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v10"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      [
+                        4.9,
+                        0,
+                        5.43
+                      ],
+                      [
+                        4.9,
+                        3.64,
+                        9.3335
+                      ],
+                      [
+                        0,
+                        3.64,
+                        9.3335
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 4.9,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      "naar": [
+                        4.9,
+                        0,
+                        5.43
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 5.34,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      "naar": [
+                        0,
+                        3.64,
+                        9.3335
+                      ],
+                      "rand": true
+                    }
+                  ]
+                },
+                "toeslag_a": 0.11
+              }
+            ],
+            "oppervlakte": 26.152556,
+            "totaal": 26.75,
+            "handmatig": false
+          },
+          {
+            "id": "dak||NW|47|z0|g0|c-1|buiten",
+            "label": "Dak hellend achter",
+            "vlaktype": "dak",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "NW",
+            "helling": 47,
+            "dakkapel": null,
+            "vlakken": [
+              "v11",
+              "v12"
+            ],
+            "rijen": [
+              {
+                "a": 4.9,
+                "b": 5.34,
+                "uitkomst": 26.75,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v11",
+                  "v12"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        4.9,
+                        7.28,
+                        5.43
+                      ],
+                      [
+                        0,
+                        7.28,
+                        5.43
+                      ],
+                      [
+                        0,
+                        3.64,
+                        9.3335
+                      ],
+                      [
+                        4.9,
+                        3.64,
+                        9.3335
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 4.9,
+                      "gehalveerd": false,
+                      "van": [
+                        4.9,
+                        7.28,
+                        5.43
+                      ],
+                      "naar": [
+                        0,
+                        7.28,
+                        5.43
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 5.34,
+                      "gehalveerd": false,
+                      "van": [
+                        4.9,
+                        7.28,
+                        5.43
+                      ],
+                      "naar": [
+                        4.9,
+                        3.64,
+                        9.3335
+                      ],
+                      "rand": true
+                    }
+                  ]
+                },
+                "toeslag_a": 0.11
+              },
+              {
+                "a": 3.54,
+                "b": -2.46,
+                "uitkomst": -8.71,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v11",
+                  "v12"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        4.22,
+                        6.6365,
+                        6.12
+                      ],
+                      [
+                        0.68,
+                        6.6365,
+                        6.12
+                      ],
+                      [
+                        0.68,
+                        4.9581,
+                        7.92
+                      ],
+                      [
+                        4.22,
+                        4.9581,
+                        7.92
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 3.54,
+                      "gehalveerd": false,
+                      "van": [
+                        4.22,
+                        6.6365,
+                        6.12
+                      ],
+                      "naar": [
+                        0.68,
+                        6.6365,
+                        6.12
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 2.46,
+                      "gehalveerd": false,
+                      "van": [
+                        4.22,
+                        6.6365,
+                        6.12
+                      ],
+                      "naar": [
+                        4.22,
+                        4.9581,
+                        7.92
+                      ],
+                      "rand": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "oppervlakte": 17.439945,
+            "totaal": 18.04,
+            "handmatig": false
+          },
+          {
+            "id": "dak||HOR|0|z0|g0|c-1|buiten|dk:4ed2f279-dddb-4871-aa00-499d3591d510:dak",
+            "label": "Dak dakkapel achter",
+            "vlaktype": "dak",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "HOR",
+            "helling": 0,
+            "dakkapel": {
+              "id": "4ed2f279-dddb-4871-aa00-499d3591d510",
+              "type": "plat",
+              "rol": "dak"
+            },
+            "vlakken": [
+              "v13"
+            ],
+            "rijen": [
+              {
+                "a": 3.54,
+                "b": 1.68,
+                "uitkomst": 5.95,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v13"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        0.68,
+                        4.958,
+                        7.92
+                      ],
+                      [
+                        4.22,
+                        4.958,
+                        7.92
+                      ],
+                      [
+                        4.22,
+                        6.6365,
+                        7.92
+                      ],
+                      [
+                        0.68,
+                        6.6365,
+                        7.92
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 3.54,
+                      "gehalveerd": false,
+                      "van": [
+                        0.68,
+                        4.958,
+                        7.92
+                      ],
+                      "naar": [
+                        4.22,
+                        4.958,
+                        7.92
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 1.68,
+                      "gehalveerd": false,
+                      "van": [
+                        0.68,
+                        4.958,
+                        7.92
+                      ],
+                      "naar": [
+                        0.68,
+                        6.6365,
+                        7.92
+                      ],
+                      "rand": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "oppervlakte": 5.941986,
+            "totaal": 5.95,
+            "handmatig": false
+          },
+          {
+            "id": "gevel||ZW|90|z0|g0|c-1|buiten|dk:4ed2f279-dddb-4871-aa00-499d3591d510:wang1",
+            "label": "Wang 1 dakkapel achter",
+            "vlaktype": "gevel",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "ZW",
+            "helling": 90,
+            "dakkapel": {
+              "id": "4ed2f279-dddb-4871-aa00-499d3591d510",
+              "type": "plat",
+              "rol": "wang1"
+            },
+            "vlakken": [
+              "v18"
+            ],
+            "rijen": [
+              {
+                "a": 0.84,
+                "b": 1.8,
+                "uitkomst": 1.51,
+                "vorm": "driehoek",
+                "aantal": 1,
+                "gehalveerd": "a",
+                "vol": 1.68,
+                "vlakken": [
+                  "v18"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        0.68,
+                        6.6366,
+                        7.92
+                      ],
+                      [
+                        0.68,
+                        4.9581,
+                        7.92
+                      ],
+                      [
+                        0.68,
+                        6.6366,
+                        6.12
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 1.68,
+                      "gehalveerd": true,
+                      "van": [
+                        0.68,
+                        6.6366,
+                        7.92
+                      ],
+                      "naar": [
+                        0.68,
+                        4.9581,
+                        7.92
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 1.8,
+                      "gehalveerd": false,
+                      "van": [
+                        0.68,
+                        6.6366,
+                        7.92
+                      ],
+                      "naar": [
+                        0.68,
+                        6.6366,
+                        6.12
+                      ],
+                      "rand": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "oppervlakte": 1.510674,
+            "totaal": 1.51,
+            "handmatig": false
+          },
+          {
+            "id": "gevel||NO|90|z0|g0|c-1|buiten|dk:4ed2f279-dddb-4871-aa00-499d3591d510:wang2",
+            "label": "Wang 2 dakkapel achter",
+            "vlaktype": "gevel",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "NO",
+            "helling": 90,
+            "dakkapel": {
+              "id": "4ed2f279-dddb-4871-aa00-499d3591d510",
+              "type": "plat",
+              "rol": "wang2"
+            },
+            "vlakken": [
+              "v17"
+            ],
+            "rijen": [
+              {
+                "a": 0.84,
+                "b": 1.8,
+                "uitkomst": 1.51,
+                "vorm": "driehoek",
+                "aantal": 1,
+                "gehalveerd": "a",
+                "vol": 1.68,
+                "vlakken": [
+                  "v17"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        4.22,
+                        4.958,
+                        7.92
+                      ],
+                      [
+                        4.22,
+                        6.6365,
+                        7.92
+                      ],
+                      [
+                        4.22,
+                        6.6365,
+                        6.12
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 1.68,
+                      "gehalveerd": true,
+                      "van": [
+                        4.22,
+                        4.958,
+                        7.92
+                      ],
+                      "naar": [
+                        4.22,
+                        6.6365,
+                        7.92
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 1.8,
+                      "gehalveerd": false,
+                      "van": [
+                        4.22,
+                        6.6365,
+                        7.92
+                      ],
+                      "naar": [
+                        4.22,
+                        6.6365,
+                        6.12
+                      ],
+                      "rand": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "oppervlakte": 1.510674,
+            "totaal": 1.51,
+            "handmatig": false
+          },
+          {
+            "id": "gevel||NW|90|z0|g0|c-1|buiten|dk:4ed2f279-dddb-4871-aa00-499d3591d510:gevel",
+            "label": "Gevel dakkapel achter",
+            "vlaktype": "gevel",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "NW",
+            "helling": 90,
+            "dakkapel": {
+              "id": "4ed2f279-dddb-4871-aa00-499d3591d510",
+              "type": "plat",
+              "rol": "gevel"
+            },
+            "vlakken": [
+              "v16"
+            ],
+            "rijen": [
+              {
+                "a": 3.54,
+                "b": 1.8,
+                "uitkomst": 6.37,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v16"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        4.22,
+                        6.6366,
+                        6.12
+                      ],
+                      [
+                        0.68,
+                        6.6366,
+                        6.12
+                      ],
+                      [
+                        0.68,
+                        6.6366,
+                        7.92
+                      ],
+                      [
+                        4.22,
+                        6.6366,
+                        7.92
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 3.54,
+                      "gehalveerd": false,
+                      "van": [
+                        4.22,
+                        6.6366,
+                        6.12
+                      ],
+                      "naar": [
+                        0.68,
+                        6.6366,
+                        6.12
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 1.8,
+                      "gehalveerd": false,
+                      "van": [
+                        4.22,
+                        6.6366,
+                        6.12
+                      ],
+                      "naar": [
+                        4.22,
+                        6.6366,
+                        7.92
+                      ],
+                      "rand": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "oppervlakte": 6.372,
+            "totaal": 6.37,
+            "handmatig": false
+          }
+        ],
+        "waarschuwingen": []
+      },
+      "sha1": {
+        "model": "7b4f78a8298c91dc8277db50905009025cfd534d",
+        "berekening": "70de97b7a87de2079d0f33f9515c747f68ef51ab"
+      },
+      "motor": "0.17.0",
+      "formats": {
+        "model": 1,
+        "berekening": 1
+      },
+      "verzoek": "13ccdb9b",
+      "exitcode": 0,
+      "meldingen": [
+        {
+          "stap": "genereer",
+          "niveau": "info",
+          "tekst": "3 object(en), 18 vlakken"
+        },
+        {
+          "stap": "bereken",
+          "niveau": "info",
+          "tekst": "10 kop(pen)"
+        }
+      ],
+      "duur": 0.47,
+      "tijd": "2026-11-14T10:11:44.060Z"
+    },
+    "body": "{\"format\":3,\"unit\":\"m\",\"project\":{\"title\":\"\",\"northAngle\":135,\"frontFacadeScreenAngle\":180,\"frontFacadeBearing\":135,\"gebouwdelen\":[{\"id\":\"26cfccd1-1665-4504-87ab-df6241cce7f9\",\"name\":\"Hoofdhuis\"}],\"constructies\":[]},\"floors\":[{\"id\":\"7ee931fe-b565-472c-8825-18b8af0e4ea7\",\"title\":\"Begane grond\",\"referencePoint\":{\"wallId\":\"fd29f3d0-57f7-4baa-8514-436aff4106ce\",\"ep\":1},\"regions\":[{\"gebouwdeelId\":\"26cfccd1-1665-4504-87ab-df6241cce7f9\",\"heightM\":2.72,\"zBottomM\":0,\"zTopM\":2.72,\"top\":false,\"envelope\":{\"polygon\":[[0,-7.28],[0,0],[4.9,0],[4.9,-7.28]],\"wallIds\":[\"fd29f3d0-57f7-4baa-8514-436aff4106ce\",\"eac0c147-81bf-4791-bd51-7e3ec995e56a\",\"a45ab7d5-573a-4d4c-9db4-3238b680c26b\",\"e1eac8a8-1754-4886-bb9d-711dc7d2072e\"]}}],\"walls\":[{\"id\":\"fd29f3d0-57f7-4baa-8514-436aff4106ce\",\"x1\":0,\"y1\":-7.28,\"x2\":0,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"e1eac8a8-1754-4886-bb9d-711dc7d2072e\",\"ep\":0}],\"ep1\":[{\"id\":\"eac0c147-81bf-4791-bd51-7e3ec995e56a\",\"ep\":1}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"e1eac8a8-1754-4886-bb9d-711dc7d2072e\",\"x1\":0,\"y1\":-7.28,\"x2\":4.9,\"y2\":-7.28,\"conns\":{\"ep0\":[{\"id\":\"fd29f3d0-57f7-4baa-8514-436aff4106ce\",\"ep\":0}],\"ep1\":[{\"id\":\"a45ab7d5-573a-4d4c-9db4-3238b680c26b\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"a45ab7d5-573a-4d4c-9db4-3238b680c26b\",\"x1\":4.9,\"y1\":-7.28,\"x2\":4.9,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"e1eac8a8-1754-4886-bb9d-711dc7d2072e\",\"ep\":1}],\"ep1\":[{\"id\":\"eac0c147-81bf-4791-bd51-7e3ec995e56a\",\"ep\":0}]},\"boundary\":\"buren\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"eac0c147-81bf-4791-bd51-7e3ec995e56a\",\"x1\":4.9,\"y1\":0,\"x2\":0,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"a45ab7d5-573a-4d4c-9db4-3238b680c26b\",\"ep\":1}],\"ep1\":[{\"id\":\"fd29f3d0-57f7-4baa-8514-436aff4106ce\",\"ep\":1}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null}],\"rooms\":[{\"id\":\"a45ab7d5-573a-4d4c-9db4-3238b680c26b|e1eac8a8-1754-4886-bb9d-711dc7d2072e|eac0c147-81bf-4791-bd51-7e3ec995e56a|fd29f3d0-57f7-4baa-8514-436aff4106ce\",\"polygon\":[[0,-7.28],[0,0],[4.9,0],[4.9,-7.28]],\"heatingInstallationId\":\"cbfd377e-88c7-4228-bcf7-ee15ad9ea1af\",\"coolingInstallationId\":null,\"color\":\"#e8590c\",\"aard\":\"gebruiksruimte\",\"platDak\":false,\"platDakBoundary\":null,\"platDakConstructieId\":null,\"gebouwdeelId\":\"26cfccd1-1665-4504-87ab-df6241cce7f9\",\"zBottomM\":0,\"zTopM\":2.72}]},{\"id\":\"66ee3b81-73aa-4b30-b441-1b15a3c9c6fa\",\"title\":\"1e verdieping\",\"referencePoint\":{\"wallId\":\"00bb00a9-9d68-4730-bee6-784ea2fc50e4\",\"ep\":1},\"regions\":[{\"gebouwdeelId\":\"26cfccd1-1665-4504-87ab-df6241cce7f9\",\"heightM\":2.71,\"zBottomM\":2.72,\"zTopM\":5.43,\"top\":false,\"envelope\":{\"polygon\":[[0,-7.28],[0,0],[4.9,0],[4.9,-7.28]],\"wallIds\":[\"00bb00a9-9d68-4730-bee6-784ea2fc50e4\",\"87bb7296-1ac3-421e-af00-da5d152fbea4\",\"2c603330-4f2d-4348-bbb5-79a28954dfee\",\"c251d4e2-e8cf-417d-abfe-4f6136270a48\"]}}],\"walls\":[{\"id\":\"00bb00a9-9d68-4730-bee6-784ea2fc50e4\",\"x1\":0,\"y1\":-7.28,\"x2\":0,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"c251d4e2-e8cf-417d-abfe-4f6136270a48\",\"ep\":0}],\"ep1\":[{\"id\":\"87bb7296-1ac3-421e-af00-da5d152fbea4\",\"ep\":1}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"c251d4e2-e8cf-417d-abfe-4f6136270a48\",\"x1\":0,\"y1\":-7.28,\"x2\":4.9,\"y2\":-7.28,\"conns\":{\"ep0\":[{\"id\":\"00bb00a9-9d68-4730-bee6-784ea2fc50e4\",\"ep\":0}],\"ep1\":[{\"id\":\"2c603330-4f2d-4348-bbb5-79a28954dfee\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"2c603330-4f2d-4348-bbb5-79a28954dfee\",\"x1\":4.9,\"y1\":-7.28,\"x2\":4.9,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"c251d4e2-e8cf-417d-abfe-4f6136270a48\",\"ep\":1}],\"ep1\":[{\"id\":\"87bb7296-1ac3-421e-af00-da5d152fbea4\",\"ep\":0}]},\"boundary\":\"buren\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"87bb7296-1ac3-421e-af00-da5d152fbea4\",\"x1\":4.9,\"y1\":0,\"x2\":0,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"2c603330-4f2d-4348-bbb5-79a28954dfee\",\"ep\":1}],\"ep1\":[{\"id\":\"00bb00a9-9d68-4730-bee6-784ea2fc50e4\",\"ep\":1}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null}],\"rooms\":[{\"id\":\"00bb00a9-9d68-4730-bee6-784ea2fc50e4|2c603330-4f2d-4348-bbb5-79a28954dfee|87bb7296-1ac3-421e-af00-da5d152fbea4|c251d4e2-e8cf-417d-abfe-4f6136270a48\",\"polygon\":[[0,-7.28],[0,0],[4.9,0],[4.9,-7.28]],\"heatingInstallationId\":\"cbfd377e-88c7-4228-bcf7-ee15ad9ea1af\",\"coolingInstallationId\":null,\"color\":\"#e8590c\",\"aard\":\"gebruiksruimte\",\"platDak\":false,\"platDakBoundary\":null,\"platDakConstructieId\":null,\"gebouwdeelId\":\"26cfccd1-1665-4504-87ab-df6241cce7f9\",\"zBottomM\":2.72,\"zTopM\":5.43}]},{\"id\":\"cd713a3e-b549-4841-b5ca-78d53304318b\",\"title\":\"2e verdieping\",\"referencePoint\":{\"wallId\":\"ba715b23-6cf9-49e2-b5f2-0c97447ea47f\",\"ep\":0},\"regions\":[{\"gebouwdeelId\":\"26cfccd1-1665-4504-87ab-df6241cce7f9\",\"heightM\":3.86,\"zBottomM\":5.43,\"zTopM\":9.29,\"top\":true,\"envelope\":{\"polygon\":[[0,0],[4.9,0],[4.9,-7.28],[4.22,-7.28],[0.68,-7.28],[0,-7.28]],\"wallIds\":[\"ba715b23-6cf9-49e2-b5f2-0c97447ea47f\",\"06dc3538-2b5e-4792-81fa-ec65290a0778\",\"597fb44f-813a-41ed-bdb0-2f4851d2903f\",\"4ed2f279-dddb-4871-aa00-499d3591d510\",\"f2ef52de-2718-42d2-9e35-35abda4ee931\",\"aabd7b6b-f5c9-452f-aec0-6d69f2c8b7af\"]}}],\"walls\":[{\"id\":\"ba715b23-6cf9-49e2-b5f2-0c97447ea47f\",\"x1\":0,\"y1\":0,\"x2\":4.9,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"aabd7b6b-f5c9-452f-aec0-6d69f2c8b7af\",\"ep\":1}],\"ep1\":[{\"id\":\"06dc3538-2b5e-4792-81fa-ec65290a0778\",\"ep\":1}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[{\"angleDeg\":47,\"riseM\":null}],\"dakkapel\":null},{\"id\":\"aabd7b6b-f5c9-452f-aec0-6d69f2c8b7af\",\"x1\":0,\"y1\":-7.28,\"x2\":0,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"f2ef52de-2718-42d2-9e35-35abda4ee931\",\"ep\":0}],\"ep1\":[{\"id\":\"ba715b23-6cf9-49e2-b5f2-0c97447ea47f\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"f2ef52de-2718-42d2-9e35-35abda4ee931\",\"x1\":0,\"y1\":-7.28,\"x2\":0.68,\"y2\":-7.28,\"conns\":{\"ep0\":[{\"id\":\"aabd7b6b-f5c9-452f-aec0-6d69f2c8b7af\",\"ep\":0}],\"ep1\":[{\"id\":\"4ed2f279-dddb-4871-aa00-499d3591d510\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[{\"angleDeg\":47,\"riseM\":null}],\"dakkapel\":null},{\"id\":\"4ed2f279-dddb-4871-aa00-499d3591d510\",\"x1\":0.68,\"y1\":-7.28,\"x2\":4.22,\"y2\":-7.28,\"conns\":{\"ep0\":[{\"id\":\"f2ef52de-2718-42d2-9e35-35abda4ee931\",\"ep\":1}],\"ep1\":[{\"id\":\"597fb44f-813a-41ed-bdb0-2f4851d2903f\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[{\"angleDeg\":47,\"riseM\":null}],\"dakkapel\":{\"type\":\"plat\",\"onderkantM\":0.69,\"bovenkantM\":2.49,\"angleDeg\":0,\"schildAngleDeg\":null,\"wangBoundary1\":\"buiten\",\"wangBoundary2\":\"buiten\",\"constructieId\":null,\"dakConstructieId\":null,\"afstandM\":0.643435}},{\"id\":\"597fb44f-813a-41ed-bdb0-2f4851d2903f\",\"x1\":4.22,\"y1\":-7.28,\"x2\":4.9,\"y2\":-7.28,\"conns\":{\"ep0\":[{\"id\":\"4ed2f279-dddb-4871-aa00-499d3591d510\",\"ep\":1}],\"ep1\":[{\"id\":\"06dc3538-2b5e-4792-81fa-ec65290a0778\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[{\"angleDeg\":47,\"riseM\":null}],\"dakkapel\":null},{\"id\":\"06dc3538-2b5e-4792-81fa-ec65290a0778\",\"x1\":4.9,\"y1\":-7.28,\"x2\":4.9,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"597fb44f-813a-41ed-bdb0-2f4851d2903f\",\"ep\":1}],\"ep1\":[{\"id\":\"ba715b23-6cf9-49e2-b5f2-0c97447ea47f\",\"ep\":1}]},\"boundary\":\"buren\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null}],\"rooms\":[{\"id\":\"06dc3538-2b5e-4792-81fa-ec65290a0778|4ed2f279-dddb-4871-aa00-499d3591d510|597fb44f-813a-41ed-bdb0-2f4851d2903f|aabd7b6b-f5c9-452f-aec0-6d69f2c8b7af|ba715b23-6cf9-49e2-b5f2-0c97447ea47f|f2ef52de-2718-42d2-9e35-35abda4ee931\",\"polygon\":[[0,0],[4.9,0],[4.9,-7.28],[4.22,-7.28],[0.68,-7.28],[0,-7.28]],\"heatingInstallationId\":\"cbfd377e-88c7-4228-bcf7-ee15ad9ea1af\",\"coolingInstallationId\":null,\"color\":\"#e8590c\",\"aard\":\"gebruiksruimte\",\"platDak\":false,\"platDakBoundary\":null,\"platDakConstructieId\":null,\"gebouwdeelId\":\"26cfccd1-1665-4504-87ab-df6241cce7f9\",\"zBottomM\":5.43,\"zTopM\":9.29}]}]}",
+    "werk": null,
+    "vorige": null
+  }
+}

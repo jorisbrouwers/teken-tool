@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#1971c2"/>
+  <g fill="none" stroke="#fff" stroke-width="18">
+    <!-- buitenmuren -->
+    <path d="M84 84H428V284H320V428H84Z"/>
+    <!-- indeling: verspringend, één deur (opening 52) -->
+    <path d="M196 84V126 M196 178V284 M84 284H320"/>
+  </g>
+  <path d="M196 173H247 A51 51 0 0 0 196 126" fill="none" stroke="#fff" stroke-width="10"/>
+  <!-- digitale pen, diagonaal, steekt buiten de plattegrond uit -->
+  <g transform="translate(256 256) rotate(-45)">
+    <!-- blauwe uitsparing om de pen heen (snijdt de muren) -->
+    <path d="M-302 0 L-258 -10 L-250 -12 L-188 -30 H272 A30 30 0 0 1 272 30 H-188 L-250 12 L-258 10 Z"
+          fill="#1971c2" stroke="#1971c2" stroke-width="28" stroke-linejoin="round"/>
+    <!-- body -->
+    <path d="M-184 -30 H272 A30 30 0 0 1 272 30 H-184 Z" fill="#fff"/>
+    <!-- kegel -->
+    <path d="M-192 -30 L-248 -13 V13 L-192 30 Z" fill="#fff"/>
+    <!-- punt -->
+    <path d="M-255 -10 L-294 -3 Q-302 0 -294 3 L-255 10 Z" fill="#fff"/>
+    <!-- knopjes -->
+    <rect x="-140" y="-7.5" width="66" height="15" rx="7.5" fill="#1971c2"/>
+    <rect x="168" y="-7.5" width="52" height="15" rx="7.5" fill="#1971c2"/>
+  </g>
+</svg>
