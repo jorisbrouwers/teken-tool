@@ -1,0 +1,1585 @@
+{
+  "version": "2.1",
+  "title": "Deel van een plat dak anders geïsoleerd",
+  "created": "2026-11-20T00:00:00.000Z",
+  "modified": "2026-11-20T17:22:47.345Z",
+  "settings": {
+    "background": "grid",
+    "zoom": 1.5,
+    "pan": {
+      "x": 100,
+      "y": 150
+    },
+    "installations": [
+      {
+        "id": "gevel-deel-plat-dak-cv",
+        "kind": "verwarming",
+        "type": "cv_ketel"
+      }
+    ],
+    "defaultHeatingInstallationId": "gevel-deel-plat-dak-cv",
+    "floors": [
+      {
+        "id": "gevel-deel-plat-dak-f0",
+        "name": "Kelder",
+        "heightM": null,
+        "referencePoint": null
+      },
+      {
+        "id": "gevel-deel-plat-dak-f1",
+        "name": "Souterrain",
+        "heightM": null,
+        "referencePoint": null
+      },
+      {
+        "id": "gevel-deel-plat-dak-f2",
+        "name": "Begane grond",
+        "heightM": 2.72,
+        "referencePoint": {
+          "wallId": "gevel-deel-plat-dak-bg-05",
+          "ep": 1,
+          "x": 0,
+          "y": 8
+        }
+      },
+      {
+        "id": "gevel-deel-plat-dak-f3",
+        "name": "1e verdieping",
+        "heightM": 2.71,
+        "referencePoint": {
+          "wallId": "gevel-deel-plat-dak-v1-03",
+          "ep": 1,
+          "x": 9,
+          "y": 8
+        }
+      },
+      {
+        "id": "gevel-deel-plat-dak-f4",
+        "name": "2e verdieping",
+        "heightM": null,
+        "referencePoint": null
+      }
+    ],
+    "gebouwdelen": [
+      {
+        "id": "gevel-deel-plat-dak-gd-hoofdhuis",
+        "name": "Hoofdhuis"
+      }
+    ],
+    "constructies": [
+      {
+        "id": "gevel-deel-plat-dak-c-oud",
+        "name": "PIR"
+      }
+    ],
+    "faceAttributes": {
+      "gevel-deel-plat-dak-bg-01|gevel-deel-plat-dak-bg-07|gevel-deel-plat-dak-bg-08|gevel-deel-plat-dak-bg-10": {
+        "platDak": true,
+        "platDakConstructieId": "gevel-deel-plat-dak-c-oud"
+      },
+      "gevel-deel-plat-dak-bg-02|gevel-deel-plat-dak-bg-03|gevel-deel-plat-dak-bg-09|gevel-deel-plat-dak-bg-10": {
+        "platDak": true
+      },
+      "gevel-deel-plat-dak-v1-01|gevel-deel-plat-dak-v1-02|gevel-deel-plat-dak-v1-03|gevel-deel-plat-dak-v1-04": {
+        "platDak": true
+      },
+      "171cf906-6733-4529-abd9-0d95c58d5250|a5e8a0b4-c3a2-4c78-a402-4abf54aaff57|f72122b0-5317-42ad-a626-e1bce55a58a4|gevel-deel-plat-dak-bg-05": {
+        "platDak": true,
+        "platDakConstructieId": "gevel-deel-plat-dak-c-oud"
+      },
+      "gevel-deel-plat-dak-bg-04|gevel-deel-plat-dak-bg-05|gevel-deel-plat-dak-bg-06|gevel-deel-plat-dak-bg-08|gevel-deel-plat-dak-bg-09": {
+        "platDak": true,
+        "platDakConstructieId": "gevel-deel-plat-dak-c-oud"
+      },
+      "430d2626-f585-4322-a7c4-5f063eae95b9|850714e0-f087-415c-82f2-88135a125454|gevel-deel-plat-dak-bg-03|gevel-deel-plat-dak-bg-07": {
+        "platDak": true,
+        "platDakConstructieId": "gevel-deel-plat-dak-c-oud"
+      },
+      "430d2626-f585-4322-a7c4-5f063eae95b9|gevel-deel-plat-dak-bg-04|gevel-deel-plat-dak-bg-05|gevel-deel-plat-dak-bg-06": {
+        "platDak": true,
+        "platDakConstructieId": "gevel-deel-plat-dak-c-oud"
+      }
+    },
+    "roomAssignments": {},
+    "northAngle": 135,
+    "orientatieBevestigd": true
+  },
+  "canvas": {
+    "konva_snapshot": [
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "gevel-deel-plat-dak-bg-03",
+          "points": [
+            130,
+            0,
+            130,
+            60
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep1conns": [
+            {
+              "id": "gevel-deel-plat-dak-bg-04",
+              "ep": 0
+            },
+            {
+              "id": "430d2626-f585-4322-a7c4-5f063eae95b9",
+              "ep": 1
+            }
+          ],
+          "boundary": "buren",
+          "_ep0conns": [
+            {
+              "id": "850714e0-f087-415c-82f2-88135a125454",
+              "ep": 1
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "gevel-deel-plat-dak-bg-04",
+          "points": [
+            130,
+            60,
+            130,
+            195
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "gevel-deel-plat-dak-bg-03",
+              "ep": 1
+            },
+            {
+              "id": "430d2626-f585-4322-a7c4-5f063eae95b9",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "gevel-deel-plat-dak-bg-05",
+              "ep": 0
+            }
+          ],
+          "boundary": "buren"
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "gevel-deel-plat-dak-bg-05",
+          "points": [
+            130,
+            195,
+            0,
+            195
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "gevel-deel-plat-dak-bg-04",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "gevel-deel-plat-dak-bg-06",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "gevel-deel-plat-dak-bg-06",
+          "points": [
+            0,
+            195,
+            0,
+            60
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "gevel-deel-plat-dak-bg-05",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "gevel-deel-plat-dak-bg-07",
+              "ep": 0
+            },
+            {
+              "id": "430d2626-f585-4322-a7c4-5f063eae95b9",
+              "ep": 0
+            }
+          ],
+          "boundary": "buren"
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "gevel-deel-plat-dak-bg-07",
+          "points": [
+            0,
+            60,
+            0,
+            0
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "gevel-deel-plat-dak-bg-06",
+              "ep": 1
+            },
+            {
+              "id": "430d2626-f585-4322-a7c4-5f063eae95b9",
+              "ep": 0
+            }
+          ],
+          "boundary": "buren",
+          "_ep1conns": [
+            {
+              "id": "850714e0-f087-415c-82f2-88135a125454",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "gevel-deel-plat-dak-v1-01",
+          "points": [
+            230,
+            60,
+            360,
+            60
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "gevel-deel-plat-dak-v1-04",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "gevel-deel-plat-dak-v1-02",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "gevel-deel-plat-dak-v1-02",
+          "points": [
+            360,
+            60,
+            360,
+            195
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "gevel-deel-plat-dak-v1-01",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "gevel-deel-plat-dak-v1-03",
+              "ep": 0
+            }
+          ],
+          "boundary": "buren"
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "gevel-deel-plat-dak-v1-03",
+          "points": [
+            360,
+            195,
+            230,
+            195
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "gevel-deel-plat-dak-v1-02",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "gevel-deel-plat-dak-v1-04",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "gevel-deel-plat-dak-v1-04",
+          "points": [
+            230,
+            195,
+            230,
+            60
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "gevel-deel-plat-dak-v1-03",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "gevel-deel-plat-dak-v1-01",
+              "ep": 0
+            }
+          ],
+          "boundary": "buren"
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "850714e0-f087-415c-82f2-88135a125454",
+          "x": 0,
+          "y": 0,
+          "points": [
+            0,
+            0,
+            130,
+            0
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "opacity": 1,
+          "hitStrokeWidth": 8,
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "lineCap": "round",
+          "_ep0conns": [
+            {
+              "id": "gevel-deel-plat-dak-bg-07",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "gevel-deel-plat-dak-bg-03",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "430d2626-f585-4322-a7c4-5f063eae95b9",
+          "x": 0,
+          "y": 60,
+          "points": [
+            0,
+            0,
+            130,
+            0
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 0.8,
+          "opacity": 1,
+          "hitStrokeWidth": 8,
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "isAux": true,
+          "lineCap": "round",
+          "dash": [
+            1.6,
+            2.4000000000000004
+          ],
+          "_ep0conns": [
+            {
+              "id": "gevel-deel-plat-dak-bg-06",
+              "ep": 1
+            },
+            {
+              "id": "gevel-deel-plat-dak-bg-07",
+              "ep": 0
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "gevel-deel-plat-dak-bg-03",
+              "ep": 1
+            },
+            {
+              "id": "gevel-deel-plat-dak-bg-04",
+              "ep": 0
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "model3d": {
+    "format": 1,
+    "gegenereerd": {
+      "model": {
+        "format": 1,
+        "motor": "0.23.3",
+        "invoer_sha1": "439ed1135cacf482e654dd01b0fda746311e2669",
+        "project": {
+          "titel": "Woning",
+          "northAngle": 135,
+          "frontFacadeScreenAngle": 180,
+          "frontFacadeBearing": 135,
+          "begane_grond": "Begane grond"
+        },
+        "zones": [
+          {
+            "index": 0,
+            "label": "RZ-1",
+            "soort": "zone",
+            "kleur": "#994a20"
+          },
+          {
+            "index": 1,
+            "label": "onbekend",
+            "soort": "onbekend",
+            "kleur": "#b39090"
+          }
+        ],
+        "gebouwdelen": [
+          {
+            "index": 0,
+            "naam": "Hoofdhuis"
+          }
+        ],
+        "constructies": [
+          {
+            "index": 0,
+            "naam": "PIR"
+          }
+        ],
+        "objecten": [
+          {
+            "id": "o1",
+            "label": "Begane grond",
+            "verdieping": "Begane grond",
+            "gebouwdeel": 0,
+            "z_onder": 0,
+            "z_boven": 2.72,
+            "buiten_berekening": false
+          },
+          {
+            "id": "o2",
+            "label": "1e verdieping",
+            "verdieping": "1e verdieping",
+            "gebouwdeel": 0,
+            "z_onder": 2.72,
+            "z_boven": 5.43,
+            "buiten_berekening": false
+          }
+        ],
+        "vlakken": [
+          {
+            "id": "v1",
+            "object": "o1",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "gevel-deel-plat-dak-bg-05",
+            "hoekpunten": [
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                5.2,
+                0,
+                0
+              ],
+              [
+                5.2,
+                0,
+                2.72
+              ],
+              [
+                0,
+                0,
+                2.72
+              ]
+            ],
+            "normaal": [
+              0,
+              -1,
+              0
+            ],
+            "oppervlakte": 14.144,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZO",
+            "azimut": 135,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v2",
+            "object": "o1",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "gevel-deel-plat-dak-bg-04",
+            "hoekpunten": [
+              [
+                5.2,
+                0,
+                0
+              ],
+              [
+                5.2,
+                7.8,
+                0
+              ],
+              [
+                5.2,
+                7.8,
+                2.72
+              ],
+              [
+                5.2,
+                0,
+                2.72
+              ]
+            ],
+            "normaal": [
+              1,
+              0,
+              0
+            ],
+            "oppervlakte": 21.216,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buren",
+            "aard": "gebruiksruimte",
+            "windrichting": "NO",
+            "azimut": 45,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v3",
+            "object": "o1",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "850714e0-f087-415c-82f2-88135a125454",
+            "hoekpunten": [
+              [
+                5.2,
+                7.8,
+                0
+              ],
+              [
+                0,
+                7.8,
+                0
+              ],
+              [
+                0,
+                7.8,
+                2.72
+              ],
+              [
+                5.2,
+                7.8,
+                2.72
+              ]
+            ],
+            "normaal": [
+              0,
+              1,
+              0
+            ],
+            "oppervlakte": 14.144,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "NW",
+            "azimut": 315,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v4",
+            "object": "o1",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "gevel-deel-plat-dak-bg-07",
+            "hoekpunten": [
+              [
+                0,
+                7.8,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                2.72
+              ],
+              [
+                0,
+                7.8,
+                2.72
+              ]
+            ],
+            "normaal": [
+              -1,
+              0,
+              0
+            ],
+            "oppervlakte": 21.216,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buren",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZW",
+            "azimut": 225,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v5",
+            "object": "o1",
+            "soort": "vloer",
+            "bron": "vloervlak",
+            "bron_id": "430d2626-f585-4322-a7c4-5f063eae95b9|gevel-deel-plat-dak-bg-04|gevel-deel-plat-dak-bg-05|gevel-deel-plat-dak-bg-06+merge0",
+            "hoekpunten": [
+              [
+                0,
+                7.8,
+                0
+              ],
+              [
+                5.2,
+                7.8,
+                0
+              ],
+              [
+                5.2,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ]
+            ],
+            "normaal": [
+              0,
+              0,
+              -1
+            ],
+            "oppervlakte": 40.56,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "kruipruimte",
+            "aard": "gebruiksruimte",
+            "windrichting": "HOR",
+            "azimut": null,
+            "helling": 0,
+            "dakkapel": null
+          },
+          {
+            "id": "v6",
+            "object": "o1",
+            "soort": "dak",
+            "bron": "dakvlak",
+            "bron_id": null,
+            "hoekpunten": [
+              [
+                0,
+                5.4,
+                2.72
+              ],
+              [
+                5.2,
+                5.4,
+                2.72
+              ],
+              [
+                5.2,
+                7.8,
+                2.72
+              ],
+              [
+                0,
+                7.8,
+                2.72
+              ]
+            ],
+            "normaal": [
+              0,
+              0,
+              1
+            ],
+            "oppervlakte": 12.48,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": 0,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "HOR",
+            "azimut": null,
+            "helling": 0,
+            "dakkapel": null
+          },
+          {
+            "id": "v7",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "gevel-deel-plat-dak-v1-03",
+            "hoekpunten": [
+              [
+                0,
+                0,
+                2.72
+              ],
+              [
+                5.2,
+                0,
+                2.72
+              ],
+              [
+                5.2,
+                0,
+                5.43
+              ],
+              [
+                0,
+                0,
+                5.43
+              ]
+            ],
+            "normaal": [
+              0,
+              -1,
+              0
+            ],
+            "oppervlakte": 14.092,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZO",
+            "azimut": 135,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v8",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "gevel-deel-plat-dak-v1-02",
+            "hoekpunten": [
+              [
+                5.2,
+                0,
+                2.72
+              ],
+              [
+                5.2,
+                5.4,
+                2.72
+              ],
+              [
+                5.2,
+                5.4,
+                5.43
+              ],
+              [
+                5.2,
+                0,
+                5.43
+              ]
+            ],
+            "normaal": [
+              1,
+              0,
+              0
+            ],
+            "oppervlakte": 14.634,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buren",
+            "aard": "gebruiksruimte",
+            "windrichting": "NO",
+            "azimut": 45,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v9",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "gevel-deel-plat-dak-v1-01",
+            "hoekpunten": [
+              [
+                5.2,
+                5.4,
+                2.72
+              ],
+              [
+                0,
+                5.4,
+                2.72
+              ],
+              [
+                0,
+                5.4,
+                5.43
+              ],
+              [
+                5.2,
+                5.4,
+                5.43
+              ]
+            ],
+            "normaal": [
+              0,
+              1,
+              0
+            ],
+            "oppervlakte": 14.092,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "NW",
+            "azimut": 315,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v10",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "gevel-deel-plat-dak-v1-04",
+            "hoekpunten": [
+              [
+                0,
+                5.4,
+                2.72
+              ],
+              [
+                0,
+                0,
+                2.72
+              ],
+              [
+                0,
+                0,
+                5.43
+              ],
+              [
+                0,
+                5.4,
+                5.43
+              ]
+            ],
+            "normaal": [
+              -1,
+              0,
+              0
+            ],
+            "oppervlakte": 14.634,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buren",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZW",
+            "azimut": 225,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v11",
+            "object": "o2",
+            "soort": "dak",
+            "bron": "dakvlak",
+            "bron_id": null,
+            "hoekpunten": [
+              [
+                5.2,
+                0,
+                5.43
+              ],
+              [
+                5.2,
+                5.4,
+                5.43
+              ],
+              [
+                0,
+                5.4,
+                5.43
+              ],
+              [
+                0,
+                0,
+                5.43
+              ]
+            ],
+            "normaal": [
+              0,
+              0,
+              1
+            ],
+            "oppervlakte": 28.08,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "HOR",
+            "azimut": null,
+            "helling": 0,
+            "dakkapel": null
+          }
+        ],
+        "waarschuwingen": [],
+        "fouten": []
+      },
+      "berekening": {
+        "format": 1,
+        "motor": "0.23.3",
+        "model_sha1": "6f09921774d6901085fc6c52fcb60936f0420d9f",
+        "koppen": [
+          {
+            "id": "vloer||-|0|z0|g0|c-1|kruipruimte",
+            "label": "Vloer",
+            "vlaktype": "vloer",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "kruipruimte",
+            "grens": null,
+            "windrichting": null,
+            "helling": 0,
+            "dakkapel": null,
+            "vlakken": [
+              "v5"
+            ],
+            "rijen": [
+              {
+                "a": 5.2,
+                "b": 7.8,
+                "uitkomst": 42.28,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v5"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        0,
+                        0,
+                        0
+                      ],
+                      [
+                        5.2,
+                        0,
+                        0
+                      ],
+                      [
+                        5.2,
+                        7.8,
+                        0
+                      ],
+                      [
+                        0,
+                        7.8,
+                        0
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 5.2,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "naar": [
+                        5.2,
+                        0,
+                        0
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 7.8,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "naar": [
+                        0,
+                        7.8,
+                        0
+                      ],
+                      "rand": true
+                    }
+                  ]
+                },
+                "toeslag_a": 0.22
+              }
+            ],
+            "oppervlakte": 40.56,
+            "totaal": 42.28,
+            "handmatig": false
+          },
+          {
+            "id": "gevel||ZO|90|z0|g0|c-1|buiten",
+            "label": "Voorgevel",
+            "vlaktype": "gevel",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "ZO",
+            "helling": 90,
+            "dakkapel": null,
+            "vlakken": [
+              "v1",
+              "v7"
+            ],
+            "rijen": [
+              {
+                "a": 5.2,
+                "b": 5.43,
+                "uitkomst": 29.43,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v1",
+                  "v7"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        0,
+                        0,
+                        0
+                      ],
+                      [
+                        5.2,
+                        0,
+                        0
+                      ],
+                      [
+                        5.2,
+                        0,
+                        5.43
+                      ],
+                      [
+                        0,
+                        0,
+                        5.43
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 5.2,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "naar": [
+                        5.2,
+                        0,
+                        0
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 5.43,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "naar": [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      "rand": true
+                    }
+                  ]
+                },
+                "toeslag_a": 0.22
+              }
+            ],
+            "oppervlakte": 28.236,
+            "totaal": 29.43,
+            "handmatig": false
+          },
+          {
+            "id": "gevel||NW|90|z0|g0|c-1|buiten",
+            "label": "Achtergevel",
+            "vlaktype": "gevel",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "NW",
+            "helling": 90,
+            "dakkapel": null,
+            "vlakken": [
+              "v3",
+              "v9"
+            ],
+            "rijen": [
+              {
+                "a": 5.2,
+                "b": 5.43,
+                "uitkomst": 29.43,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v3",
+                  "v9"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        5.2,
+                        7.8,
+                        0
+                      ],
+                      [
+                        0,
+                        7.8,
+                        0
+                      ],
+                      [
+                        0,
+                        7.8,
+                        5.43
+                      ],
+                      [
+                        5.2,
+                        7.8,
+                        5.43
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 5.2,
+                      "gehalveerd": false,
+                      "van": [
+                        5.2,
+                        7.8,
+                        0
+                      ],
+                      "naar": [
+                        0,
+                        7.8,
+                        0
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 5.43,
+                      "gehalveerd": false,
+                      "van": [
+                        5.2,
+                        7.8,
+                        0
+                      ],
+                      "naar": [
+                        5.2,
+                        7.8,
+                        5.43
+                      ],
+                      "rand": true
+                    }
+                  ]
+                },
+                "toeslag_a": 0.22
+              }
+            ],
+            "oppervlakte": 28.236,
+            "totaal": 29.43,
+            "handmatig": false
+          },
+          {
+            "id": "dak||HOR|0|z0|g0|c-1|buiten",
+            "label": "Dak plat zonder constructie",
+            "vlaktype": "dak",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "HOR",
+            "helling": 0,
+            "dakkapel": null,
+            "vlakken": [
+              "v11"
+            ],
+            "rijen": [
+              {
+                "a": 5.2,
+                "b": 5.4,
+                "uitkomst": 29.27,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v11"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      [
+                        5.2,
+                        0,
+                        5.43
+                      ],
+                      [
+                        5.2,
+                        5.4,
+                        5.43
+                      ],
+                      [
+                        0,
+                        5.4,
+                        5.43
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 5.2,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      "naar": [
+                        5.2,
+                        0,
+                        5.43
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 5.4,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      "naar": [
+                        0,
+                        5.4,
+                        5.43
+                      ],
+                      "rand": true
+                    }
+                  ]
+                },
+                "toeslag_a": 0.22
+              }
+            ],
+            "oppervlakte": 28.08,
+            "totaal": 29.27,
+            "handmatig": false
+          },
+          {
+            "id": "dak||HOR|0|z0|g0|c0|buiten",
+            "label": "Dak plat PIR",
+            "vlaktype": "dak",
+            "laag": "",
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": 0,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "HOR",
+            "helling": 0,
+            "dakkapel": null,
+            "vlakken": [
+              "v6"
+            ],
+            "rijen": [
+              {
+                "a": 5.2,
+                "b": 2.4,
+                "uitkomst": 13.01,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v6"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        0,
+                        5.4,
+                        2.72
+                      ],
+                      [
+                        5.2,
+                        5.4,
+                        2.72
+                      ],
+                      [
+                        5.2,
+                        7.8,
+                        2.72
+                      ],
+                      [
+                        0,
+                        7.8,
+                        2.72
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 5.2,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        5.4,
+                        2.72
+                      ],
+                      "naar": [
+                        5.2,
+                        5.4,
+                        2.72
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 2.4,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        5.4,
+                        2.72
+                      ],
+                      "naar": [
+                        0,
+                        7.8,
+                        2.72
+                      ],
+                      "rand": true
+                    }
+                  ]
+                },
+                "toeslag_a": 0.22
+              }
+            ],
+            "oppervlakte": 12.48,
+            "totaal": 13.01,
+            "handmatig": false
+          }
+        ],
+        "waarschuwingen": []
+      },
+      "sha1": {
+        "model": "6f09921774d6901085fc6c52fcb60936f0420d9f",
+        "berekening": "0159da4e82df74a8f1d9760e080636448c77e799"
+      },
+      "motor": "0.23.3",
+      "formats": {
+        "model": 1,
+        "berekening": 1
+      },
+      "verzoek": "9b9316d3",
+      "exitcode": 0,
+      "meldingen": [
+        {
+          "stap": "genereer",
+          "niveau": "info",
+          "tekst": "2 object(en), 11 vlakken"
+        },
+        {
+          "stap": "bereken",
+          "niveau": "info",
+          "tekst": "5 kop(pen)"
+        }
+      ],
+      "duur": 0.51,
+      "tijd": "2026-11-20T17:22:37.050Z"
+    },
+    "body": "{\"format\":3,\"unit\":\"m\",\"project\":{\"title\":\"\",\"northAngle\":135,\"frontFacadeScreenAngle\":180,\"frontFacadeBearing\":135,\"gebouwdelen\":[{\"id\":\"gevel-deel-plat-dak-gd-hoofdhuis\",\"name\":\"Hoofdhuis\"}],\"constructies\":[{\"id\":\"gevel-deel-plat-dak-c-oud\",\"name\":\"PIR\"}]},\"floors\":[{\"id\":\"gevel-deel-plat-dak-f2\",\"title\":\"Begane grond\",\"referencePoint\":{\"wallId\":\"gevel-deel-plat-dak-bg-05\",\"ep\":1},\"regions\":[{\"gebouwdeelId\":\"gevel-deel-plat-dak-gd-hoofdhuis\",\"heightM\":2.72,\"zBottomM\":0,\"zTopM\":2.72,\"top\":false,\"envelope\":{\"polygon\":[[0,0],[5.2,0],[5.2,-7.8],[0,-7.8]],\"wallIds\":[\"gevel-deel-plat-dak-bg-05\",\"gevel-deel-plat-dak-bg-04\",\"850714e0-f087-415c-82f2-88135a125454\",\"gevel-deel-plat-dak-bg-07\"]}}],\"walls\":[{\"id\":\"gevel-deel-plat-dak-bg-05\",\"x1\":5.2,\"y1\":0,\"x2\":0,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"gevel-deel-plat-dak-bg-04\",\"ep\":1}],\"ep1\":[{\"id\":\"gevel-deel-plat-dak-bg-06\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"gevel-deel-plat-dak-bg-04\",\"x1\":5.2,\"y1\":-5.4,\"x2\":5.2,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"gevel-deel-plat-dak-bg-03\",\"ep\":1}],\"ep1\":[{\"id\":\"gevel-deel-plat-dak-bg-05\",\"ep\":0}]},\"boundary\":\"buren\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"gevel-deel-plat-dak-bg-03\",\"x1\":5.2,\"y1\":-7.8,\"x2\":5.2,\"y2\":-5.4,\"conns\":{\"ep0\":[{\"id\":\"850714e0-f087-415c-82f2-88135a125454\",\"ep\":1}],\"ep1\":[{\"id\":\"gevel-deel-plat-dak-bg-04\",\"ep\":0}]},\"boundary\":\"buren\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"850714e0-f087-415c-82f2-88135a125454\",\"x1\":0,\"y1\":-7.8,\"x2\":5.2,\"y2\":-7.8,\"conns\":{\"ep0\":[{\"id\":\"gevel-deel-plat-dak-bg-07\",\"ep\":1}],\"ep1\":[{\"id\":\"gevel-deel-plat-dak-bg-03\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"gevel-deel-plat-dak-bg-07\",\"x1\":0,\"y1\":-5.4,\"x2\":0,\"y2\":-7.8,\"conns\":{\"ep0\":[{\"id\":\"gevel-deel-plat-dak-bg-06\",\"ep\":1}],\"ep1\":[{\"id\":\"850714e0-f087-415c-82f2-88135a125454\",\"ep\":0}]},\"boundary\":\"buren\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"gevel-deel-plat-dak-bg-06\",\"x1\":0,\"y1\":0,\"x2\":0,\"y2\":-5.4,\"conns\":{\"ep0\":[{\"id\":\"gevel-deel-plat-dak-bg-05\",\"ep\":1}],\"ep1\":[{\"id\":\"gevel-deel-plat-dak-bg-07\",\"ep\":0}]},\"boundary\":\"buren\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null}],\"rooms\":[{\"id\":\"430d2626-f585-4322-a7c4-5f063eae95b9|gevel-deel-plat-dak-bg-04|gevel-deel-plat-dak-bg-05|gevel-deel-plat-dak-bg-06\",\"polygon\":[[0,0],[5.2,0],[5.2,-5.4],[0,-5.4]],\"heatingInstallationId\":\"gevel-deel-plat-dak-cv\",\"coolingInstallationId\":null,\"color\":\"#e8590c\",\"aard\":\"gebruiksruimte\",\"platDak\":true,\"platDakBoundary\":\"buiten\",\"platDakConstructieId\":\"gevel-deel-plat-dak-c-oud\",\"gebouwdeelId\":\"gevel-deel-plat-dak-gd-hoofdhuis\",\"zBottomM\":0,\"zTopM\":2.72},{\"id\":\"430d2626-f585-4322-a7c4-5f063eae95b9|850714e0-f087-415c-82f2-88135a125454|gevel-deel-plat-dak-bg-03|gevel-deel-plat-dak-bg-07\",\"polygon\":[[5.2,-5.4],[5.2,-7.8],[0,-7.8],[0,-5.4]],\"heatingInstallationId\":\"gevel-deel-plat-dak-cv\",\"coolingInstallationId\":null,\"color\":\"#e8590c\",\"aard\":\"gebruiksruimte\",\"platDak\":true,\"platDakBoundary\":\"buiten\",\"platDakConstructieId\":\"gevel-deel-plat-dak-c-oud\",\"gebouwdeelId\":\"gevel-deel-plat-dak-gd-hoofdhuis\",\"zBottomM\":0,\"zTopM\":2.72}]},{\"id\":\"gevel-deel-plat-dak-f3\",\"title\":\"1e verdieping\",\"referencePoint\":{\"wallId\":\"gevel-deel-plat-dak-v1-03\",\"ep\":1},\"regions\":[{\"gebouwdeelId\":\"gevel-deel-plat-dak-gd-hoofdhuis\",\"heightM\":2.71,\"zBottomM\":2.72,\"zTopM\":5.43,\"top\":true,\"envelope\":{\"polygon\":[[0,0],[5.2,0],[5.2,-5.4],[0,-5.4]],\"wallIds\":[\"gevel-deel-plat-dak-v1-03\",\"gevel-deel-plat-dak-v1-02\",\"gevel-deel-plat-dak-v1-01\",\"gevel-deel-plat-dak-v1-04\"]}}],\"walls\":[{\"id\":\"gevel-deel-plat-dak-v1-03\",\"x1\":5.2,\"y1\":0,\"x2\":0,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"gevel-deel-plat-dak-v1-02\",\"ep\":1}],\"ep1\":[{\"id\":\"gevel-deel-plat-dak-v1-04\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"gevel-deel-plat-dak-v1-02\",\"x1\":5.2,\"y1\":-5.4,\"x2\":5.2,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"gevel-deel-plat-dak-v1-01\",\"ep\":1}],\"ep1\":[{\"id\":\"gevel-deel-plat-dak-v1-03\",\"ep\":0}]},\"boundary\":\"buren\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"gevel-deel-plat-dak-v1-01\",\"x1\":0,\"y1\":-5.4,\"x2\":5.2,\"y2\":-5.4,\"conns\":{\"ep0\":[{\"id\":\"gevel-deel-plat-dak-v1-04\",\"ep\":1}],\"ep1\":[{\"id\":\"gevel-deel-plat-dak-v1-02\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"gevel-deel-plat-dak-v1-04\",\"x1\":0,\"y1\":0,\"x2\":0,\"y2\":-5.4,\"conns\":{\"ep0\":[{\"id\":\"gevel-deel-plat-dak-v1-03\",\"ep\":1}],\"ep1\":[{\"id\":\"gevel-deel-plat-dak-v1-01\",\"ep\":0}]},\"boundary\":\"buren\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null}],\"rooms\":[{\"id\":\"gevel-deel-plat-dak-v1-01|gevel-deel-plat-dak-v1-02|gevel-deel-plat-dak-v1-03|gevel-deel-plat-dak-v1-04\",\"polygon\":[[0,0],[5.2,0],[5.2,-5.4],[0,-5.4]],\"heatingInstallationId\":\"gevel-deel-plat-dak-cv\",\"coolingInstallationId\":null,\"color\":\"#e8590c\",\"aard\":\"gebruiksruimte\",\"platDak\":true,\"platDakBoundary\":\"buiten\",\"platDakConstructieId\":null,\"gebouwdeelId\":\"gevel-deel-plat-dak-gd-hoofdhuis\",\"zBottomM\":2.72,\"zTopM\":5.43}]}]}",
+    "werk": null,
+    "vorige": null
+  }
+}
