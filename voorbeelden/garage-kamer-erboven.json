@@ -1,0 +1,2952 @@
+{
+  "version": "2.1",
+  "title": "Garage met kamer erboven",
+  "created": "2026-11-20T00:00:00.000Z",
+  "modified": "2026-11-20T18:19:21.588Z",
+  "settings": {
+    "background": "grid",
+    "zoom": 1.5,
+    "pan": {
+      "x": 100,
+      "y": 231
+    },
+    "installations": [
+      {
+        "id": "garage-kamer-erboven-cv",
+        "kind": "verwarming",
+        "type": "cv_ketel"
+      }
+    ],
+    "defaultHeatingInstallationId": "garage-kamer-erboven-cv",
+    "floors": [
+      {
+        "id": "garage-kamer-erboven-f0",
+        "name": "Kelder",
+        "heightM": null,
+        "referencePoint": null
+      },
+      {
+        "id": "garage-kamer-erboven-f1",
+        "name": "Souterrain",
+        "heightM": null,
+        "referencePoint": null
+      },
+      {
+        "id": "garage-kamer-erboven-f2",
+        "name": "Begane grond",
+        "heightM": 2.72,
+        "referencePoint": {
+          "wallId": "garage-kamer-erboven-bg-04",
+          "ep": 1,
+          "x": 0,
+          "y": 8
+        }
+      },
+      {
+        "id": "garage-kamer-erboven-f3",
+        "name": "1e verdieping",
+        "heightM": 2.71,
+        "referencePoint": {
+          "wallId": "garage-kamer-erboven-v1-04",
+          "ep": 1,
+          "x": 12,
+          "y": 8
+        }
+      },
+      {
+        "id": "garage-kamer-erboven-f4",
+        "name": "2e verdieping",
+        "heightM": null,
+        "referencePoint": null
+      }
+    ],
+    "gebouwdelen": [
+      {
+        "id": "garage-kamer-erboven-gd-hoofdhuis",
+        "name": "Hoofdhuis"
+      }
+    ],
+    "constructies": [],
+    "faceAttributes": {
+      "garage-kamer-erboven-bg-02|garage-kamer-erboven-bg-06|garage-kamer-erboven-bg-07|garage-kamer-erboven-bg-08|garage-kamer-erboven-bg-09": {
+        "aard": "niet berekend"
+      },
+      "garage-kamer-erboven-v1-01|garage-kamer-erboven-v1-02|garage-kamer-erboven-v1-03|garage-kamer-erboven-v1-04|garage-kamer-erboven-v1-05": {
+        "platDak": true
+      },
+      "garage-kamer-erboven-v1-02|garage-kamer-erboven-v1-06|garage-kamer-erboven-v1-07|garage-kamer-erboven-v1-08|garage-kamer-erboven-v1-09": {
+        "platDak": true
+      }
+    },
+    "roomAssignments": {
+      "garage-kamer-erboven-bg-02|garage-kamer-erboven-bg-06|garage-kamer-erboven-bg-07|garage-kamer-erboven-bg-08|garage-kamer-erboven-bg-09": {
+        "heatingInstallationId": null,
+        "coolingInstallationId": null
+      }
+    },
+    "northAngle": 315,
+    "orientatieBevestigd": true
+  },
+  "canvas": {
+    "konva_snapshot": [
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-bg-01",
+          "points": [
+            0,
+            0,
+            130,
+            0
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-bg-05",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-bg-02",
+              "ep": 0
+            },
+            {
+              "id": "garage-kamer-erboven-bg-06",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-bg-02",
+          "points": [
+            130,
+            0,
+            130,
+            113
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-bg-01",
+              "ep": 1
+            },
+            {
+              "id": "garage-kamer-erboven-bg-06",
+              "ep": 0
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-bg-03",
+              "ep": 0
+            },
+            {
+              "id": "garage-kamer-erboven-bg-09",
+              "ep": 1
+            }
+          ],
+          "boundary": "sgr"
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-bg-03",
+          "points": [
+            130,
+            113,
+            130,
+            195
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-bg-02",
+              "ep": 1
+            },
+            {
+              "id": "garage-kamer-erboven-bg-09",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-bg-04",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-bg-04",
+          "points": [
+            130,
+            195,
+            0,
+            195
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-bg-03",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-bg-05",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-bg-05",
+          "points": [
+            0,
+            195,
+            0,
+            0
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-bg-04",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-bg-01",
+              "ep": 0
+            }
+          ],
+          "boundary": "buren"
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-bg-06",
+          "points": [
+            130,
+            0,
+            130,
+            -54
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-bg-01",
+              "ep": 1
+            },
+            {
+              "id": "garage-kamer-erboven-bg-02",
+              "ep": 0
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-bg-07",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-bg-07",
+          "points": [
+            130,
+            -54,
+            205,
+            -54
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-bg-06",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-bg-08",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-bg-08",
+          "points": [
+            205,
+            -54,
+            205,
+            113
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-bg-07",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-bg-09",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-bg-09",
+          "points": [
+            205,
+            113,
+            130,
+            113
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-bg-08",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-bg-02",
+              "ep": 1
+            },
+            {
+              "id": "garage-kamer-erboven-bg-03",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-v1-01",
+          "points": [
+            305,
+            0,
+            435,
+            0
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-v1-05",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-v1-02",
+              "ep": 0
+            },
+            {
+              "id": "garage-kamer-erboven-v1-06",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-v1-02",
+          "points": [
+            435,
+            0,
+            435,
+            113
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-v1-01",
+              "ep": 1
+            },
+            {
+              "id": "garage-kamer-erboven-v1-06",
+              "ep": 0
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-v1-03",
+              "ep": 0
+            },
+            {
+              "id": "garage-kamer-erboven-v1-09",
+              "ep": 1
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-v1-03",
+          "points": [
+            435,
+            113,
+            435,
+            195
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-v1-02",
+              "ep": 1
+            },
+            {
+              "id": "garage-kamer-erboven-v1-09",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-v1-04",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-v1-04",
+          "points": [
+            435,
+            195,
+            305,
+            195
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-v1-03",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-v1-05",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-v1-05",
+          "points": [
+            305,
+            195,
+            305,
+            0
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-v1-04",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-v1-01",
+              "ep": 0
+            }
+          ],
+          "boundary": "buren"
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-v1-06",
+          "points": [
+            435,
+            0,
+            435,
+            -54
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-v1-01",
+              "ep": 1
+            },
+            {
+              "id": "garage-kamer-erboven-v1-02",
+              "ep": 0
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-v1-07",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-v1-07",
+          "points": [
+            435,
+            -54,
+            510,
+            -54
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-v1-06",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-v1-08",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-v1-08",
+          "points": [
+            510,
+            -54,
+            510,
+            113
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-v1-07",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-v1-09",
+              "ep": 0
+            }
+          ]
+        }
+      },
+      {
+        "type": "Line",
+        "attrs": {
+          "id": "garage-kamer-erboven-v1-09",
+          "points": [
+            510,
+            113,
+            435,
+            113
+          ],
+          "stroke": "#1d1d1d",
+          "strokeWidth": 1.2,
+          "hitStrokeWidth": 8,
+          "opacity": 1,
+          "lineCap": "round",
+          "listening": true,
+          "draggable": false,
+          "perfectDrawEnabled": false,
+          "shadowForStrokeEnabled": false,
+          "isWall": true,
+          "_ep0conns": [
+            {
+              "id": "garage-kamer-erboven-v1-08",
+              "ep": 1
+            }
+          ],
+          "_ep1conns": [
+            {
+              "id": "garage-kamer-erboven-v1-02",
+              "ep": 1
+            },
+            {
+              "id": "garage-kamer-erboven-v1-03",
+              "ep": 0
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "model3d": {
+    "format": 1,
+    "gegenereerd": {
+      "model": {
+        "format": 1,
+        "motor": "0.23.3",
+        "invoer_sha1": "a20936fc10448566b5d7e34a087d89910e409122",
+        "project": {
+          "titel": "Woning",
+          "northAngle": 315,
+          "frontFacadeScreenAngle": 180,
+          "frontFacadeBearing": 315,
+          "begane_grond": "Begane grond"
+        },
+        "zones": [
+          {
+            "index": 0,
+            "label": "RZ-0 (geen installatie)",
+            "soort": "geen installatie",
+            "kleur": "#ddddda"
+          },
+          {
+            "index": 1,
+            "label": "RZ-1",
+            "soort": "zone",
+            "kleur": "#994a20"
+          },
+          {
+            "index": 2,
+            "label": "onbekend",
+            "soort": "onbekend",
+            "kleur": "#b39090"
+          }
+        ],
+        "gebouwdelen": [
+          {
+            "index": 0,
+            "naam": "Hoofdhuis"
+          }
+        ],
+        "constructies": [],
+        "objecten": [
+          {
+            "id": "o1",
+            "label": "Begane grond",
+            "verdieping": "Begane grond",
+            "gebouwdeel": 0,
+            "z_onder": 0,
+            "z_boven": 2.72,
+            "buiten_berekening": false
+          },
+          {
+            "id": "o2",
+            "label": "1e verdieping",
+            "verdieping": "1e verdieping",
+            "gebouwdeel": 0,
+            "z_onder": 2.72,
+            "z_boven": 5.43,
+            "buiten_berekening": false
+          },
+          {
+            "id": "o3",
+            "label": "Begane grond - buiten berekening",
+            "verdieping": "Begane grond",
+            "gebouwdeel": 0,
+            "z_onder": 0,
+            "z_boven": 2.72,
+            "buiten_berekening": true
+          }
+        ],
+        "vlakken": [
+          {
+            "id": "v1",
+            "object": "o1",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-bg-04",
+            "hoekpunten": [
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                5.2,
+                0,
+                0
+              ],
+              [
+                5.2,
+                0,
+                2.72
+              ],
+              [
+                0,
+                0,
+                2.72
+              ]
+            ],
+            "normaal": [
+              0,
+              -1,
+              0
+            ],
+            "oppervlakte": 14.144,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "NW",
+            "azimut": 315,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v2",
+            "object": "o1",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-bg-03",
+            "hoekpunten": [
+              [
+                5.2,
+                0,
+                0
+              ],
+              [
+                5.2,
+                3.28,
+                0
+              ],
+              [
+                5.2,
+                3.28,
+                2.72
+              ],
+              [
+                5.2,
+                0,
+                2.72
+              ]
+            ],
+            "normaal": [
+              1,
+              0,
+              0
+            ],
+            "oppervlakte": 8.9216,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZW",
+            "azimut": 225,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v3",
+            "object": "o1",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-bg-01",
+            "hoekpunten": [
+              [
+                5.2,
+                7.8,
+                0
+              ],
+              [
+                0,
+                7.8,
+                0
+              ],
+              [
+                0,
+                7.8,
+                2.72
+              ],
+              [
+                5.2,
+                7.8,
+                2.72
+              ]
+            ],
+            "normaal": [
+              0,
+              1,
+              0
+            ],
+            "oppervlakte": 14.144,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZO",
+            "azimut": 135,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v4",
+            "object": "o1",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-bg-05",
+            "hoekpunten": [
+              [
+                0,
+                7.8,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                2.72
+              ],
+              [
+                0,
+                7.8,
+                2.72
+              ]
+            ],
+            "normaal": [
+              -1,
+              0,
+              0
+            ],
+            "oppervlakte": 21.216,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buren",
+            "aard": "gebruiksruimte",
+            "windrichting": "NO",
+            "azimut": 45,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v5",
+            "object": "o1",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-bg-02",
+            "hoekpunten": [
+              [
+                5.2,
+                7.8,
+                0
+              ],
+              [
+                5.2,
+                7.8,
+                2.72
+              ],
+              [
+                5.2,
+                3.28,
+                2.72
+              ],
+              [
+                5.2,
+                3.28,
+                0
+              ]
+            ],
+            "normaal": [
+              1,
+              0,
+              0
+            ],
+            "oppervlakte": 12.2944,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "sgr",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZW",
+            "azimut": 225,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v6",
+            "object": "o1",
+            "soort": "vloer",
+            "bron": "vloervlak",
+            "bron_id": "garage-kamer-erboven-bg-01|garage-kamer-erboven-bg-02|garage-kamer-erboven-bg-03|garage-kamer-erboven-bg-04|garage-kamer-erboven-bg-05",
+            "hoekpunten": [
+              [
+                0,
+                7.8,
+                0
+              ],
+              [
+                5.2,
+                7.8,
+                0
+              ],
+              [
+                5.2,
+                0,
+                0
+              ],
+              [
+                0,
+                0,
+                0
+              ]
+            ],
+            "normaal": [
+              0,
+              0,
+              -1
+            ],
+            "oppervlakte": 40.56,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "kruipruimte",
+            "aard": "gebruiksruimte",
+            "windrichting": "HOR",
+            "azimut": null,
+            "helling": 0,
+            "dakkapel": null
+          },
+          {
+            "id": "v7",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-v1-04",
+            "hoekpunten": [
+              [
+                0,
+                0,
+                2.72
+              ],
+              [
+                5.2,
+                0,
+                2.72
+              ],
+              [
+                5.2,
+                0,
+                5.43
+              ],
+              [
+                0,
+                0,
+                5.43
+              ]
+            ],
+            "normaal": [
+              0,
+              -1,
+              0
+            ],
+            "oppervlakte": 14.092,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "NW",
+            "azimut": 315,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v8",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-v1-03",
+            "hoekpunten": [
+              [
+                5.2,
+                0,
+                2.72
+              ],
+              [
+                5.2,
+                3.28,
+                2.72
+              ],
+              [
+                5.2,
+                3.28,
+                5.43
+              ],
+              [
+                5.2,
+                0,
+                5.43
+              ]
+            ],
+            "normaal": [
+              1,
+              0,
+              0
+            ],
+            "oppervlakte": 8.8888,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZW",
+            "azimut": 225,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v9",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-v1-09",
+            "hoekpunten": [
+              [
+                5.2,
+                3.28,
+                2.72
+              ],
+              [
+                8.2,
+                3.28,
+                2.72
+              ],
+              [
+                8.2,
+                3.28,
+                5.43
+              ],
+              [
+                5.2,
+                3.28,
+                5.43
+              ]
+            ],
+            "normaal": [
+              0,
+              -1,
+              0
+            ],
+            "oppervlakte": 8.13,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "NW",
+            "azimut": 315,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v10",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-v1-08",
+            "hoekpunten": [
+              [
+                8.2,
+                3.28,
+                2.72
+              ],
+              [
+                8.2,
+                9.96,
+                2.72
+              ],
+              [
+                8.2,
+                9.96,
+                5.43
+              ],
+              [
+                8.2,
+                3.28,
+                5.43
+              ]
+            ],
+            "normaal": [
+              1,
+              0,
+              0
+            ],
+            "oppervlakte": 18.1028,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZW",
+            "azimut": 225,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v11",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-v1-07",
+            "hoekpunten": [
+              [
+                8.2,
+                9.96,
+                2.72
+              ],
+              [
+                5.2,
+                9.96,
+                2.72
+              ],
+              [
+                5.2,
+                9.96,
+                5.43
+              ],
+              [
+                8.2,
+                9.96,
+                5.43
+              ]
+            ],
+            "normaal": [
+              0,
+              1,
+              0
+            ],
+            "oppervlakte": 8.13,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZO",
+            "azimut": 135,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v12",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-v1-06",
+            "hoekpunten": [
+              [
+                5.2,
+                9.96,
+                2.72
+              ],
+              [
+                5.2,
+                7.8,
+                2.72
+              ],
+              [
+                5.2,
+                7.8,
+                5.43
+              ],
+              [
+                5.2,
+                9.96,
+                5.43
+              ]
+            ],
+            "normaal": [
+              -1,
+              0,
+              0
+            ],
+            "oppervlakte": 5.8536,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "NO",
+            "azimut": 45,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v13",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-v1-01",
+            "hoekpunten": [
+              [
+                5.2,
+                7.8,
+                2.72
+              ],
+              [
+                0,
+                7.8,
+                2.72
+              ],
+              [
+                0,
+                7.8,
+                5.43
+              ],
+              [
+                5.2,
+                7.8,
+                5.43
+              ]
+            ],
+            "normaal": [
+              0,
+              1,
+              0
+            ],
+            "oppervlakte": 14.092,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "ZO",
+            "azimut": 135,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v14",
+            "object": "o2",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-v1-05",
+            "hoekpunten": [
+              [
+                0,
+                7.8,
+                2.72
+              ],
+              [
+                0,
+                0,
+                2.72
+              ],
+              [
+                0,
+                0,
+                5.43
+              ],
+              [
+                0,
+                7.8,
+                5.43
+              ]
+            ],
+            "normaal": [
+              -1,
+              0,
+              0
+            ],
+            "oppervlakte": 21.138,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buren",
+            "aard": "gebruiksruimte",
+            "windrichting": "NO",
+            "azimut": 45,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v15",
+            "object": "o2",
+            "soort": "vloer",
+            "bron": "vloervlak",
+            "bron_id": "garage-kamer-erboven-v1-01|garage-kamer-erboven-v1-02|garage-kamer-erboven-v1-03|garage-kamer-erboven-v1-04|garage-kamer-erboven-v1-05+merge0",
+            "hoekpunten": [
+              [
+                5.2,
+                3.28,
+                2.72
+              ],
+              [
+                5.2,
+                9.96,
+                2.72
+              ],
+              [
+                8.2,
+                9.96,
+                2.72
+              ],
+              [
+                8.2,
+                3.28,
+                2.72
+              ]
+            ],
+            "normaal": [
+              0,
+              0,
+              -1
+            ],
+            "oppervlakte": 20.04,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "sgr",
+            "aard": "gebruiksruimte",
+            "windrichting": "HOR",
+            "azimut": null,
+            "helling": 0,
+            "dakkapel": null
+          },
+          {
+            "id": "v16",
+            "object": "o2",
+            "soort": "dak",
+            "bron": "dakvlak",
+            "bron_id": null,
+            "hoekpunten": [
+              [
+                5.2,
+                0,
+                5.43
+              ],
+              [
+                5.2,
+                3.28,
+                5.43
+              ],
+              [
+                8.2,
+                3.28,
+                5.43
+              ],
+              [
+                8.2,
+                9.96,
+                5.43
+              ],
+              [
+                5.2,
+                9.96,
+                5.43
+              ],
+              [
+                5.2,
+                7.8,
+                5.43
+              ],
+              [
+                0,
+                7.8,
+                5.43
+              ],
+              [
+                0,
+                0,
+                5.43
+              ]
+            ],
+            "normaal": [
+              0,
+              0,
+              1
+            ],
+            "oppervlakte": 60.6,
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "gebruiksruimte",
+            "windrichting": "HOR",
+            "azimut": null,
+            "helling": 0,
+            "dakkapel": null
+          },
+          {
+            "id": "v17",
+            "object": "o3",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-bg-09",
+            "hoekpunten": [
+              [
+                5.2,
+                3.28,
+                0
+              ],
+              [
+                8.2,
+                3.28,
+                0
+              ],
+              [
+                8.2,
+                3.28,
+                2.72
+              ],
+              [
+                5.2,
+                3.28,
+                2.72
+              ]
+            ],
+            "normaal": [
+              0,
+              -1,
+              0
+            ],
+            "oppervlakte": 8.16,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "niet berekend",
+            "windrichting": "NW",
+            "azimut": 315,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v18",
+            "object": "o3",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-bg-08",
+            "hoekpunten": [
+              [
+                8.2,
+                3.28,
+                0
+              ],
+              [
+                8.2,
+                9.96,
+                0
+              ],
+              [
+                8.2,
+                9.96,
+                2.72
+              ],
+              [
+                8.2,
+                3.28,
+                2.72
+              ]
+            ],
+            "normaal": [
+              1,
+              0,
+              0
+            ],
+            "oppervlakte": 18.1696,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "niet berekend",
+            "windrichting": "ZW",
+            "azimut": 225,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v19",
+            "object": "o3",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-bg-07",
+            "hoekpunten": [
+              [
+                8.2,
+                9.96,
+                0
+              ],
+              [
+                5.2,
+                9.96,
+                0
+              ],
+              [
+                5.2,
+                9.96,
+                2.72
+              ],
+              [
+                8.2,
+                9.96,
+                2.72
+              ]
+            ],
+            "normaal": [
+              0,
+              1,
+              0
+            ],
+            "oppervlakte": 8.16,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "niet berekend",
+            "windrichting": "ZO",
+            "azimut": 135,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v20",
+            "object": "o3",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-bg-06",
+            "hoekpunten": [
+              [
+                5.2,
+                9.96,
+                0
+              ],
+              [
+                5.2,
+                7.8,
+                0
+              ],
+              [
+                5.2,
+                7.8,
+                2.72
+              ],
+              [
+                5.2,
+                9.96,
+                2.72
+              ]
+            ],
+            "normaal": [
+              -1,
+              0,
+              0
+            ],
+            "oppervlakte": 5.8752,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "niet berekend",
+            "windrichting": "NO",
+            "azimut": 45,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v21",
+            "object": "o3",
+            "soort": "gevel",
+            "bron": "muur",
+            "bron_id": "garage-kamer-erboven-bg-02",
+            "hoekpunten": [
+              [
+                5.2,
+                7.8,
+                0
+              ],
+              [
+                5.2,
+                3.28,
+                0
+              ],
+              [
+                5.2,
+                3.28,
+                2.72
+              ],
+              [
+                5.2,
+                7.8,
+                2.72
+              ]
+            ],
+            "normaal": [
+              -1,
+              0,
+              0
+            ],
+            "oppervlakte": 12.2944,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "sgr",
+            "aard": "niet berekend",
+            "windrichting": "NO",
+            "azimut": 45,
+            "helling": 90,
+            "dakkapel": null
+          },
+          {
+            "id": "v22",
+            "object": "o3",
+            "soort": "vloer",
+            "bron": "vloervlak",
+            "bron_id": "garage-kamer-erboven-bg-02|garage-kamer-erboven-bg-06|garage-kamer-erboven-bg-07|garage-kamer-erboven-bg-08|garage-kamer-erboven-bg-09",
+            "hoekpunten": [
+              [
+                5.2,
+                9.96,
+                0
+              ],
+              [
+                8.2,
+                9.96,
+                0
+              ],
+              [
+                8.2,
+                3.28,
+                0
+              ],
+              [
+                5.2,
+                3.28,
+                0
+              ]
+            ],
+            "normaal": [
+              0,
+              0,
+              -1
+            ],
+            "oppervlakte": 20.04,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "kruipruimte",
+            "aard": "niet berekend",
+            "windrichting": "HOR",
+            "azimut": null,
+            "helling": 0,
+            "dakkapel": null
+          },
+          {
+            "id": "v23",
+            "object": "o3",
+            "soort": "dak",
+            "bron": "dakvlak",
+            "bron_id": null,
+            "hoekpunten": [
+              [
+                5.2,
+                3.28,
+                2.72
+              ],
+              [
+                8.2,
+                3.28,
+                2.72
+              ],
+              [
+                8.2,
+                9.96,
+                2.72
+              ],
+              [
+                5.2,
+                9.96,
+                2.72
+              ]
+            ],
+            "normaal": [
+              0,
+              0,
+              1
+            ],
+            "oppervlakte": 20.04,
+            "zone": 0,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "aard": "niet berekend",
+            "windrichting": "HOR",
+            "azimut": null,
+            "helling": 0,
+            "dakkapel": null
+          }
+        ],
+        "waarschuwingen": [],
+        "fouten": []
+      },
+      "berekening": {
+        "format": 1,
+        "motor": "0.23.3",
+        "model_sha1": "79a285959ffc7d3045b75efd5d326a8bbd85d950",
+        "koppen": [
+          {
+            "id": "vloer||-|0|z1|g0|c-1|kruipruimte",
+            "label": "Vloer",
+            "vlaktype": "vloer",
+            "laag": "",
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "kruipruimte",
+            "grens": null,
+            "windrichting": null,
+            "helling": 0,
+            "dakkapel": null,
+            "vlakken": [
+              "v6"
+            ],
+            "rijen": [
+              {
+                "a": 5.2,
+                "b": 7.8,
+                "uitkomst": 41.42,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v6"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        0,
+                        0,
+                        0
+                      ],
+                      [
+                        5.2,
+                        0,
+                        0
+                      ],
+                      [
+                        5.2,
+                        7.8,
+                        0
+                      ],
+                      [
+                        0,
+                        7.8,
+                        0
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 5.2,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "naar": [
+                        5.2,
+                        0,
+                        0
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 7.8,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "naar": [
+                        0,
+                        7.8,
+                        0
+                      ],
+                      "rand": true
+                    }
+                  ]
+                },
+                "toeslag_a": 0.11
+              }
+            ],
+            "oppervlakte": 40.56,
+            "totaal": 41.42,
+            "handmatig": false
+          },
+          {
+            "id": "vloer boven buitenlucht||-|0|z1|g0|c-1|sgr",
+            "label": "Vloer - SGR",
+            "vlaktype": "vloer boven buitenlucht",
+            "laag": "",
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "sgr",
+            "grens": null,
+            "windrichting": null,
+            "helling": 0,
+            "dakkapel": null,
+            "vlakken": [
+              "v15"
+            ],
+            "rijen": [
+              {
+                "a": 3,
+                "b": 6.68,
+                "uitkomst": 20.04,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v15"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        5.2,
+                        3.28,
+                        2.72
+                      ],
+                      [
+                        8.2,
+                        3.28,
+                        2.72
+                      ],
+                      [
+                        8.2,
+                        9.96,
+                        2.72
+                      ],
+                      [
+                        5.2,
+                        9.96,
+                        2.72
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 3,
+                      "gehalveerd": false,
+                      "van": [
+                        5.2,
+                        3.28,
+                        2.72
+                      ],
+                      "naar": [
+                        8.2,
+                        3.28,
+                        2.72
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 6.68,
+                      "gehalveerd": false,
+                      "van": [
+                        5.2,
+                        3.28,
+                        2.72
+                      ],
+                      "naar": [
+                        5.2,
+                        9.96,
+                        2.72
+                      ],
+                      "rand": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "oppervlakte": 20.04,
+            "totaal": 20.04,
+            "handmatig": false
+          },
+          {
+            "id": "gevel||NW|90|z1|g0|c-1|buiten",
+            "label": "Voorgevel",
+            "vlaktype": "gevel",
+            "laag": "",
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "NW",
+            "helling": 90,
+            "dakkapel": null,
+            "vlakken": [
+              "v1",
+              "v7",
+              "v9"
+            ],
+            "rijen": [
+              {
+                "a": 8.2,
+                "b": 5.43,
+                "uitkomst": 45.12,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v1",
+                  "v7",
+                  "v9"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        0,
+                        0,
+                        0
+                      ],
+                      [
+                        8.2,
+                        0,
+                        0
+                      ],
+                      [
+                        8.2,
+                        0,
+                        5.43
+                      ],
+                      [
+                        0,
+                        0,
+                        5.43
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 8.2,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "naar": [
+                        8.2,
+                        0,
+                        0
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 5.43,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        0
+                      ],
+                      "naar": [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      "rand": true
+                    }
+                  ]
+                },
+                "toeslag_a": 0.11
+              },
+              {
+                "a": 3,
+                "b": -2.72,
+                "uitkomst": -8.16,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v1",
+                  "v7",
+                  "v9"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        5.2,
+                        0,
+                        0
+                      ],
+                      [
+                        8.2,
+                        0,
+                        0
+                      ],
+                      [
+                        8.2,
+                        0,
+                        2.72
+                      ],
+                      [
+                        5.2,
+                        0,
+                        2.72
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 3,
+                      "gehalveerd": false,
+                      "van": [
+                        5.2,
+                        0,
+                        2.72
+                      ],
+                      "naar": [
+                        8.2,
+                        0,
+                        2.72
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 2.72,
+                      "gehalveerd": false,
+                      "van": [
+                        5.2,
+                        0,
+                        0
+                      ],
+                      "naar": [
+                        5.2,
+                        0,
+                        2.72
+                      ],
+                      "rand": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "oppervlakte": 36.366,
+            "totaal": 36.96,
+            "handmatig": false
+          },
+          {
+            "id": "gevel||ZO|90|z1|g0|c-1|buiten",
+            "label": "Achtergevel",
+            "vlaktype": "gevel",
+            "laag": "",
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "ZO",
+            "helling": 90,
+            "dakkapel": null,
+            "vlakken": [
+              "v3",
+              "v11",
+              "v13"
+            ],
+            "rijen": [
+              {
+                "a": 8.2,
+                "b": 5.43,
+                "uitkomst": 45.12,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v3",
+                  "v11",
+                  "v13"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        8.2,
+                        7.8,
+                        0
+                      ],
+                      [
+                        0,
+                        7.8,
+                        0
+                      ],
+                      [
+                        0,
+                        7.8,
+                        5.43
+                      ],
+                      [
+                        8.2,
+                        7.8,
+                        5.43
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 8.2,
+                      "gehalveerd": false,
+                      "van": [
+                        8.2,
+                        7.8,
+                        0
+                      ],
+                      "naar": [
+                        0,
+                        7.8,
+                        0
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 5.43,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        7.8,
+                        0
+                      ],
+                      "naar": [
+                        0,
+                        7.8,
+                        5.43
+                      ],
+                      "rand": true
+                    }
+                  ]
+                },
+                "toeslag_a": 0.11
+              },
+              {
+                "a": 3,
+                "b": -2.72,
+                "uitkomst": -8.16,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v3",
+                  "v11",
+                  "v13"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        8.2,
+                        7.8,
+                        0
+                      ],
+                      [
+                        5.2,
+                        7.8,
+                        0
+                      ],
+                      [
+                        5.2,
+                        7.8,
+                        2.72
+                      ],
+                      [
+                        8.2,
+                        7.8,
+                        2.72
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 3,
+                      "gehalveerd": false,
+                      "van": [
+                        8.2,
+                        7.8,
+                        2.72
+                      ],
+                      "naar": [
+                        5.2,
+                        7.8,
+                        2.72
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 2.72,
+                      "gehalveerd": false,
+                      "van": [
+                        5.2,
+                        7.8,
+                        0
+                      ],
+                      "naar": [
+                        5.2,
+                        7.8,
+                        2.72
+                      ],
+                      "rand": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "oppervlakte": 36.366,
+            "totaal": 36.96,
+            "handmatig": false
+          },
+          {
+            "id": "gevel||NO|90|z1|g0|c-1|buiten",
+            "label": "Linkergevel",
+            "vlaktype": "gevel",
+            "laag": "",
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "NO",
+            "helling": 90,
+            "dakkapel": null,
+            "vlakken": [
+              "v12"
+            ],
+            "rijen": [
+              {
+                "a": 2.16,
+                "b": 2.71,
+                "uitkomst": 5.85,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v12"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        5.2,
+                        9.96,
+                        2.72
+                      ],
+                      [
+                        5.2,
+                        7.8,
+                        2.72
+                      ],
+                      [
+                        5.2,
+                        7.8,
+                        5.43
+                      ],
+                      [
+                        5.2,
+                        9.96,
+                        5.43
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 2.16,
+                      "gehalveerd": false,
+                      "van": [
+                        5.2,
+                        9.96,
+                        2.72
+                      ],
+                      "naar": [
+                        5.2,
+                        7.8,
+                        2.72
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 2.71,
+                      "gehalveerd": false,
+                      "van": [
+                        5.2,
+                        9.96,
+                        2.72
+                      ],
+                      "naar": [
+                        5.2,
+                        9.96,
+                        5.43
+                      ],
+                      "rand": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "oppervlakte": 5.8536,
+            "totaal": 5.85,
+            "handmatig": false
+          },
+          {
+            "id": "gevel||ZW|90|z1|g0|c-1|buiten",
+            "label": "Rechtergevel",
+            "vlaktype": "gevel",
+            "laag": "",
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "ZW",
+            "helling": 90,
+            "dakkapel": null,
+            "vlakken": [
+              "v2",
+              "v8",
+              "v10"
+            ],
+            "rijen": [
+              {
+                "a": 9.96,
+                "b": 5.43,
+                "uitkomst": 54.08,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v2",
+                  "v8",
+                  "v10"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        8.2,
+                        0,
+                        0
+                      ],
+                      [
+                        8.2,
+                        9.96,
+                        0
+                      ],
+                      [
+                        8.2,
+                        9.96,
+                        5.43
+                      ],
+                      [
+                        8.2,
+                        0,
+                        5.43
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 9.96,
+                      "gehalveerd": false,
+                      "van": [
+                        8.2,
+                        0,
+                        5.43
+                      ],
+                      "naar": [
+                        8.2,
+                        9.96,
+                        5.43
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 5.43,
+                      "gehalveerd": false,
+                      "van": [
+                        8.2,
+                        0,
+                        0
+                      ],
+                      "naar": [
+                        8.2,
+                        0,
+                        5.43
+                      ],
+                      "rand": true
+                    }
+                  ]
+                }
+              },
+              {
+                "a": 6.68,
+                "b": -2.72,
+                "uitkomst": -18.17,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v2",
+                  "v8",
+                  "v10"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        8.2,
+                        3.28,
+                        0
+                      ],
+                      [
+                        8.2,
+                        9.96,
+                        0
+                      ],
+                      [
+                        8.2,
+                        9.96,
+                        2.72
+                      ],
+                      [
+                        8.2,
+                        3.28,
+                        2.72
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 6.68,
+                      "gehalveerd": false,
+                      "van": [
+                        8.2,
+                        3.28,
+                        2.72
+                      ],
+                      "naar": [
+                        8.2,
+                        9.96,
+                        2.72
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 2.72,
+                      "gehalveerd": false,
+                      "van": [
+                        8.2,
+                        3.28,
+                        0
+                      ],
+                      "naar": [
+                        8.2,
+                        3.28,
+                        2.72
+                      ],
+                      "rand": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "oppervlakte": 35.9132,
+            "totaal": 35.91,
+            "handmatig": false
+          },
+          {
+            "id": "gevel||-|90|z1|g0|c-1|sgr",
+            "label": "Gevel - SGR",
+            "vlaktype": "gevel",
+            "laag": "",
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "sgr",
+            "grens": null,
+            "windrichting": null,
+            "helling": 90,
+            "dakkapel": null,
+            "vlakken": [
+              "v5"
+            ],
+            "rijen": [
+              {
+                "a": 4.52,
+                "b": 2.72,
+                "uitkomst": 12.29,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v5"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        5.2,
+                        3.28,
+                        0
+                      ],
+                      [
+                        5.2,
+                        7.8,
+                        0
+                      ],
+                      [
+                        5.2,
+                        7.8,
+                        2.72
+                      ],
+                      [
+                        5.2,
+                        3.28,
+                        2.72
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 4.52,
+                      "gehalveerd": false,
+                      "van": [
+                        5.2,
+                        3.28,
+                        0
+                      ],
+                      "naar": [
+                        5.2,
+                        7.8,
+                        0
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 2.72,
+                      "gehalveerd": false,
+                      "van": [
+                        5.2,
+                        3.28,
+                        0
+                      ],
+                      "naar": [
+                        5.2,
+                        3.28,
+                        2.72
+                      ],
+                      "rand": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "oppervlakte": 12.2944,
+            "totaal": 12.29,
+            "handmatig": false
+          },
+          {
+            "id": "dak||HOR|0|z1|g0|c-1|buiten",
+            "label": "Dak plat",
+            "vlaktype": "dak",
+            "laag": "",
+            "zone": 1,
+            "gebouwdeel": 0,
+            "constructie": -1,
+            "begrenzing": "buiten",
+            "grens": null,
+            "windrichting": "HOR",
+            "helling": 0,
+            "dakkapel": null,
+            "vlakken": [
+              "v16"
+            ],
+            "rijen": [
+              {
+                "a": 5.2,
+                "b": 7.8,
+                "uitkomst": 41.42,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v16"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      [
+                        5.2,
+                        0,
+                        5.43
+                      ],
+                      [
+                        5.2,
+                        7.8,
+                        5.43
+                      ],
+                      [
+                        0,
+                        7.8,
+                        5.43
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 5.2,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      "naar": [
+                        5.2,
+                        0,
+                        5.43
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 7.8,
+                      "gehalveerd": false,
+                      "van": [
+                        0,
+                        0,
+                        5.43
+                      ],
+                      "naar": [
+                        0,
+                        7.8,
+                        5.43
+                      ],
+                      "rand": true
+                    }
+                  ]
+                },
+                "toeslag_a": 0.11
+              },
+              {
+                "a": 3,
+                "b": 6.68,
+                "uitkomst": 20.04,
+                "vorm": "rechthoek",
+                "aantal": 1,
+                "gehalveerd": null,
+                "vlakken": [
+                  "v16"
+                ],
+                "tekening": {
+                  "omtrek": [
+                    [
+                      [
+                        5.2,
+                        3.28,
+                        5.43
+                      ],
+                      [
+                        8.2,
+                        3.28,
+                        5.43
+                      ],
+                      [
+                        8.2,
+                        9.96,
+                        5.43
+                      ],
+                      [
+                        5.2,
+                        9.96,
+                        5.43
+                      ]
+                    ]
+                  ],
+                  "maatlijnen": [
+                    {
+                      "maat": "a",
+                      "waarde": 3,
+                      "gehalveerd": false,
+                      "van": [
+                        5.2,
+                        3.28,
+                        5.43
+                      ],
+                      "naar": [
+                        8.2,
+                        3.28,
+                        5.43
+                      ],
+                      "rand": true
+                    },
+                    {
+                      "maat": "b",
+                      "waarde": 6.68,
+                      "gehalveerd": false,
+                      "van": [
+                        8.2,
+                        3.28,
+                        5.43
+                      ],
+                      "naar": [
+                        8.2,
+                        9.96,
+                        5.43
+                      ],
+                      "rand": true
+                    }
+                  ]
+                }
+              }
+            ],
+            "oppervlakte": 60.6,
+            "totaal": 61.46,
+            "handmatig": false
+          }
+        ],
+        "waarschuwingen": []
+      },
+      "sha1": {
+        "model": "79a285959ffc7d3045b75efd5d326a8bbd85d950",
+        "berekening": "4cff2922e4d2e5d4d5feffcd3af49fb7cd61eef7"
+      },
+      "motor": "0.23.3",
+      "formats": {
+        "model": 1,
+        "berekening": 1
+      },
+      "verzoek": "8d5c3696",
+      "exitcode": 0,
+      "meldingen": [
+        {
+          "stap": "genereer",
+          "niveau": "info",
+          "tekst": "3 object(en), 23 vlakken"
+        },
+        {
+          "stap": "bereken",
+          "niveau": "info",
+          "tekst": "8 kop(pen)"
+        }
+      ],
+      "duur": 0.53,
+      "tijd": "2026-11-20T18:17:53.238Z"
+    },
+    "body": "{\"format\":3,\"unit\":\"m\",\"project\":{\"title\":\"\",\"northAngle\":315,\"frontFacadeScreenAngle\":180,\"frontFacadeBearing\":315,\"gebouwdelen\":[{\"id\":\"garage-kamer-erboven-gd-hoofdhuis\",\"name\":\"Hoofdhuis\"}],\"constructies\":[]},\"floors\":[{\"id\":\"garage-kamer-erboven-f2\",\"title\":\"Begane grond\",\"referencePoint\":{\"wallId\":\"garage-kamer-erboven-bg-04\",\"ep\":1},\"regions\":[{\"gebouwdeelId\":\"garage-kamer-erboven-gd-hoofdhuis\",\"heightM\":2.72,\"zBottomM\":0,\"zTopM\":2.72,\"top\":false,\"envelope\":{\"polygon\":[[0,0],[5.2,0],[5.2,-3.28],[8.2,-3.28],[8.2,-9.96],[5.2,-9.96],[5.2,-7.8],[0,-7.8]],\"wallIds\":[\"garage-kamer-erboven-bg-04\",\"garage-kamer-erboven-bg-03\",\"garage-kamer-erboven-bg-09\",\"garage-kamer-erboven-bg-08\",\"garage-kamer-erboven-bg-07\",\"garage-kamer-erboven-bg-06\",\"garage-kamer-erboven-bg-01\",\"garage-kamer-erboven-bg-05\"]}}],\"walls\":[{\"id\":\"garage-kamer-erboven-bg-04\",\"x1\":5.2,\"y1\":0,\"x2\":0,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-bg-03\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-bg-05\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-bg-03\",\"x1\":5.2,\"y1\":-3.28,\"x2\":5.2,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-bg-02\",\"ep\":1},{\"id\":\"garage-kamer-erboven-bg-09\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-bg-04\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-bg-02\",\"x1\":5.2,\"y1\":-7.8,\"x2\":5.2,\"y2\":-3.28,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-bg-01\",\"ep\":1},{\"id\":\"garage-kamer-erboven-bg-06\",\"ep\":0}],\"ep1\":[{\"id\":\"garage-kamer-erboven-bg-03\",\"ep\":0},{\"id\":\"garage-kamer-erboven-bg-09\",\"ep\":1}]},\"boundary\":\"sgr\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-bg-01\",\"x1\":0,\"y1\":-7.8,\"x2\":5.2,\"y2\":-7.8,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-bg-05\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-bg-02\",\"ep\":0},{\"id\":\"garage-kamer-erboven-bg-06\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-bg-05\",\"x1\":0,\"y1\":0,\"x2\":0,\"y2\":-7.8,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-bg-04\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-bg-01\",\"ep\":0}]},\"boundary\":\"buren\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-bg-06\",\"x1\":5.2,\"y1\":-7.8,\"x2\":5.2,\"y2\":-9.96,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-bg-01\",\"ep\":1},{\"id\":\"garage-kamer-erboven-bg-02\",\"ep\":0}],\"ep1\":[{\"id\":\"garage-kamer-erboven-bg-07\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-bg-07\",\"x1\":5.2,\"y1\":-9.96,\"x2\":8.2,\"y2\":-9.96,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-bg-06\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-bg-08\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-bg-08\",\"x1\":8.2,\"y1\":-9.96,\"x2\":8.2,\"y2\":-3.28,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-bg-07\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-bg-09\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-bg-09\",\"x1\":8.2,\"y1\":-3.28,\"x2\":5.2,\"y2\":-3.28,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-bg-08\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-bg-02\",\"ep\":1},{\"id\":\"garage-kamer-erboven-bg-03\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null}],\"rooms\":[{\"id\":\"garage-kamer-erboven-bg-01|garage-kamer-erboven-bg-02|garage-kamer-erboven-bg-03|garage-kamer-erboven-bg-04|garage-kamer-erboven-bg-05\",\"polygon\":[[0,0],[5.2,0],[5.2,-3.28],[5.2,-7.8],[0,-7.8]],\"heatingInstallationId\":\"garage-kamer-erboven-cv\",\"coolingInstallationId\":null,\"color\":\"#e8590c\",\"aard\":\"gebruiksruimte\",\"platDak\":false,\"platDakBoundary\":null,\"platDakConstructieId\":null,\"gebouwdeelId\":\"garage-kamer-erboven-gd-hoofdhuis\",\"zBottomM\":0,\"zTopM\":2.72},{\"id\":\"garage-kamer-erboven-bg-02|garage-kamer-erboven-bg-06|garage-kamer-erboven-bg-07|garage-kamer-erboven-bg-08|garage-kamer-erboven-bg-09\",\"polygon\":[[5.2,-7.8],[5.2,-3.28],[8.2,-3.28],[8.2,-9.96],[5.2,-9.96]],\"heatingInstallationId\":null,\"coolingInstallationId\":null,\"color\":null,\"aard\":\"niet berekend\",\"platDak\":false,\"platDakBoundary\":null,\"platDakConstructieId\":null,\"gebouwdeelId\":\"garage-kamer-erboven-gd-hoofdhuis\",\"zBottomM\":0,\"zTopM\":2.72}]},{\"id\":\"garage-kamer-erboven-f3\",\"title\":\"1e verdieping\",\"referencePoint\":{\"wallId\":\"garage-kamer-erboven-v1-04\",\"ep\":1},\"regions\":[{\"gebouwdeelId\":\"garage-kamer-erboven-gd-hoofdhuis\",\"heightM\":2.71,\"zBottomM\":2.72,\"zTopM\":5.43,\"top\":true,\"envelope\":{\"polygon\":[[0,0],[5.2,0],[5.2,-3.28],[8.2,-3.28],[8.2,-9.96],[5.2,-9.96],[5.2,-7.8],[0,-7.8]],\"wallIds\":[\"garage-kamer-erboven-v1-04\",\"garage-kamer-erboven-v1-03\",\"garage-kamer-erboven-v1-09\",\"garage-kamer-erboven-v1-08\",\"garage-kamer-erboven-v1-07\",\"garage-kamer-erboven-v1-06\",\"garage-kamer-erboven-v1-01\",\"garage-kamer-erboven-v1-05\"]}}],\"walls\":[{\"id\":\"garage-kamer-erboven-v1-04\",\"x1\":5.2,\"y1\":0,\"x2\":0,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-v1-03\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-v1-05\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-v1-03\",\"x1\":5.2,\"y1\":-3.28,\"x2\":5.2,\"y2\":0,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-v1-09\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-v1-04\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-v1-01\",\"x1\":0,\"y1\":-7.8,\"x2\":5.2,\"y2\":-7.8,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-v1-05\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-v1-06\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-v1-05\",\"x1\":0,\"y1\":0,\"x2\":0,\"y2\":-7.8,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-v1-04\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-v1-01\",\"ep\":0}]},\"boundary\":\"buren\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-v1-06\",\"x1\":5.2,\"y1\":-7.8,\"x2\":5.2,\"y2\":-9.96,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-v1-01\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-v1-07\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-v1-07\",\"x1\":5.2,\"y1\":-9.96,\"x2\":8.2,\"y2\":-9.96,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-v1-06\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-v1-08\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-v1-08\",\"x1\":8.2,\"y1\":-9.96,\"x2\":8.2,\"y2\":-3.28,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-v1-07\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-v1-09\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null},{\"id\":\"garage-kamer-erboven-v1-09\",\"x1\":8.2,\"y1\":-3.28,\"x2\":5.2,\"y2\":-3.28,\"conns\":{\"ep0\":[{\"id\":\"garage-kamer-erboven-v1-08\",\"ep\":1}],\"ep1\":[{\"id\":\"garage-kamer-erboven-v1-03\",\"ep\":0}]},\"boundary\":\"buiten\",\"boundaryBands\":null,\"isAux\":false,\"constructieId\":null,\"roofBaseHeightM\":0,\"roofCourses\":[],\"dakkapel\":null}],\"rooms\":[{\"id\":\"garage-kamer-erboven-v1-01|garage-kamer-erboven-v1-02|garage-kamer-erboven-v1-03|garage-kamer-erboven-v1-04|garage-kamer-erboven-v1-05\",\"polygon\":[[0,0],[5.2,0],[5.2,-3.28],[5.2,-7.8],[0,-7.8]],\"heatingInstallationId\":\"garage-kamer-erboven-cv\",\"coolingInstallationId\":null,\"color\":\"#e8590c\",\"aard\":\"gebruiksruimte\",\"platDak\":true,\"platDakBoundary\":\"buiten\",\"platDakConstructieId\":null,\"gebouwdeelId\":\"garage-kamer-erboven-gd-hoofdhuis\",\"zBottomM\":2.72,\"zTopM\":5.43},{\"id\":\"garage-kamer-erboven-v1-02|garage-kamer-erboven-v1-06|garage-kamer-erboven-v1-07|garage-kamer-erboven-v1-08|garage-kamer-erboven-v1-09\",\"polygon\":[[5.2,-7.8],[5.2,-3.28],[8.2,-3.28],[8.2,-9.96],[5.2,-9.96]],\"heatingInstallationId\":\"garage-kamer-erboven-cv\",\"coolingInstallationId\":null,\"color\":\"#e8590c\",\"aard\":\"gebruiksruimte\",\"platDak\":true,\"platDakBoundary\":\"buiten\",\"platDakConstructieId\":null,\"gebouwdeelId\":\"garage-kamer-erboven-gd-hoofdhuis\",\"zBottomM\":2.72,\"zTopM\":5.43}]}]}",
+    "werk": null,
+    "vorige": null
+  }
+}
